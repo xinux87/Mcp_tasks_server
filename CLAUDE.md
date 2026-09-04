@@ -314,7 +314,15 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 | `GET /usuarios`, `POST /usuarios`, `POST /usuarios/:id/borrar`, `POST /usuarios/contrasena` | Usuarios: alta, baja (nunca el último) y cambio de la propia contraseña |
 | `GET /eventos` | SSE con la revisión actual, para que la lista y el kanban se refresquen |
 
-Las acciones del humano sobre tareas llaman a las funciones de `src/db/`; la web no reimplementa reglas. Un `ErrorDeRegla` se muestra en la página como aviso, con su mensaje tal cual.
+Las acciones del humano sobre tareas llaman a las funciones de `src/db/`; la web no reimplementa reglas. Un `ErrorDeRegla` en un POST vuelve a pintar la página de origen con el mensaje tal cual y estado 422; una acción que sale bien redirige (POST, redirección, GET). El error de login responde 401 con el formulario.
+
+### Decisiones de la web
+
+- **El nombre visible del proyecto es «MCP Tareas».** Las columnas se titulan Backlog, Preparadas, En curso, Hechas y Cerradas; el estado crudo (`prepared`, `doing`…) aparece en el badge de la ficha.
+- **El CSS se sirve desde una constante** en `src/web/estilos.ts` en `/static/app.css`. No hay archivos estáticos en disco ni JavaScript de cliente hasta el kanban.
+- **Usuarios.** Borrar un usuario es contenido y sube la revisión; cambiar la contraseña no. No se puede borrar el último usuario (`ultimo_usuario`) ni uno con terminales a su nombre (`usuario_con_terminales`): el token quedaría sin dueño. Al borrar, las referencias en tareas y preguntas quedan a nulo; el autor ya está escrito como texto en el hilo.
+- **Editar una tarea solo en `backlog`** (`solo_en_backlog`): título, descripción, asignaciones y `autoejecucion`.
+- **`markdown-it` trae sus propios tipos**; no se instala `@types/markdown-it`.
 
 ## El servidor MCP
 
