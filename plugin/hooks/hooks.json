@@ -1,0 +1,17 @@
+{
+  "description": "Al arrancar la sesion vuelca la URL del servidor y el token del terminal a ~/.claude/mcp-tareas/config, para que el script de statusline pueda leerlos.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/guardar-config.sh",
+            "async": true,
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "mcp-tareas",
+  "displayName": "MCP Tareas",
+  "version": "0.1.0",
+  "description": "Conecta el terminal al servidor MCP de tareas y arranca el bucle del agente: registra el terminal, consulta novedades, lanza el analisis y la ejecucion como subagentes y reporta el consumo.",
+  "author": {
+    "name": "Mcp_tasks_server"
+  },
+  "keywords": [
+    "tareas",
+    "mcp",
+    "kanban",
+    "bucle",
+    "agente"
+  ],
+  "license": "MIT",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "userConfig": {
+    "servidor_url": {
+      "type": "string",
+      "title": "URL del servidor",
+      "description": "URL base del servidor MCP de tareas, sin barra final. Ejemplo: https://tareas.example.com",
+      "required": true
+    },
+    "token_terminal": {
+      "type": "string",
+      "title": "Token del terminal",
+      "description": "Token que la web entrega una sola vez al crear el terminal. Identifica a este terminal y a su usuario.",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}

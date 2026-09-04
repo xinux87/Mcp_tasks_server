@@ -314,7 +314,7 @@ Verificado contra la documentación de Claude Code:
 
 - **El uso disponible solo está en la entrada de la statusline.** Claude Code pasa a la statusline un JSON con `rate_limits`, con tres ventanas (`five_hour`, `seven_day`, `spend_limit`), cada una con `used_percentage` y `resets_at`. Los hooks no reciben ese dato y no existe ninguna variable de entorno con él.
 - **Solo existe para cuentas Pro o Max**, y solo a partir de la primera respuesta de la API. Una sesión con clave de API no tiene `rate_limits`; para ella el plugin reporta solo el coste estimado de sesión (`cost.total_cost_usd`).
-- **Por eso el plugin incluye un script de statusline** que reenvía ese JSON al servidor con `reportar_uso` y después pinta la línea de estado. El usuario lo configura una vez como `statusLine` en sus settings; un plugin no puede imponerlo.
+- **Por eso el plugin incluye un script de statusline** que reenvía ese JSON al servidor por `POST /api/uso`, como mucho una vez por minuto, y después pinta la línea de estado. El usuario lo configura una vez como `statusLine` en sus settings; un plugin no puede imponerlo.
 - **La cuenta de origen no se puede leer de forma documentada.** El correo está en las credenciales locales, cuyo formato es interno e inestable. El usuario la escribe, junto con el nombre del terminal, al crear el terminal en la web. El plugin no la conoce: el servidor la obtiene del token.
 - **El uso disponible que muestra la web** es, por ventana, el porcentaje que queda y cuándo se reinicia.
 
@@ -450,8 +450,13 @@ server/                    # el servidor, un paquete npm
 plugin/                    # el plugin de Claude Code, sin dependencias
   .claude-plugin/plugin.json
   .mcp.json
-  skills/tareas/SKILL.md   # arranca el bucle del agente
-  scripts/statusline.sh    # reenvía el uso al servidor
+  hooks/hooks.json         # SessionStart: vuelca URL y token para la statusline
+  skills/tareas/SKILL.md   # una vuelta del bucle del agente
+  scripts/statusline.sh    # reenvía el uso al servidor y pinta la línea
+  scripts/guardar-config.sh
+  scripts/revision.sh      # lee y guarda la última revisión vista
+  README.md                # instalación y arranque
+.claude-plugin/marketplace.json   # exigido para instalar el plugin desde este repositorio
 ```
 
 ### Variables de entorno del servidor
@@ -494,5 +499,9 @@ Verificado contra la documentación de Claude Code:
 - **El servidor se declara en el archivo `.mcp.json` del plugin** con `type: "http"`, la `url` y un bloque `headers` con la cabecera `Authorization: Bearer ...`. Tanto la URL como las cabeceras admiten expansión `${VAR}` y `${VAR:-valor}`.
 - **La URL y el token se piden al usuario al activar el plugin** declarándolos en `userConfig` dentro de `plugin.json`, con el token marcado como `sensitive`. Se guardan en los settings del usuario, nunca en el repositorio, y se referencian como `${user_config.<clave>}`.
 - **El plugin puede incluir hooks, skills y agentes.** Eventos de hook disponibles: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `Stop`, `StopFailure`, `PreToolUse` y `PostToolUse`.
-- **No puede incluir un comando de bucle propio.** El bucle se arranca con una skill del plugin que el usuario invoca una vez al abrir el terminal, y esa skill se mantiene viva con el mecanismo de bucle de Claude Code.
+- **No puede incluir un comando de bucle propio.** La skill del plugin ejecuta una vuelta; la repetición la pone el bucle de Claude Code: `/loop /mcp-tareas:tareas` (o `/loop 2m /mcp-tareas:tareas` con intervalo fijo). Las skills de plugin van siempre con el prefijo del plugin. El bucle solo se dispara mientras Claude Code está abierto y en reposo, y caduca a los siete días de crearlo: hay que relanzarlo.
+- **Los nombres de las herramientas llevan el plugin y el servidor.** En Claude Code una herramienta de un servidor MCP empaquetado en un plugin se llama `mcp__plugin_mcp-tareas_tareas__novedades`, no `mcp__tareas__novedades`.
+- **Las claves de `userConfig` llegan a los hooks** como variables `CLAUDE_PLUGIN_OPTION_<CLAVE>`; la forma `${user_config.*}` en un comando de hook en modo shell falla. La statusline no recibe ninguna de las dos: por eso un hook `SessionStart` vuelca la URL y el token a `~/.claude/mcp-tareas/config` con permisos 600 y el script de statusline lee ese archivo.
+- **La última revisión vista se guarda en `${CLAUDE_PLUGIN_DATA}/revision`**, que persiste entre sesiones y actualizaciones del plugin. Nunca en `${CLAUDE_PLUGIN_ROOT}`, que se sobrescribe al actualizar.
+- **La instalación local exige un `marketplace.json`** en `.claude-plugin/` de la raíz del repositorio que apunte a `./plugin`. Validación: `claude plugin validate ./plugin --strict`.
 - **OAuth existe pero no se usa.** Si se declarase, tendría prioridad sobre la cabecera bearer.
