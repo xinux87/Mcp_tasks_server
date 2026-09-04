@@ -73,6 +73,9 @@ function cambiosDeLaEdicion(conexion: DatabaseSync, antes: Tarea, despues: Edici
 	if (antes.autoejecucion !== despues.autoejecucion) {
 		cambios.push(`autoejecución: ${antes.autoejecucion ? "activada → desactivada" : "desactivada → activada"}`);
 	}
+	if (antes.tipo !== despues.tipo) {
+		cambios.push(`tipo: ${antes.tipo} → ${despues.tipo}`);
+	}
 	cambios.push(
 		cambioDeFase(
 			conexion,

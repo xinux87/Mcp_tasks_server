@@ -111,6 +111,7 @@ test("cada acción humana sobre una tarea deja su fila, y reordenar no", () => {
 			usuarioId: banco.xinux,
 			titulo: "Exportar clientes a CSV",
 			descripcion: "Con los filtros aplicados.",
+			tipo: "tarea" as const,
 			autoejecucion: false,
 			analisisModelo: "sonnet",
 			analisisTerminalId: banco.portatil,
@@ -126,6 +127,11 @@ test("cada acción humana sobre una tarea deja su fila, y reordenar no", () => {
 		// Guardar el formulario sin tocar nada no es una acción: no repite fila.
 		editarTareaBacklog(banco.db, edicion);
 		assert.equal(actividadDe(banco.db, "tarea", tarea.id).filter((fila) => fila.accion === "editar_tarea").length, 1);
+		// Cambiar el tipo también se cuenta: decide si la tarea tendrá ejecución.
+		editarTareaBacklog(banco.db, { ...edicion, tipo: "pregunta" });
+		const ediciones = actividadDe(banco.db, "tarea", tarea.id).filter((fila) => fila.accion === "editar_tarea");
+		assert.equal(ediciones.at(-1)?.detalle, "tipo: tarea → pregunta");
+		editarTareaBacklog(banco.db, edicion);
 
 		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
 		assert.equal(detalleDe(banco.db, "tarea", tarea.id, "mover_tarea"), "backlog → prepared");
@@ -165,6 +171,8 @@ test("cada acción humana sobre una tarea deja su fila, y reordenar no", () => {
 		// De la más antigua a la más nueva, y todas firmadas por quien las hizo.
 		assert.deepEqual(acciones(banco.db, tarea.id), [
 			"crear_tarea",
+			"editar_tarea",
+			"editar_tarea",
 			"editar_tarea",
 			"mover_tarea",
 			"responder_pregunta",
