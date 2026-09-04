@@ -58,6 +58,7 @@ function frontmatter(completa: TareaCompleta): string {
 	// El título va siempre entre comillas dobles: es texto del humano y puede
 	// llevar dos puntos, comillas o almohadillas, que en YAML significan algo.
 	lineas.push(`titulo: ${JSON.stringify(tarea.titulo)}`);
+	lineas.push(`tipo: ${tarea.tipo}`);
 	lineas.push(`estado: ${tarea.estado}`);
 	lineas.push(`orden: ${tarea.orden}`);
 	if (tarea.padreId !== null) {
@@ -66,7 +67,11 @@ function frontmatter(completa: TareaCompleta): string {
 	lineas.push(`autoejecucion: ${tarea.autoejecucion}`);
 	lineas.push(`marcas: [${completa.marcas.join(", ")}]`);
 	lineas.push(...faseFrontmatter("analisis", tarea.analisisModelo, completa.analisisTerminal));
-	lineas.push(...faseFrontmatter("ejecucion", tarea.ejecucionModelo, completa.ejecucionTerminal));
+	// Una pregunta no tiene fase de ejecución: el bloque no se pinta, para que
+	// el agente no lea una asignación que no va a usar nunca.
+	if (tarea.tipo !== "pregunta") {
+		lineas.push(...faseFrontmatter("ejecucion", tarea.ejecucionModelo, completa.ejecucionTerminal));
+	}
 	lineas.push(`creada: ${tarea.creada}`);
 	lineas.push(...lineasConsumo(completa.consumo));
 	// La revisión del frontmatter es la global del servidor en el momento de

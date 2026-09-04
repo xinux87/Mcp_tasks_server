@@ -204,8 +204,27 @@ export type ComentarioDeAgente = {
 };
 
 /**
+ * Cierre del análisis. En una tarea normal solo da el análisis por hecho y
+ * suelta la marca «en marcha»; en una pregunta, además, la lleva a `done`: el
+ * comentario `analisis` es la respuesta y no hay fase de ejecución detrás.
+ */
+const CERRAR_ANALISIS = `
+	UPDATE tareas
+		SET analisis_hecho = 1, en_marcha_terminal_id = NULL, actualizada = ?, revision = ?
+		WHERE id = ?`;
+
+const CERRAR_PREGUNTA = `
+	UPDATE tareas
+		SET analisis_hecho = 1, en_marcha_terminal_id = NULL, estado = 'done',
+			orden = (SELECT COALESCE(MAX(orden), 0) + 1 FROM tareas WHERE estado = 'done'),
+			actualizada = ?, revision = ?
+		WHERE id = ?`;
+
+/**
  * Comentario `analisis`: qué hay que hacer, plan y riesgos. Es el que da el
- * análisis por hecho y suelta la marca «en marcha» de esa fase.
+ * análisis por hecho y suelta la marca «en marcha» de esa fase. En una tarea
+ * de tipo `pregunta` ese comentario es la respuesta al humano y cierra la
+ * tarea: pasa directamente a `done`, al final de esa columna.
  */
 export function comentarAnalisis(db: DatabaseSync, datos: ComentarioDeAgente): Comentario {
 	return escribirContenido(db, (conexion, revision) => {
@@ -229,10 +248,7 @@ export function comentarAnalisis(db: DatabaseSync, datos: ComentarioDeAgente): C
 			texto: datos.texto,
 			preguntaId: null,
 		});
-		sentencia(
-			conexion,
-			"UPDATE tareas SET analisis_hecho = 1, en_marcha_terminal_id = NULL, actualizada = ?, revision = ? WHERE id = ?",
-		).run(ahora(), revision, tarea.id);
+		sentencia(conexion, tarea.tipo === "pregunta" ? CERRAR_PREGUNTA : CERRAR_ANALISIS).run(ahora(), revision, tarea.id);
 		return comentario;
 	});
 }

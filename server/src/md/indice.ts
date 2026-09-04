@@ -21,16 +21,20 @@ function fase(modelo: string | null, terminal: string | null): string {
 /**
  * Una tarea en una línea, sin cuerpo: es lo que devuelven `listar_tareas` y
  * `novedades`. Las marcas van entre el estado y el título; si no hay ninguna,
- * no aparece nada en esa posición.
+ * no aparece nada en esa posición. Una pregunta lleva `pregunta` justo después
+ * del estado, antes de las marcas, y no lleva segmento `ejecucion:`: no tiene
+ * esa fase.
  */
 export function lineaIndice(item: ItemIndice): string {
+	const esPregunta = item.tipo === "pregunta";
 	const partes = [
 		formatearId(item.id),
 		item.estado,
+		...(esPregunta ? ["pregunta"] : []),
 		...item.marcas,
 		item.titulo,
 		`analisis: ${fase(item.analisisModelo, item.analisisTerminal)}`,
-		`ejecucion: ${fase(item.ejecucionModelo, item.ejecucionTerminal)}`,
+		...(esPregunta ? [] : [`ejecucion: ${fase(item.ejecucionModelo, item.ejecucionTerminal)}`]),
 	];
 	return `- ${partes.join(" · ")}`;
 }

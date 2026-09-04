@@ -1,6 +1,6 @@
 import { html } from "hono/html";
 import type { Usuario } from "../db/consultas.ts";
-import type { Estado, Marca } from "../db/tareas.ts";
+import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
 
 /**
  * Lo que devuelve la plantilla `html` de Hono: HTML con cada interpolación ya
@@ -54,6 +54,14 @@ export function insigniasMarcas(marcas: readonly Marca[]): Html {
 /** Badge del tipo de un comentario del hilo. Los seis tipos son un conjunto cerrado. */
 export function insigniaTipo(tipo: string): Html {
 	return html`<span class="insignia tipo-${tipo}">${tipo}</span>`;
+}
+
+/**
+ * Badge del tipo de la tarea. Solo se pinta en las preguntas: `tarea` es lo
+ * normal y decirlo en cada tarjeta no aportaría nada.
+ */
+export function insigniaTipoTarea(tipo: TipoTarea): Html {
+	return tipo === "pregunta" ? html`<span class="insignia tipo-pregunta">pregunta</span>` : html``;
 }
 
 export type OpcionesPagina = {

@@ -94,6 +94,48 @@ test("el CLI crea usuario, terminal y tarea, la mueve y la enseña", () => {
 	}
 });
 
+test("el CLI crea una pregunta que solo tiene análisis y se cierra al responderla", () => {
+	const dataDir = mkdtempSync(join(tmpdir(), "mcp-tareas-cli-"));
+	try {
+		bien(dataDir, "crear-usuario", "xinux", "secreta");
+		bien(dataDir, "crear-terminal", "xinux", "portatil-a", "xinux@ejemplo.com");
+		bien(
+			dataDir,
+			"crear-tarea",
+			"xinux",
+			"¿Cuánto se tarda hoy en cerrar el mes?",
+			"Quiero saberlo antes de pedir nada.",
+			"--pregunta",
+			"--analisis",
+			"sonnet@portatil-a",
+		);
+		bien(dataDir, "mover-tarea", "xinux", "T-0001", "prepared");
+
+		const documento = bien(dataDir, "ver-tarea", "T-0001");
+		assert.match(documento, /^tipo: pregunta$/m);
+		assert.doesNotMatch(documento, /^ejecucion:$/m);
+		assert.match(
+			bien(dataDir, "listar"),
+			/^- T-0001 · prepared · pregunta · ¿Cuánto se tarda hoy en cerrar el mes\? · analisis: sonnet@portatil-a$/m,
+		);
+
+		// La respuesta la escribe el agente por el MCP: aquí con la función de
+		// dominio, para ver que el CLI la enseña ya cerrada.
+		const db = abrirBaseDeDatos(rutaBaseDeDatos(dataDir));
+		try {
+			tomarTarea(db, { tareaId: 1, fase: "analisis", terminalId: 1 });
+			comentarAnalisis(db, { tareaId: 1, terminalId: 1, texto: "Entre tres y cuatro días." });
+		} finally {
+			db.close();
+		}
+
+		assert.match(bien(dataDir, "ver-tarea", "T-0001"), /^estado: done$/m);
+		assert.match(bien(dataDir, "listar", "done"), /^- T-0001 · done · pregunta · /m);
+	} finally {
+		rmSync(dataDir, { recursive: true, force: true });
+	}
+});
+
 test("un error de regla en el CLI sale con su código y termina en 1", () => {
 	const dataDir = mkdtempSync(join(tmpdir(), "mcp-tareas-cli-"));
 	try {

@@ -28,15 +28,25 @@ export type Estado = "backlog" | "prepared" | "doing" | "done" | "finished";
 /** Las dos fases de una tarea: primero se analiza, después se ejecuta. */
 export type Fase = "analisis" | "ejecucion";
 
+/**
+ * Qué clase de encargo es. Una `pregunta` es un encargo cuya salida es una
+ * respuesta escrita, no código: solo tiene fase de análisis y el comentario
+ * `analisis` es la respuesta.
+ */
+export type TipoTarea = "tarea" | "pregunta";
+
 /** Etiquetas derivadas del estado de la tarea. No se guardan: se calculan al leer. */
 export type Marca = "bloqueada" | "sin terminal" | "en marcha" | "análisis listo";
 
 const ESTADOS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
 
+const TIPOS: readonly TipoTarea[] = ["tarea", "pregunta"];
+
 export type Tarea = {
 	id: number;
 	titulo: string;
 	descripcion: string;
+	tipo: TipoTarea;
 	estado: Estado;
 	orden: number;
 	padreId: number | null;
@@ -66,6 +76,7 @@ export type HijaDeTarea = {
 /** Lo que necesita `lineaIndice`: una tarea sin cuerpo ni hilo. */
 export type ItemIndice = {
 	id: number;
+	tipo: TipoTarea;
 	estado: Estado;
 	titulo: string;
 	marcas: Marca[];
@@ -106,6 +117,19 @@ export function esEstado(valor: string): valor is Estado {
 	return nombres.includes(valor);
 }
 
+export function esTipoTarea(valor: string): valor is TipoTarea {
+	const nombres: readonly string[] = TIPOS;
+	return nombres.includes(valor);
+}
+
+function comoTipo(fila: Record<string, unknown>): TipoTarea {
+	const valor = texto(fila, "tipo");
+	if (!esTipoTarea(valor)) {
+		throw new Error(`tipo de tarea desconocido en la base de datos: ${valor}`);
+	}
+	return valor;
+}
+
 function comoEstado(fila: Record<string, unknown>, columna: string): Estado {
 	const valor = texto(fila, columna);
 	if (!esEstado(valor)) {
@@ -119,6 +143,7 @@ export function comoTarea(fila: Record<string, unknown>): Tarea {
 		id: entero(fila, "id"),
 		titulo: texto(fila, "titulo"),
 		descripcion: texto(fila, "descripcion"),
+		tipo: comoTipo(fila),
 		estado: comoEstado(fila, "estado"),
 		orden: entero(fila, "orden"),
 		padreId: enteroOpcional(fila, "padre_id"),
@@ -143,6 +168,7 @@ function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
 	const tarea = comoTarea(fila);
 	return {
 		id: tarea.id,
+		tipo: tarea.tipo,
 		estado: tarea.estado,
 		titulo: tarea.titulo,
 		marcas: marcasDe(tarea, entero(fila, "preguntas_abiertas")),
@@ -155,7 +181,9 @@ function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
 
 /**
  * `SELECT` con los nombres de los terminales de cada fase y el número de
- * preguntas abiertas, que es lo que necesitan las marcas.
+ * preguntas abiertas, que es lo que necesitan las marcas. El `t.*` trae todas
+ * las columnas de la tarea, `tipo` incluido: el índice lo necesita para pintar
+ * `pregunta` y para saltarse el segmento de ejecución.
  */
 const SELECT_INDICE = `
 	SELECT t.*,
@@ -237,7 +265,10 @@ export function marcasDe(tarea: Tarea, preguntasAbiertas: number): Marca[] {
 	// la tarea todavía no la ve el agente, y en `done` y `finished` ya no la
 	// trabaja nadie, así que ahí la marca no diría nada.
 	if (tarea.estado === "prepared" || tarea.estado === "doing") {
-		const terminalDeLaFase = faseQueToca(tarea) === "analisis" ? tarea.analisisTerminalId : tarea.ejecucionTerminalId;
+		// Una pregunta no tiene fase de ejecución: la única fase que se puede
+		// tomar es el análisis, así que la marca mira solo ese terminal.
+		const esAnalisis = tarea.tipo === "pregunta" || faseQueToca(tarea) === "analisis";
+		const terminalDeLaFase = esAnalisis ? tarea.analisisTerminalId : tarea.ejecucionTerminalId;
 		if (terminalDeLaFase === null) {
 			marcas.push("sin terminal");
 		}
@@ -245,7 +276,10 @@ export function marcasDe(tarea: Tarea, preguntasAbiertas: number): Marca[] {
 	if (tarea.enMarchaTerminalId !== null) {
 		marcas.push("en marcha");
 	}
+	// En una pregunta no hay ejecución que aprobar: el análisis es la respuesta
+	// y la deja en `done` él solo.
 	if (
+		tarea.tipo !== "pregunta" &&
 		tarea.estado === "prepared" &&
 		tarea.analisisHecho &&
 		preguntasAbiertas === 0 &&
@@ -374,14 +408,15 @@ function siguienteOrden(db: DatabaseSync, estado: Estado): number {
 
 const INSERTAR_TAREA = `
 	INSERT INTO tareas (
-		titulo, descripcion, estado, orden, padre_id, autoejecucion, ejecucion_aprobada, analisis_hecho,
+		titulo, descripcion, tipo, estado, orden, padre_id, autoejecucion, ejecucion_aprobada, analisis_hecho,
 		analisis_modelo, analisis_terminal_id, ejecucion_modelo, ejecucion_terminal_id, en_marcha_terminal_id,
 		creada_por_usuario_id, creada_por_terminal_id, creada, actualizada, revision
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 type FilaNueva = {
 	titulo: string;
 	descripcion: string;
+	tipo: TipoTarea;
 	estado: Estado;
 	padreId: number | null;
 	autoejecucion: boolean;
@@ -400,6 +435,7 @@ function insertarTarea(conexion: DatabaseSync, revision: number, nueva: FilaNuev
 	const cambios = sentencia(conexion, INSERTAR_TAREA).run(
 		nueva.titulo,
 		nueva.descripcion,
+		nueva.tipo,
 		nueva.estado,
 		siguienteOrden(conexion, nueva.estado),
 		nueva.padreId,
@@ -433,6 +469,8 @@ export type NuevaTareaHumana = {
 	titulo: string;
 	descripcion: string;
 	usuarioId: number;
+	/** `tarea` si no se dice otra cosa: la pregunta es el caso raro. */
+	tipo?: TipoTarea;
 	autoejecucion?: boolean;
 	analisisModelo?: string | null;
 	analisisTerminalId?: number | null;
@@ -446,6 +484,7 @@ export function crearTareaHumana(db: DatabaseSync, datos: NuevaTareaHumana): Tar
 		insertarTarea(conexion, revision, {
 			titulo: datos.titulo,
 			descripcion: datos.descripcion,
+			tipo: datos.tipo ?? "tarea",
 			estado: "backlog",
 			padreId: null,
 			autoejecucion: datos.autoejecucion ?? true,
@@ -476,6 +515,7 @@ export function crearPropuesta(db: DatabaseSync, datos: NuevaPropuesta): Tarea {
 		insertarTarea(conexion, revision, {
 			titulo: datos.titulo,
 			descripcion: datos.descripcion,
+			tipo: "tarea",
 			estado: "backlog",
 			padreId: null,
 			autoejecucion: true,
@@ -521,6 +561,7 @@ export function crearHija(db: DatabaseSync, datos: NuevaHija): Tarea {
 		return insertarTarea(conexion, revision, {
 			titulo: datos.titulo,
 			descripcion: datos.descripcion,
+			tipo: "tarea",
 			estado: "doing",
 			padreId: padre.id,
 			autoejecucion: padre.autoejecucion,

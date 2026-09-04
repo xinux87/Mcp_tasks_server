@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
 import { ahora, escribirContenido, sentencia } from "./base.ts";
 import { autorHumano } from "./hilo.ts";
-import { exigirTarea, type Tarea } from "./tareas.ts";
+import { exigirTarea, type Tarea, type TipoTarea } from "./tareas.ts";
 
 /**
  * Un título vacío deja la tarea sin nada que leer en el índice. Se comprueba
@@ -21,6 +21,8 @@ export type EdicionTarea = {
 	usuarioId: number;
 	titulo: string;
 	descripcion: string;
+	/** Se puede convertir una tarea en pregunta y al revés, mientras esté en `backlog`. */
+	tipo: TipoTarea;
 	autoejecucion: boolean;
 	analisisModelo: string | null;
 	analisisTerminalId: number | null;
@@ -49,7 +51,7 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 		sentencia(
 			conexion,
 			`UPDATE tareas
-				SET titulo = ?, descripcion = ?, autoejecucion = ?,
+				SET titulo = ?, descripcion = ?, tipo = ?, autoejecucion = ?,
 					analisis_modelo = ?, analisis_terminal_id = ?,
 					ejecucion_modelo = ?, ejecucion_terminal_id = ?,
 					actualizada = ?, revision = ?
@@ -57,6 +59,7 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 		).run(
 			titulo,
 			datos.descripcion,
+			datos.tipo,
 			datos.autoejecucion ? 1 : 0,
 			datos.analisisModelo,
 			datos.analisisTerminalId,

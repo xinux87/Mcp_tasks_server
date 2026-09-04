@@ -15,6 +15,7 @@ import {
 	moverTareaHumano,
 	reordenar,
 	type Tarea,
+	tareasParaTerminalDesde,
 	tomarTarea,
 } from "../src/db/tareas.ts";
 import { codigoDe, montar } from "./comun.ts";
@@ -364,6 +365,109 @@ test("una hija de trabajo nace en doing colgando del padre y con sus asignacione
 
 		const completa = leerTarea(banco.db, padre.id);
 		assert.deepEqual(completa?.hijas, [{ id: hija.id, estado: "doing", titulo: "Generar el fichero CSV" }]);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("una pregunta solo tiene fase de análisis: nace con su tipo y sin marcas de ejecución", () => {
+	const banco = montar();
+	try {
+		const pregunta = crearTareaHumana(banco.db, {
+			titulo: "¿Cuánto se tarda hoy en cerrar el mes?",
+			descripcion: "Quiero saberlo antes de pedir nada.",
+			usuarioId: banco.xinux,
+			tipo: "pregunta",
+			autoejecucion: false,
+			analisisModelo: "sonnet",
+		});
+		assert.equal(pregunta.tipo, "pregunta");
+		assert.equal(pregunta.estado, "backlog");
+
+		// Una tarea normal sigue naciendo como `tarea` sin decir nada.
+		assert.equal(crearTareaHumana(banco.db, { titulo: "Otra", descripcion: "d", usuarioId: banco.xinux }).tipo, "tarea");
+
+		const preparada = moverTareaHumano(banco.db, { tareaId: pregunta.id, usuarioId: banco.xinux, estado: "prepared" });
+		// «sin terminal» mira solo el análisis: la ejecución no existe aquí.
+		assert.deepEqual(marcasDe(preparada, 0), ["sin terminal"]);
+
+		tomarTarea(banco.db, { tareaId: pregunta.id, fase: "analisis", terminalId: banco.portatil });
+		const tomada = exigirTarea(banco.db, pregunta.id);
+		assert.equal(faseQueToca(tomada), "analisis");
+		assert.deepEqual(marcasDe(tomada, 0), ["en marcha"]);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("el análisis de una pregunta es la respuesta: la deja en done y nunca sale «análisis listo»", () => {
+	const banco = montar();
+	try {
+		// Una tarea normal ya en done, para comprobar que la pregunta entra
+		// detrás de ella en la columna.
+		const hecha = crearTareaHumana(banco.db, { titulo: "Ya hecha", descripcion: "d", usuarioId: banco.xinux });
+		banco.db.prepare("UPDATE tareas SET estado = 'done', orden = 1 WHERE id = ?").run(hecha.id);
+
+		const pregunta = crearTareaHumana(banco.db, {
+			titulo: "¿Cuánto se tarda hoy en cerrar el mes?",
+			descripcion: "Quiero saberlo antes de pedir nada.",
+			usuarioId: banco.xinux,
+			tipo: "pregunta",
+			// Sin autoejecución una tarea normal esperaría aprobación; una
+			// pregunta no, porque no hay ejecución que aprobar.
+			autoejecucion: false,
+			analisisModelo: "sonnet",
+			analisisTerminalId: banco.portatil,
+		});
+		moverTareaHumano(banco.db, { tareaId: pregunta.id, usuarioId: banco.xinux, estado: "prepared" });
+		tomarTarea(banco.db, { tareaId: pregunta.id, fase: "analisis", terminalId: banco.portatil });
+
+		comentarAnalisis(banco.db, {
+			tareaId: pregunta.id,
+			terminalId: banco.portatil,
+			texto: "Entre tres y cuatro días, casi todos de conciliar bancos a mano.",
+		});
+
+		const cerrada = exigirTarea(banco.db, pregunta.id);
+		assert.equal(cerrada.estado, "done");
+		assert.equal(cerrada.orden, 2);
+		assert.equal(cerrada.analisisHecho, true);
+		assert.equal(cerrada.enMarchaTerminalId, null);
+		assert.deepEqual(marcasDe(cerrada, 0), []);
+
+		const completa = leerTarea(banco.db, pregunta.id);
+		assert.equal(completa?.comentarios.length, 1);
+		assert.equal(completa?.comentarios[0]?.tipo, "analisis");
+		assert.equal(completa?.comentarios[0]?.autor, "sonnet@portatil-xinux");
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("una pregunta llega al terminal mientras está en prepared y deja de llegar al contestarse", () => {
+	const banco = montar();
+	try {
+		const pregunta = crearTareaHumana(banco.db, {
+			titulo: "¿Cuánto se tarda hoy en cerrar el mes?",
+			descripcion: "d",
+			usuarioId: banco.xinux,
+			tipo: "pregunta",
+			analisisModelo: "sonnet",
+			analisisTerminalId: banco.portatil,
+		});
+		// En backlog el agente no la ve.
+		assert.deepEqual(tareasParaTerminalDesde(banco.db, { terminalId: banco.portatil, revision: 0 }), []);
+
+		moverTareaHumano(banco.db, { tareaId: pregunta.id, usuarioId: banco.xinux, estado: "prepared" });
+		assert.deepEqual(
+			tareasParaTerminalDesde(banco.db, { terminalId: banco.portatil, revision: 0 }).map((item) => item.id),
+			[pregunta.id],
+		);
+
+		tomarTarea(banco.db, { tareaId: pregunta.id, fase: "analisis", terminalId: banco.portatil });
+		comentarAnalisis(banco.db, { tareaId: pregunta.id, terminalId: banco.portatil, texto: "Tres o cuatro días." });
+		// Contestada está en `done`: el bucle no la vuelve a traer nunca.
+		assert.deepEqual(tareasParaTerminalDesde(banco.db, { terminalId: banco.portatil, revision: 0 }), []);
 	} finally {
 		banco.cerrar();
 	}
