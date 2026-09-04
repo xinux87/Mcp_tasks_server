@@ -1,0 +1,19 @@
+# dependencias y build
+node_modules/
+dist/
+
+# datos locales del servidor
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# entorno
+.env
+.env.*
+
+# metadata de sesión de nodeterm
+.nodeterm/
+
+# sistema
+.DS_Store
