@@ -10,7 +10,9 @@ export const NOMBRE = "tomar_tarea";
 
 /**
  * `tomar_tarea`: este terminal se hace responsable de una fase. Falla si esa
- * fase ya tiene otro terminal: no hay robo silencioso de tareas.
+ * fase ya tiene otro terminal: no hay robo silencioso de tareas. El modelo con
+ * el que se va a trabajar queda fijado aquí, para que el autor de los
+ * comentarios y el consumo cuenten lo mismo.
  */
 export function registrarHerramientaTomarTarea(server: McpServer, db: DatabaseSync, terminalId: number): void {
 	server.registerTool(
@@ -22,11 +24,18 @@ export function registrarHerramientaTomarTarea(server: McpServer, db: DatabaseSy
 			inputSchema: z.object({
 				id: z.string().describe("Identificador de la tarea, con la forma T-0042."),
 				fase: z.enum(["analisis", "ejecucion"]).describe("Fase que se toma."),
+				modelo: z
+					.string()
+					.min(1, { error: "el modelo no puede ir vacío" })
+					.optional()
+					.describe(
+						"Modelo con el que vas a trabajar esta fase. Si la fase no tenía modelo asignado, queda fijado el que mandes; si tenía otro distinto, la toma falla con modelo_no_coincide.",
+					),
 			}),
 		},
-		async ({ id, fase }) =>
+		async ({ id, fase, modelo }) =>
 			conErroresDeRegla(() => {
-				const tarea = tomarTarea(db, { tareaId: parsearId(id), fase, terminalId });
+				const tarea = tomarTarea(db, { tareaId: parsearId(id), fase, terminalId, modelo });
 				return [`tomada: ${fase}`, lineaIndice(itemIndiceDe(db, tarea.id))].join("\n");
 			}),
 	);

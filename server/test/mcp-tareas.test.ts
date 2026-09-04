@@ -240,6 +240,41 @@ test("una tarea entera de principio a fin solo con las herramientas del MCP", as
 
 		// 9. Un identificador mal escrito es un error de regla, no un fallo.
 		assert.equal(codigoDe(await llamar(a, "leer_tarea", { id: "T-42" })), "id_invalido");
+
+		// 10. Una tarea con la ejecución sin asignar: el modelo con el que el
+		// bucle la toma queda fijado en la fase y es el que firma el resultado.
+		const suelta = crearTareaHumana(montaje.db, {
+			titulo: "Avisar cuando falle el export",
+			descripcion: "Hoy no se entera nadie.",
+			usuarioId: montaje.usuarioId,
+			analisisModelo: "sonnet",
+		});
+		moverTareaHumano(montaje.db, { tareaId: suelta.id, usuarioId: montaje.usuarioId, estado: "prepared" });
+
+		const analisisSuelto = await llamar(a, "tomar_tarea", { id: "T-0003", fase: "analisis", modelo: "sonnet" });
+		assert.match(
+			analisisSuelto.texto,
+			/^- T-0003 · prepared · en marcha · .+ · analisis: sonnet@portatil-a · ejecucion: sin asignar$/m,
+		);
+		await llamar(a, "comentar_tarea", { id: "T-0003", tipo: "analisis", texto: "Un aviso por correo al fallar." });
+
+		const ejecucionSuelta = await llamar(a, "tomar_tarea", { id: "T-0003", fase: "ejecucion", modelo: "opus" });
+		assert.match(ejecucionSuelta.texto, /^- T-0003 · doing · en marcha · .+ · ejecucion: opus@portatil-a$/m);
+
+		// Ya fijado, tomarla con otro modelo no cuela.
+		assert.equal(
+			codigoDe(await llamar(a, "tomar_tarea", { id: "T-0003", fase: "ejecucion", modelo: "haiku" })),
+			"modelo_no_coincide",
+		);
+
+		const cerradaSuelta = await llamar(a, "comentar_tarea", {
+			id: "T-0003",
+			tipo: "resultado",
+			texto: "Qué se construyó: el aviso.\n\nCommit: d4e5f6a",
+			estado: "done",
+		});
+		assert.match(cerradaSuelta.texto, /^- T-0003 · done · /m);
+		assert.match((await llamar(a, "leer_tarea", { id: "T-0003" })).texto, /^### resultado · opus@portatil-a · /m);
 	} finally {
 		await a.close();
 		await b.close();

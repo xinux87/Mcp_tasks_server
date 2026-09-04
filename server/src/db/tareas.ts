@@ -686,6 +686,8 @@ export type Toma = {
 	tareaId: number;
 	fase: Fase;
 	terminalId: number;
+	/** Modelo con el que el bucle va a trabajar la fase. Queda fijado si no había ninguno. */
+	modelo?: string;
 };
 
 /** `tomar_tarea`: el terminal se hace responsable de una fase y la pone «en marcha». */
@@ -693,15 +695,42 @@ export function tomarTarea(db: DatabaseSync, datos: Toma): Tarea {
 	return escribirContenido(db, (conexion, revision) => {
 		const tarea = exigirTarea(conexion, datos.tareaId);
 		if (datos.fase === "analisis") {
-			tomarAnalisis(conexion, revision, tarea, datos.terminalId);
+			tomarAnalisis(conexion, revision, tarea, datos.terminalId, datos.modelo);
 		} else {
-			tomarEjecucion(conexion, revision, tarea, datos.terminalId);
+			tomarEjecucion(conexion, revision, tarea, datos.terminalId, datos.modelo);
 		}
 		return exigirTarea(conexion, tarea.id);
 	});
 }
 
-function tomarAnalisis(conexion: DatabaseSync, revision: number, tarea: Tarea, terminalId: number): void {
+const NOMBRE_FASE: Record<Fase, string> = { analisis: "análisis", ejecucion: "ejecución" };
+
+/**
+ * El modelo con el que se trabaja una fase queda fijado al tomarla: si no
+ * había ninguno se guarda el que trae el bucle, y si había otro distinto la
+ * toma falla, porque el autor de los comentarios y el consumo tienen que
+ * contar lo mismo. Sin modelo en la toma, la fase se queda como estaba.
+ */
+function modeloDeLaFase(fase: Fase, asignado: string | null, modelo: string | undefined): string | null {
+	if (modelo === undefined) {
+		return asignado;
+	}
+	if (asignado !== null && asignado !== modelo) {
+		throw new ErrorDeRegla(
+			"modelo_no_coincide",
+			`La fase de ${NOMBRE_FASE[fase]} tiene asignado el modelo ${asignado}: trabájala con ${asignado}, no con ${modelo}.`,
+		);
+	}
+	return modelo;
+}
+
+function tomarAnalisis(
+	conexion: DatabaseSync,
+	revision: number,
+	tarea: Tarea,
+	terminalId: number,
+	modelo?: string,
+): void {
 	if (tarea.estado !== "prepared") {
 		throw new ErrorDeRegla(
 			"estado_no_permite_analisis",
@@ -714,27 +743,35 @@ function tomarAnalisis(conexion: DatabaseSync, revision: number, tarea: Tarea, t
 	if (tarea.analisisTerminalId !== null && tarea.analisisTerminalId !== terminalId) {
 		throw new ErrorDeRegla("fase_tomada", "Otro terminal es el responsable del análisis de esta tarea.");
 	}
+	const analisisModelo = modeloDeLaFase("analisis", tarea.analisisModelo, modelo);
 	sentencia(
 		conexion,
 		`UPDATE tareas
-			SET analisis_terminal_id = ?, en_marcha_terminal_id = ?, actualizada = ?, revision = ?
+			SET analisis_modelo = ?, analisis_terminal_id = ?, en_marcha_terminal_id = ?, actualizada = ?, revision = ?
 			WHERE id = ?`,
-	).run(terminalId, terminalId, ahora(), revision, tarea.id);
+	).run(analisisModelo, terminalId, terminalId, ahora(), revision, tarea.id);
 }
 
-function tomarEjecucion(conexion: DatabaseSync, revision: number, tarea: Tarea, terminalId: number): void {
+function tomarEjecucion(
+	conexion: DatabaseSync,
+	revision: number,
+	tarea: Tarea,
+	terminalId: number,
+	modelo?: string,
+): void {
 	if (tarea.ejecucionTerminalId !== null && tarea.ejecucionTerminalId !== terminalId) {
 		throw new ErrorDeRegla("fase_tomada", "Otro terminal es el responsable de la ejecución de esta tarea.");
 	}
+	const ejecucionModelo = modeloDeLaFase("ejecucion", tarea.ejecucionModelo, modelo);
 	// Retomar una tarea ya en marcha, típicamente tras contestarse una
 	// pregunta: no cambia de columna, solo vuelve a ponerse «en marcha».
 	if (tarea.estado === "doing") {
 		sentencia(
 			conexion,
 			`UPDATE tareas
-				SET ejecucion_terminal_id = ?, en_marcha_terminal_id = ?, actualizada = ?, revision = ?
+				SET ejecucion_modelo = ?, ejecucion_terminal_id = ?, en_marcha_terminal_id = ?, actualizada = ?, revision = ?
 				WHERE id = ?`,
-		).run(terminalId, terminalId, ahora(), revision, tarea.id);
+		).run(ejecucionModelo, terminalId, terminalId, ahora(), revision, tarea.id);
 		return;
 	}
 	if (tarea.estado !== "prepared") {
@@ -761,7 +798,8 @@ function tomarEjecucion(conexion: DatabaseSync, revision: number, tarea: Tarea, 
 	sentencia(
 		conexion,
 		`UPDATE tareas
-			SET estado = 'doing', orden = ?, ejecucion_terminal_id = ?, en_marcha_terminal_id = ?, actualizada = ?, revision = ?
+			SET estado = 'doing', orden = ?, ejecucion_modelo = ?, ejecucion_terminal_id = ?, en_marcha_terminal_id = ?,
+				actualizada = ?, revision = ?
 			WHERE id = ?`,
-	).run(siguienteOrden(conexion, "doing"), terminalId, terminalId, ahora(), revision, tarea.id);
+	).run(siguienteOrden(conexion, "doing"), ejecucionModelo, terminalId, terminalId, ahora(), revision, tarea.id);
 }

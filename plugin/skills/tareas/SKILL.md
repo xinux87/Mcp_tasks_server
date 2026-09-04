@@ -144,9 +144,17 @@ así el humano ve avance de una en una y el consumo queda bien atribuido.
 
 ## Paso 4. Tomar la fase y lanzar el subagente
 
-1. Llama a `tomar_tarea` con el id y la fase (`analisis` o `ejecucion`).
+1. Llama a `tomar_tarea` con el id, la fase (`analisis` o `ejecucion`) y
+   `modelo`: el modelo con el que vas a lanzar el subagente en el punto 2, que
+   es el del frontmatter de esa fase o, si viene vacío o no lo reconoces, el de
+   reserva (`sonnet` para análisis, `opus` para ejecución). Si la fase no tenía
+   modelo asignado, el que mandes queda fijado ahí, y así firma los comentarios
+   y cuadra con el consumo.
    - Si devuelve el error `fase_tomada`, esa fase ya tiene otro terminal
      responsable: no insistas, di que la tarea está tomada y termina la vuelta.
+   - Si devuelve `modelo_no_coincide`, la fase ya tiene otro modelo asignado:
+     usa el que diga el mensaje, tanto para volver a llamar a `tomar_tarea` como
+     para lanzar el subagente.
    - `tomar_tarea` con fase `ejecucion` pasa la tarea a `doing` ella sola. No
      cambies el estado a mano.
 2. Lanza **un** subagente con la herramienta Agent:

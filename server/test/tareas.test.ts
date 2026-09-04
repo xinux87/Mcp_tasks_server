@@ -37,6 +37,16 @@ function tareaPreparada(banco: ReturnType<typeof montar>, extra: Partial<{ autoe
 	return moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
 }
 
+/** Igual, pero con las dos fases sin modelo: es la tarea que el humano deja a medio asignar. */
+function tareaSinModelos(banco: ReturnType<typeof montar>): Tarea {
+	const tarea = crearTareaHumana(banco.db, {
+		titulo: "Exportar el listado",
+		descripcion: "Hoy lo copian a mano.",
+		usuarioId: banco.xinux,
+	});
+	return moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+}
+
 test("una tarea humana nace en backlog, al final de la columna y con la revisión de su escritura", () => {
 	const banco = montar();
 	try {
@@ -262,6 +272,99 @@ test("tomar la ejecución pasa a doing, y con otro terminal en la fase choca con
 		const retomada = tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil });
 		assert.equal(retomada.estado, "doing");
 		assert.equal(retomada.enMarchaTerminalId, banco.portatil);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("el modelo de la toma se fija en la fase que no tenía ninguno y firma los comentarios", () => {
+	const banco = montar();
+	try {
+		const tarea = tareaSinModelos(banco);
+		const enAnalisis = tomarTarea(banco.db, {
+			tareaId: tarea.id,
+			fase: "analisis",
+			terminalId: banco.portatil,
+			modelo: "sonnet",
+		});
+		assert.equal(enAnalisis.analisisModelo, "sonnet");
+		assert.equal(
+			comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "plan" }).autor,
+			"sonnet@portatil-xinux",
+		);
+
+		// Sin modelo en la toma, la fase se queda como estaba: sin modelo.
+		const sinModelo = tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil });
+		assert.equal(sinModelo.estado, "doing");
+		assert.equal(sinModelo.ejecucionModelo, null);
+
+		// Al retomar en doing vale la misma regla: el modelo que trae la toma
+		// queda fijado y es el que firma el resultado.
+		const retomada = tomarTarea(banco.db, {
+			tareaId: tarea.id,
+			fase: "ejecucion",
+			terminalId: banco.portatil,
+			modelo: "opus",
+		});
+		assert.equal(retomada.ejecucionModelo, "opus");
+		assert.equal(
+			comentarResultado(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "hecho" }).autor,
+			"opus@portatil-xinux",
+		);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("con la fase ya asignada, el mismo modelo pasa y otro distinto choca con modelo_no_coincide", () => {
+	const banco = montar();
+	try {
+		const tarea = tareaPreparada(banco);
+		const enAnalisis = tomarTarea(banco.db, {
+			tareaId: tarea.id,
+			fase: "analisis",
+			terminalId: banco.portatil,
+			modelo: "sonnet",
+		});
+		assert.equal(enAnalisis.analisisModelo, "sonnet");
+		assert.equal(
+			codigoDe(() =>
+				tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil, modelo: "haiku" }),
+			),
+			"modelo_no_coincide",
+		);
+		// El mensaje dice con qué modelo hay que trabajarla.
+		assert.throws(
+			() => tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil, modelo: "haiku" }),
+			/modelo sonnet/,
+		);
+		assert.equal(exigirTarea(banco.db, tarea.id).analisisModelo, "sonnet");
+
+		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "plan" });
+		assert.equal(
+			codigoDe(() =>
+				tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil, modelo: "haiku" }),
+			),
+			"modelo_no_coincide",
+		);
+		assert.equal(exigirTarea(banco.db, tarea.id).estado, "prepared");
+
+		const enEjecucion = tomarTarea(banco.db, {
+			tareaId: tarea.id,
+			fase: "ejecucion",
+			terminalId: banco.portatil,
+			modelo: "opus",
+		});
+		assert.equal(enEjecucion.estado, "doing");
+		assert.equal(enEjecucion.ejecucionModelo, "opus");
+
+		// Y al retomar en doing sigue valiendo: el modelo no se cambia sobre la marcha.
+		assert.equal(
+			codigoDe(() =>
+				tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil, modelo: "haiku" }),
+			),
+			"modelo_no_coincide",
+		);
 	} finally {
 		banco.cerrar();
 	}
