@@ -104,13 +104,23 @@ test("sin bearer válido, /mcp responde 401", async () => {
 	}
 });
 
-test("con el bearer correcto el cliente MCP lista exactamente las dos herramientas", async () => {
+test("con el bearer correcto el cliente MCP lista exactamente las nueve herramientas", async () => {
 	const montaje = montar();
 	const cliente = await conectar(montaje, montaje.token);
 	try {
 		const { tools } = await cliente.listTools();
 		const nombres = tools.map((herramienta) => herramienta.name).sort();
-		assert.deepEqual(nombres, ["novedades", "registrar_terminal"]);
+		assert.deepEqual(nombres, [
+			"comentar_tarea",
+			"crear_tarea",
+			"leer_tarea",
+			"listar_tareas",
+			"novedades",
+			"preguntar",
+			"registrar_terminal",
+			"reportar_consumo",
+			"tomar_tarea",
+		]);
 	} finally {
 		await cliente.close();
 		await montaje.cerrar();

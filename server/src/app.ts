@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { createMcpHonoApp } from "@modelcontextprotocol/hono";
 import type { Hono } from "hono";
+import { montarApiUso } from "./api/uso.ts";
 import { authInfoDelContexto, bearerTerminal } from "./auth/bearer.ts";
 import { HOST_ESCUCHA, hostsPermitidos } from "./config.ts";
 import { crearHandlerMcp } from "./mcp/handler.ts";
@@ -28,7 +29,7 @@ export type App = {
 };
 
 /**
- * La app Hono del servidor. De momento monta `/salud` y `/mcp`; la API de uso,
+ * La app Hono del servidor. De momento monta `/salud`, `/mcp` y `/api/uso`;
  * los eventos y la web llegarán en otros encargos (ver «Un solo proceso, un
  * solo puerto» en CLAUDE.md).
  */
@@ -47,6 +48,10 @@ export function crearApp({ db, baseUrl }: OpcionesApp): App {
 			parsedBody: c.get("parsedBody"),
 		});
 	});
+
+	// La API de uso va por HTTP plano y no por MCP porque quien la llama es el
+	// script de statusline del plugin, no un agente.
+	montarApiUso(app, db);
 
 	return { app, cerrar: () => handler.close() };
 }

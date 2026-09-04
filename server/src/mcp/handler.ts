@@ -1,8 +1,15 @@
 import type { DatabaseSync } from "node:sqlite";
 import { createMcpHandler, type McpHttpHandler, McpServer } from "@modelcontextprotocol/server";
 import { idTerminalDeAuthInfo } from "../auth/bearer.ts";
+import { registrarHerramientaComentarTarea } from "./comentar-tarea.ts";
+import { registrarHerramientaCrearTarea } from "./crear-tarea.ts";
+import { registrarHerramientaLeerTarea } from "./leer-tarea.ts";
+import { registrarHerramientaListarTareas } from "./listar-tareas.ts";
 import { registrarHerramientaNovedades } from "./novedades.ts";
+import { registrarHerramientaPreguntar } from "./preguntar.ts";
 import { registrarHerramientaRegistrarTerminal } from "./registrar-terminal.ts";
+import { registrarHerramientaReportarConsumo } from "./reportar-consumo.ts";
+import { registrarHerramientaTomarTarea } from "./tomar-tarea.ts";
 
 export const NOMBRE_SERVIDOR = "mcp-tareas";
 export const VERSION_SERVIDOR = "0.1.0";
@@ -19,6 +26,13 @@ export function crearHandlerMcp(db: DatabaseSync): McpHttpHandler {
 			const server = new McpServer({ name: NOMBRE_SERVIDOR, version: VERSION_SERVIDOR });
 			registrarHerramientaRegistrarTerminal(server, db, terminalId);
 			registrarHerramientaNovedades(server, db, terminalId);
+			registrarHerramientaListarTareas(server, db, terminalId);
+			registrarHerramientaLeerTarea(server, db);
+			registrarHerramientaTomarTarea(server, db, terminalId);
+			registrarHerramientaComentarTarea(server, db, terminalId);
+			registrarHerramientaCrearTarea(server, db, terminalId);
+			registrarHerramientaPreguntar(server, db, terminalId);
+			registrarHerramientaReportarConsumo(server, db, terminalId);
 			return server;
 		},
 		{ responseMode: "json" },

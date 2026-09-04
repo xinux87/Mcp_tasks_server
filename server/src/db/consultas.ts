@@ -110,6 +110,14 @@ export function buscarTerminalPorId(db: DatabaseSync, id: number): Terminal | un
 	return fila === undefined ? undefined : comoTerminal(fila);
 }
 
+/** Busca un terminal activo (no revocado) por su nombre. Lo usa el CLI. */
+export function buscarTerminalPorNombre(db: DatabaseSync, nombre: string): Terminal | undefined {
+	const fila = sentencia(db, `SELECT ${COLUMNAS_TERMINAL} FROM terminales WHERE nombre = ? AND revocado_en IS NULL`).get(
+		nombre,
+	);
+	return fila === undefined ? undefined : comoTerminal(fila);
+}
+
 /** Busca un terminal activo (no revocado) por el hash de su token. */
 export function buscarTerminalPorTokenHash(db: DatabaseSync, tokenHash: string): Terminal | undefined {
 	const fila = sentencia(
@@ -169,6 +177,25 @@ export function marcarTerminalConectado(db: DatabaseSync, terminalId: number): T
 export function guardarUltimaRevision(db: DatabaseSync, terminalId: number, revision: number): Terminal {
 	return enTransaccion(db, (conexion) => {
 		sentencia(conexion, "UPDATE terminales SET ultima_revision = ? WHERE id = ?").run(revision, terminalId);
+		const terminal = buscarTerminalPorId(conexion, terminalId);
+		if (terminal === undefined) {
+			throw new Error(`no existe el terminal ${terminalId}`);
+		}
+		return terminal;
+	});
+}
+
+/**
+ * Guarda el JSON de la statusline tal como llegó por `POST /api/uso`. El
+ * servidor no lo interpreta: solo lo recibe y lo enseña en la web.
+ *
+ * Es telemetría: no sube la revisión. La statusline escribe cada minuto en cada
+ * terminal, y si eso moviera el contador cada vuelta del bucle de cualquiera
+ * sería una novedad para todos.
+ */
+export function guardarUso(db: DatabaseSync, terminalId: number, json: string): Terminal {
+	return enTransaccion(db, (conexion) => {
+		sentencia(conexion, "UPDATE terminales SET uso_json = ? WHERE id = ?").run(json, terminalId);
 		const terminal = buscarTerminalPorId(conexion, terminalId);
 		if (terminal === undefined) {
 			throw new Error(`no existe el terminal ${terminalId}`);

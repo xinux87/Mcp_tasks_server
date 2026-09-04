@@ -28,7 +28,7 @@ function faseConsumo(nombre: string, fase: ConsumoFase): string[] {
 }
 
 /** El bloque `consumo` solo aparece si se ha reportado algo, propio o de una hija. */
-function consumoFrontmatter(consumo: ConsumoDeTarea): string[] {
+function lineasConsumo(consumo: ConsumoDeTarea): string[] {
 	if (consumo.analisis === null && consumo.ejecucion === null && consumo.totalConHijas === 0) {
 		return [];
 	}
@@ -41,6 +41,15 @@ function consumoFrontmatter(consumo: ConsumoDeTarea): string[] {
 	}
 	lineas.push("  totalConHijas:", `    tokens: ${consumo.totalConHijas}`);
 	return lineas;
+}
+
+/**
+ * El bloque `consumo` suelto, tal como lo pinta el documento de la tarea. Es
+ * lo que devuelve `reportar_consumo`: el mismo texto que el agente ya sabe
+ * leer, sin una segunda forma de escribir las mismas cifras.
+ */
+export function bloqueConsumo(consumo: ConsumoDeTarea): string {
+	return lineasConsumo(consumo).join("\n");
 }
 
 function frontmatter(completa: TareaCompleta): string {
@@ -59,7 +68,7 @@ function frontmatter(completa: TareaCompleta): string {
 	lineas.push(...faseFrontmatter("analisis", tarea.analisisModelo, completa.analisisTerminal));
 	lineas.push(...faseFrontmatter("ejecucion", tarea.ejecucionModelo, completa.ejecucionTerminal));
 	lineas.push(`creada: ${tarea.creada}`);
-	lineas.push(...consumoFrontmatter(completa.consumo));
+	lineas.push(...lineasConsumo(completa.consumo));
 	// La revisión del frontmatter es la global del servidor en el momento de
 	// la lectura, no la de la fila: es la que el agente pasa a `novedades`.
 	lineas.push(`revision: ${completa.revisionServidor}`);

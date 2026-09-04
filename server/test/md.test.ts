@@ -256,7 +256,7 @@ titulo: "Una nueva"
 estado: backlog
 orden: 1
 autoejecucion: true
-marcas: [sin terminal]
+marcas: []
 analisis:
   modelo: ~
   terminal: ~
@@ -295,7 +295,7 @@ test("la línea de índice pone las marcas entre el estado y el título", () => 
 		});
 		const lineas = listarTareas(banco.db, {}).map(lineaIndice);
 		assert.deepEqual(lineas, [
-			"- T-0004 · backlog · sin terminal · Migrar el envío de correos a la cola · analisis: sin asignar · ejecucion: sin asignar",
+			"- T-0004 · backlog · Migrar el envío de correos a la cola · analisis: sin asignar · ejecucion: sin asignar",
 			"- T-0002 · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-xinux",
 			"- T-0003 · done · Tests de la exportación · analisis: sonnet · ejecucion: opus@portatil-xinux",
 			"- T-0001 · done · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-xinux · ejecucion: opus@portatil-xinux",

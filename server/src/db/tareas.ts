@@ -101,7 +101,7 @@ export type TareaCompleta = {
 
 // --- mapeadores de fila ------------------------------------------------------
 
-function esEstado(valor: string): valor is Estado {
+export function esEstado(valor: string): valor is Estado {
 	const nombres: readonly string[] = ESTADOS;
 	return nombres.includes(valor);
 }
@@ -233,9 +233,14 @@ export function marcasDe(tarea: Tarea, preguntasAbiertas: number): Marca[] {
 	if (preguntasAbiertas > 0) {
 		marcas.push("bloqueada");
 	}
-	const terminalDeLaFase = faseQueToca(tarea) === "analisis" ? tarea.analisisTerminalId : tarea.ejecucionTerminalId;
-	if (terminalDeLaFase === null) {
-		marcas.push("sin terminal");
+	// «sin terminal» solo se calcula donde hay una fase que tomar: en `backlog`
+	// la tarea todavía no la ve el agente, y en `done` y `finished` ya no la
+	// trabaja nadie, así que ahí la marca no diría nada.
+	if (tarea.estado === "prepared" || tarea.estado === "doing") {
+		const terminalDeLaFase = faseQueToca(tarea) === "analisis" ? tarea.analisisTerminalId : tarea.ejecucionTerminalId;
+		if (terminalDeLaFase === null) {
+			marcas.push("sin terminal");
+		}
 	}
 	if (tarea.enMarchaTerminalId !== null) {
 		marcas.push("en marcha");
@@ -269,6 +274,19 @@ export function leerTarea(db: DatabaseSync, tareaId: number): TareaCompleta | un
 		consumo: consumoDeTarea(db, tareaId),
 		revisionServidor: revisionActual(db),
 	};
+}
+
+/**
+ * La línea de índice de una sola tarea. Es lo que devuelven las herramientas
+ * que escriben (`tomar_tarea`, `comentar_tarea`, `crear_tarea`, `preguntar`):
+ * el agente ve en una línea cómo quedó la tarea sin releerla entera.
+ */
+export function itemIndiceDe(db: DatabaseSync, tareaId: number): ItemIndice {
+	const fila = sentencia(db, `${SELECT_INDICE} WHERE t.id = ?`).get(tareaId);
+	if (fila === undefined) {
+		throw new ErrorDeRegla("tarea_inexistente", `No existe la tarea ${tareaId}.`);
+	}
+	return comoItemIndice(fila);
 }
 
 export type FiltroIndice = {
@@ -519,11 +537,17 @@ export function crearHija(db: DatabaseSync, datos: NuevaHija): Tarea {
 }
 
 /** Las únicas transiciones que puede hacer el humano, y cuáles exigen nota. */
-const TRANSICIONES: readonly { desde: Estado; hasta: Estado; notaObligatoria: boolean }[] = [
-	{ desde: "backlog", hasta: "prepared", notaObligatoria: false },
-	{ desde: "prepared", hasta: "backlog", notaObligatoria: true },
-	{ desde: "done", hasta: "finished", notaObligatoria: false },
-	{ desde: "done", hasta: "doing", notaObligatoria: true },
+const TRANSICIONES: readonly {
+	desde: Estado;
+	hasta: Estado;
+	notaObligatoria: boolean;
+	/** Deja la tarea otra vez pendiente de análisis y de aprobación. */
+	caducaElAnalisis: boolean;
+}[] = [
+	{ desde: "backlog", hasta: "prepared", notaObligatoria: false, caducaElAnalisis: false },
+	{ desde: "prepared", hasta: "backlog", notaObligatoria: true, caducaElAnalisis: true },
+	{ desde: "done", hasta: "finished", notaObligatoria: false, caducaElAnalisis: false },
+	{ desde: "done", hasta: "doing", notaObligatoria: true, caducaElAnalisis: false },
 ];
 
 export type MovimientoHumano = {
@@ -565,6 +589,12 @@ export function moverTareaHumano(db: DatabaseSync, datos: MovimientoHumano): Tar
 				SET estado = ?, orden = ?, en_marcha_terminal_id = NULL, actualizada = ?, revision = ?
 				WHERE id = ?`,
 		).run(datos.estado, siguienteOrden(conexion, datos.estado), ahora(), revision, tarea.id);
+		// Volver a `backlog` es repensar la tarea: la descripción puede cambiar,
+		// así que el análisis y la aprobación se repiten al salir de nuevo. El
+		// comentario de análisis se queda en el hilo, que no se edita nunca.
+		if (transicion.caducaElAnalisis) {
+			sentencia(conexion, "UPDATE tareas SET analisis_hecho = 0, ejecucion_aprobada = 0 WHERE id = ?").run(tarea.id);
+		}
 		if (nota !== "") {
 			insertarComentario(conexion, revision, {
 				tareaId: tarea.id,

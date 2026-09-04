@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { revisionActual } from "../src/db/consultas.ts";
-import { comentarAnalisis, preguntar } from "../src/db/hilo.ts";
+import { comentarAnalisis, comentarResultado, preguntar } from "../src/db/hilo.ts";
 import {
 	aprobarEjecucion,
 	crearHija,
@@ -124,6 +124,66 @@ test("las vueltas atrás exigen nota y la dejan en el hilo firmada por el humano
 		assert.equal(completa.comentarios[0]?.tipo, "nota");
 		assert.equal(completa.comentarios[0]?.autor, "humano:xinux");
 		assert.equal(completa.comentarios[0]?.texto, "falta decidir el alcance");
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("volver a backlog caduca el análisis y la aprobación, pero deja el comentario en el hilo", () => {
+	const banco = montar();
+	try {
+		const tarea = tareaPreparada(banco, { autoejecucion: false });
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
+		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "plan" });
+		aprobarEjecucion(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux });
+		assert.equal(faseQueToca(exigirTarea(banco.db, tarea.id)), "ejecucion");
+
+		moverTareaHumano(banco.db, {
+			tareaId: tarea.id,
+			usuarioId: banco.xinux,
+			estado: "backlog",
+			nota: "la descripción cambia",
+		});
+		const enBacklog = exigirTarea(banco.db, tarea.id);
+		assert.equal(enBacklog.analisisHecho, false);
+		assert.equal(enBacklog.ejecucionAprobada, false);
+
+		// Al salir de nuevo, la tarea vuelve a necesitar análisis: la descripción
+		// puede haber cambiado y el plan anterior ya no vale.
+		const otraVez = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		assert.equal(faseQueToca(otraVez), "analisis");
+
+		// El comentario de análisis se queda: el hilo no se edita nunca.
+		const completa = leerTarea(banco.db, tarea.id);
+		assert.ok(completa);
+		assert.deepEqual(
+			completa.comentarios.map((comentario) => comentario.tipo),
+			["analisis", "nota"],
+		);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("la marca «sin terminal» solo se calcula en prepared y en doing", () => {
+	const banco = montar();
+	try {
+		const tarea = crearTareaHumana(banco.db, { titulo: "Sin asignar", descripcion: "d", usuarioId: banco.xinux });
+		// En backlog el agente no la ve, así que no dice nada que no tenga terminal.
+		assert.deepEqual(marcasDe(tarea, 0), []);
+
+		const preparada = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		assert.deepEqual(marcasDe(preparada, 0), ["sin terminal"]);
+
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
+		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "plan" });
+		// Ya toca la ejecución, que sigue sin terminal.
+		assert.deepEqual(marcasDe(exigirTarea(banco.db, tarea.id), 0), ["sin terminal"]);
+
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil });
+		comentarResultado(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "hecho" });
+		const terminada = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "finished" });
+		assert.deepEqual(marcasDe(terminada, 0), []);
 	} finally {
 		banco.cerrar();
 	}

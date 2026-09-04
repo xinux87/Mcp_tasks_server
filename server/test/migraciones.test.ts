@@ -12,10 +12,10 @@ function tablas(db: DatabaseSync): string[] {
 		.map((fila) => String(fila.name));
 }
 
-test("abrir en memoria deja el esquema en la versión 2 con sus siete tablas", () => {
+test("abrir en memoria deja el esquema en la última versión con sus siete tablas", () => {
 	const db = abrirBaseDeDatos(":memory:");
 	try {
-		assert.equal(versionEsquema(db), 2);
+		assert.equal(versionEsquema(db), leerMigraciones().length);
 		const nombres = tablas(db);
 		for (const esperada of ["comentarios", "consumo", "preguntas", "revision", "tareas", "terminales", "usuarios"]) {
 			assert.ok(nombres.includes(esperada), `falta la tabla ${esperada}`);
@@ -29,11 +29,12 @@ test("abrir en memoria deja el esquema en la versión 2 con sus siete tablas", (
 test("aplicar las migraciones dos veces no falla ni reaplica nada", () => {
 	const db = abrirBaseDeDatos(":memory:");
 	try {
-		assert.equal(versionEsquema(db), 2);
+		const ultima = leerMigraciones().length;
+		assert.equal(versionEsquema(db), ultima);
 		// Si reaplicara la 001, el CREATE TABLE o el INSERT en revision fallarían.
-		assert.equal(aplicarMigraciones(db), 2);
-		assert.equal(aplicarMigraciones(db), 2);
-		assert.equal(versionEsquema(db), 2);
+		assert.equal(aplicarMigraciones(db), ultima);
+		assert.equal(aplicarMigraciones(db), ultima);
+		assert.equal(versionEsquema(db), ultima);
 		const filas = db.prepare("SELECT COUNT(*) AS total FROM revision").get();
 		assert.equal(filas?.total, 1);
 	} finally {
