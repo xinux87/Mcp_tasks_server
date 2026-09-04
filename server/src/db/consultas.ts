@@ -131,9 +131,27 @@ export function revisionActual(db: DatabaseSync): number {
 }
 
 /**
- * Envuelve una escritura que cambia estado visible: la ejecuta en una
- * transacción que además sube el contador de revisión global. Toda escritura
- * de ese tipo tiene que pasar por aquí (ver «Señal de novedad» en CLAUDE.md).
+ * Transacción simple, sin tocar el contador de revisión. Es la que usan las
+ * escrituras de telemetría de los terminales.
+ */
+export function enTransaccion<T>(db: DatabaseSync, fn: (db: DatabaseSync) => T): T {
+	db.exec("BEGIN IMMEDIATE");
+	try {
+		const valor = fn(db);
+		db.exec("COMMIT");
+		return valor;
+	} catch (error) {
+		db.exec("ROLLBACK");
+		throw error;
+	}
+}
+
+/**
+ * Envuelve una escritura de contenido: la ejecuta en una transacción que
+ * además sube el contador de revisión global. Contenido son tareas,
+ * comentarios, preguntas, respuestas, consumo, y altas o revocaciones de
+ * usuarios y terminales. La telemetría de los terminales NO pasa por aquí
+ * (ver «Señal de novedad» en CLAUDE.md).
  */
 export function enTransaccionConRevision<T>(db: DatabaseSync, fn: (db: DatabaseSync) => T): ConRevision<T> {
 	db.exec("BEGIN IMMEDIATE");
@@ -227,9 +245,15 @@ export function crearTerminal(
 	});
 }
 
-/** Marca el terminal como conectado ahora. Sube la revisión. */
-export function marcarTerminalConectado(db: DatabaseSync, terminalId: number): ConRevision<Terminal> {
-	return enTransaccionConRevision(db, (conexion) => {
+/**
+ * Marca el terminal como conectado ahora.
+ *
+ * Es telemetría: no sube la revisión. Si la subiera, cada arranque de sesión
+ * de cualquier terminal sería una novedad para todos los demás y la señal
+ * dejaría de significar nada.
+ */
+export function marcarTerminalConectado(db: DatabaseSync, terminalId: number): Terminal {
+	return enTransaccion(db, (conexion) => {
 		sentencia(conexion, "UPDATE terminales SET conectado_en = ? WHERE id = ?").run(ahora(), terminalId);
 		const terminal = buscarTerminalPorId(conexion, terminalId);
 		if (terminal === undefined) {
@@ -239,9 +263,15 @@ export function marcarTerminalConectado(db: DatabaseSync, terminalId: number): C
 	});
 }
 
-/** Guarda la última revisión que el terminal dice conocer. Sube la revisión. */
-export function guardarUltimaRevision(db: DatabaseSync, terminalId: number, revision: number): ConRevision<Terminal> {
-	return enTransaccionConRevision(db, (conexion) => {
+/**
+ * Guarda la última revisión que el terminal dice conocer.
+ *
+ * Es telemetría: no sube la revisión. `novedades` es de solo lectura respecto
+ * al contador, así que dos vueltas seguidas del bucle sin escrituras de
+ * contenido devuelven la misma revisión.
+ */
+export function guardarUltimaRevision(db: DatabaseSync, terminalId: number, revision: number): Terminal {
+	return enTransaccion(db, (conexion) => {
 		sentencia(conexion, "UPDATE terminales SET ultima_revision = ? WHERE id = ?").run(revision, terminalId);
 		const terminal = buscarTerminalPorId(conexion, terminalId);
 		if (terminal === undefined) {

@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
-import { marcarTerminalConectado } from "../db/consultas.ts";
+import { marcarTerminalConectado, revisionActual } from "../db/consultas.ts";
 
 export const NOMBRE = "registrar_terminal";
 
@@ -20,7 +20,10 @@ export function registrarHerramientaRegistrarTerminal(server: McpServer, db: Dat
 			inputSchema: z.object({}),
 		},
 		async () => {
-			const { valor: terminal, revision } = marcarTerminalConectado(db, terminalId);
+			// Marcar el terminal como conectado es telemetría y no sube la
+			// revisión, así que la actual se lee aparte.
+			const terminal = marcarTerminalConectado(db, terminalId);
+			const revision = revisionActual(db);
 			const texto = [`terminal: ${terminal.nombre}`, `cuenta: ${terminal.cuenta}`, `revision: ${revision}`].join("\n");
 			return { content: [{ type: "text", text: texto }] };
 		},

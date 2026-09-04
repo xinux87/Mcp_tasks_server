@@ -121,14 +121,17 @@ test("registrar_terminal devuelve nombre, cuenta y revisión, y marca el termina
 	const montaje = montar();
 	const cliente = await conectar(montaje, montaje.token);
 	try {
+		// Crear usuario y terminal dejaron la revisión en 2. Marcar el terminal
+		// como conectado es telemetría y no la mueve.
+		const antes = revisionActual(montaje.db);
+		assert.equal(antes, 2);
+
 		const resultado = await cliente.callTool({ name: "registrar_terminal", arguments: {} });
 		const texto = textoDe(resultado.content);
 		assert.match(texto, new RegExp(`^terminal: ${montaje.nombreTerminal}$`, "m"));
 		assert.match(texto, new RegExp(`^cuenta: ${montaje.cuenta}$`, "m"));
-		assert.match(texto, /^revision: \d+$/m);
-		// La escritura ha subido la revisión: 2 tras crear usuario y terminal, 3 ahora.
-		assert.equal(revisionActual(montaje.db), 3);
-		assert.match(texto, /^revision: 3$/m);
+		assert.match(texto, /^revision: 2$/m);
+		assert.equal(revisionActual(montaje.db), antes);
 
 		const terminal = montaje.db
 			.prepare("SELECT conectado_en FROM terminales WHERE nombre = ?")
@@ -145,14 +148,36 @@ test("novedades guarda la revisión que conoce el terminal y devuelve la actual"
 	const cliente = await conectar(montaje, montaje.token);
 	try {
 		const resultado = await cliente.callTool({ name: "novedades", arguments: { revision: 0 } });
-		assert.equal(textoDe(resultado.content), `revision: ${revisionActual(montaje.db)}`);
-		assert.equal(revisionActual(montaje.db), 3);
+		assert.equal(textoDe(resultado.content), "revision: 2");
+		assert.equal(revisionActual(montaje.db), 2);
 
 		const terminal = montaje.db.prepare("SELECT ultima_revision FROM terminales WHERE id = 1").get();
 		assert.equal(terminal?.ultima_revision, 0);
 
-		const segunda = await cliente.callTool({ name: "novedades", arguments: { revision: 3 } });
-		assert.equal(textoDe(segunda.content), "revision: 4");
+		// Segunda vuelta del bucle sin escrituras de contenido: misma revisión,
+		// y el terminal recuerda el último valor que pasó.
+		const segunda = await cliente.callTool({ name: "novedades", arguments: { revision: 2 } });
+		assert.equal(textoDe(segunda.content), "revision: 2");
+		assert.equal(revisionActual(montaje.db), 2);
+
+		const despues = montaje.db.prepare("SELECT ultima_revision FROM terminales WHERE id = 1").get();
+		assert.equal(despues?.ultima_revision, 2);
+	} finally {
+		await cliente.close();
+		await montaje.cerrar();
+	}
+});
+
+test("la telemetría de los terminales nunca mueve la revisión global", async () => {
+	const montaje = montar();
+	const cliente = await conectar(montaje, montaje.token);
+	try {
+		const antes = revisionActual(montaje.db);
+		await cliente.callTool({ name: "registrar_terminal", arguments: {} });
+		await cliente.callTool({ name: "novedades", arguments: { revision: antes } });
+		await cliente.callTool({ name: "registrar_terminal", arguments: {} });
+		await cliente.callTool({ name: "novedades", arguments: { revision: antes } });
+		assert.equal(revisionActual(montaje.db), antes);
 	} finally {
 		await cliente.close();
 		await montaje.cerrar();

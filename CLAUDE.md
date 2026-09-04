@@ -373,7 +373,9 @@ La respuesta del humano llega por `novedades` y queda como comentario `respuesta
 
 ### Señal de novedad
 
-- **Un contador de revisión global** que sube con cada escritura en el servidor.
+- **Un contador de revisión global** que sube con cada escritura de contenido: tareas, comentarios, preguntas, respuestas, consumo, y altas o revocaciones de usuarios y terminales. Toda escritura de ese tipo pasa por `enTransaccionConRevision`.
+- **La telemetría de los terminales no sube la revisión.** `conectado_en`, `ultima_revision` y `uso_json` se escriben en su propia transacción, sin tocar el contador. Si lo subieran, cada vuelta del bucle de cada terminal sería una novedad para todos y la señal dejaría de significar nada. La web refresca esa telemetría por su cuenta.
+- **`novedades` es de solo lectura respecto a la revisión.** Llamarla dos veces seguidas sin que nadie escriba contenido devuelve la misma revisión.
 - **Cada terminal recuerda la última revisión que ha visto** y la pasa a `novedades`. El servidor devuelve lo que cambió desde entonces.
 - **Nunca un booleano que se consume al leer.** Si el humano contesta entre la lectura y el borrado, esa respuesta se perdería sin que nadie lo notara.
 
@@ -393,7 +395,7 @@ Criterio: el mínimo de piezas que cubra MCP, API, web y persistencia en un solo
 | Persistencia | **SQLite con `node:sqlite`**, modo WAL | Integrado en Node 24, sin módulo nativo ni compilación en la imagen Docker. Un archivo en un volumen. Escrituras síncronas y en transacción, que es lo que pide la regla «escribir confirma». |
 | Acceso a datos | **SQL a mano con sentencias preparadas**, sin ORM | El esquema cabe en una pantalla. Migraciones como archivos SQL numerados aplicados con `PRAGMA user_version`. |
 | Interfaz web | **HTML renderizado en servidor** con JSX de Hono, **htmx** para las interacciones y **SortableJS** para arrastrar tarjetas en el kanban | Sin bundler ni framework de cliente. El servidor es dueño del estado; el navegador solo pide fragmentos. |
-| Actualización en vivo | **SSE** en un endpoint que emite el número de revisión | Es la misma señal de novedad que usan los agentes. Cuando cambia, htmx recarga el fragmento afectado. |
+| Actualización en vivo | **SSE** en un endpoint que emite el número de revisión | Es la misma señal de novedad que usan los agentes. Cuando cambia, htmx recarga el fragmento afectado. La telemetría de terminales no mueve la revisión, así que la vista de terminales conectados se refresca por intervalo, no por SSE. |
 | Markdown en la web | **markdown-it** con HTML crudo desactivado | Renderiza el hilo sin permitir etiquetas incrustadas, que es la única fuente de inyección posible. |
 | Autenticación web | Cookie de sesión firmada, contraseñas con **scrypt** de `node:crypto` | Sin dependencias. Gestión simple de usuarios: alta, baja, cambio de contraseña, tokens de terminal. |
 | Tests | **`node:test`** con archivos `.ts` ejecutados directamente | Sin framework de tests. Las pruebas del MCP usan `@modelcontextprotocol/client` contra la app en memoria, sin abrir puerto. |

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { hashPassword, verificarPassword } from "../src/auth/passwords.ts";
 import { buscarTerminalPorToken, crearTerminalConToken, generarToken, hashToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
-import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
+import { crearUsuario, guardarUltimaRevision, marcarTerminalConectado, revisionActual } from "../src/db/consultas.ts";
 
 test("el token generado son 43 caracteres base64url", () => {
 	const token = generarToken();
@@ -70,4 +70,28 @@ test("scrypt guarda la contraseña en el formato scrypt$sal$hash y la verifica",
 	assert.ok(!verificarPassword("contraseña larga", "cualquier-cosa"));
 	// La sal es aleatoria: dos hashes de la misma contraseña no coinciden.
 	assert.notEqual(guardado, hashPassword("contraseña larga"));
+});
+
+test("la telemetría del terminal se escribe pero no sube la revisión", () => {
+	const db = abrirBaseDeDatos(":memory:");
+	try {
+		const { valor: usuario } = crearUsuario(db, "xinux", hashPassword("secreta"));
+		const { valor } = crearTerminalConToken(db, usuario.id, "portatil-xinux", "xinux@ejemplo.com");
+		const antes = revisionActual(db);
+		assert.equal(antes, 2);
+
+		const conectado = marcarTerminalConectado(db, valor.terminal.id);
+		assert.equal(typeof conectado.conectadoEn, "string");
+		assert.equal(revisionActual(db), antes);
+
+		const anotado = guardarUltimaRevision(db, valor.terminal.id, 7);
+		assert.equal(anotado.ultimaRevision, 7);
+		assert.equal(revisionActual(db), antes);
+
+		// El último valor pasado es el que queda guardado.
+		assert.equal(guardarUltimaRevision(db, valor.terminal.id, 9).ultimaRevision, 9);
+		assert.equal(revisionActual(db), antes);
+	} finally {
+		db.close();
+	}
 });

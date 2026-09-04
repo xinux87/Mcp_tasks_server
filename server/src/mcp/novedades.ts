@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
-import { guardarUltimaRevision } from "../db/consultas.ts";
+import { guardarUltimaRevision, revisionActual } from "../db/consultas.ts";
 
 export const NOMBRE = "novedades";
 
@@ -27,7 +27,11 @@ export function registrarHerramientaNovedades(server: McpServer, db: DatabaseSyn
 			}),
 		},
 		async ({ revision }) => {
-			const { revision: actual } = guardarUltimaRevision(db, terminalId, revision);
+			// Guardar la revisión que conoce el terminal es telemetría: no sube
+			// el contador, así que llamar dos veces seguidas sin escrituras de
+			// contenido devuelve el mismo número.
+			guardarUltimaRevision(db, terminalId, revision);
+			const actual = revisionActual(db);
 			const bloques = [`revision: ${actual}`];
 			return { content: [{ type: "text", text: bloques.join("\n\n") }] };
 		},
