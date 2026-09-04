@@ -1,4 +1,6 @@
+import type { DatabaseSync } from "node:sqlite";
 import { html } from "hono/html";
+import { listarUsuarios } from "../db/admin.ts";
 import type { TipoComentario } from "../db/hilo.ts";
 import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
 import type { Html } from "./plantilla.ts";
@@ -122,6 +124,41 @@ export function chipAutor(autor: string, colorDe: (nombre: string) => Color | nu
 	}
 	// Un autor con otra forma no se inventa: se enseña tal cual, en gris.
 	return chipUsuario(autor, null);
+}
+
+/**
+ * Cómo se busca el color de un usuario al pintar. El hilo y la actividad
+ * guardan el autor como texto (`humano:xinux`) y el color se resuelve ahora,
+ * no cuando se escribió. Se lee la tabla una vez por página; un usuario que ya
+ * no existe devuelve `null`, y su chip sale gris.
+ */
+export function buscadorDeColor(db: DatabaseSync): (nombre: string) => Color | null {
+	const colores = new Map<string, Color>(listarUsuarios(db).map((usuario) => [usuario.nombre, usuario.color]));
+	return (nombre) => colores.get(nombre) ?? null;
+}
+
+/**
+ * Cómo se cuenta cada acción del rastro, en pasado y detrás del chip de quien
+ * la hizo: «xinux movió la tarea». Una acción que no esté aquí se enseña con su
+ * nombre crudo antes que romper la página.
+ */
+const FRASE_ACCION: Record<string, string | undefined> = {
+	crear_tarea: "creó la tarea",
+	editar_tarea: "editó la tarea",
+	mover_tarea: "movió la tarea",
+	aprobar_ejecucion: "aprobó la ejecución",
+	responder_pregunta: "respondió",
+	nota: "dejó una nota",
+	alta_usuario: "dio de alta al usuario",
+	baja_usuario: "dio de baja al usuario",
+	cambiar_password: "cambió su contraseña",
+	cambiar_color: "cambió el color de",
+	alta_terminal: "creó el terminal",
+	revocar_terminal: "revocó el terminal",
+};
+
+export function fraseDeAccion(accion: string): string {
+	return FRASE_ACCION[accion] ?? accion;
 }
 
 /** Una miga de pan. Sin `href` es el sitio donde ya se está, y no enlaza. */
