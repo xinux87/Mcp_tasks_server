@@ -3,7 +3,7 @@
  * en disco: lo sirve `GET /static/app.js` como módulo ES. Es lo único que
  * corre en el navegador, aparte de SortableJS.
  *
- * Hace tres cosas, y ninguna más:
+ * Hace cuatro cosas, y ninguna más:
  *
  * 1. Refresco en vivo: escucha `/eventos` (SSE con la revisión global) y,
  *    según la vista, recarga el fragmento del tablero, recarga la página o
@@ -11,6 +11,8 @@
  * 2. Arrastre del kanban con SortableJS, que envía `POST /tareas/:id/orden`.
  * 3. Recarga por intervalo de la vista de terminales, que no mueve la
  *    revisión porque su telemetría no es contenido.
+ * 4. Despliega la barra lateral en móvil, alternando la clase
+ *    `lateral-abierta` en el `<body>`.
  *
  * Escrito sin acentos graves ni interpolaciones para que quepa tal cual en
  * esta plantilla de TypeScript. Nunca escribe `innerHTML` con nada que no
@@ -268,6 +270,41 @@ function iniciarArrastre() {
 	}
 }
 
+// --- barra lateral en móvil --------------------------------------------------
+
+/**
+ * Por debajo de 48 rem la barra lateral está fuera de la pantalla y el botón
+ * de la cabecera la trae. La clase vive en el <body> y no en el HTML que
+ * sirve el servidor: quien la abre es siempre el navegador.
+ */
+function prepararLateral() {
+	const boton = document.getElementById("alternar-lateral");
+	const panel = document.getElementById("lateral");
+	if (boton === null || panel === null) {
+		return;
+	}
+	function cerrar() {
+		cuerpo.classList.remove("lateral-abierta");
+	}
+	boton.addEventListener("click", function (evento) {
+		// Sin esto, el mismo clic llegaría al documento y cerraría lo recién abierto.
+		evento.stopPropagation();
+		cuerpo.classList.toggle("lateral-abierta");
+	});
+	document.addEventListener("keydown", function (evento) {
+		if (evento.key === "Escape") {
+			cerrar();
+		}
+	});
+	// Pulsar fuera del panel lo cierra: es lo que se espera de un panel encima.
+	document.addEventListener("click", function (evento) {
+		if (!cuerpo.classList.contains("lateral-abierta") || panel.contains(evento.target)) {
+			return;
+		}
+		cerrar();
+	});
+}
+
 // --- refresco en vivo --------------------------------------------------------
 
 function alSubirLaRevision() {
@@ -306,6 +343,7 @@ function escucharEventos() {
 
 // --- arranque ----------------------------------------------------------------
 
+prepararLateral();
 escucharEventos();
 
 if (elTablero() !== null) {
