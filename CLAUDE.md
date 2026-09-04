@@ -57,10 +57,11 @@ Cada encargo que se pasa a un subagente lleva, en este orden:
 
 ### Campos
 
-- `id`, `titulo`, `descripcion`, `estado`, `orden` (posición dentro de su columna), `padre` (opcional, para tareas hijas).
+- `id` con la forma `T-0042` (cuatro cifras como mínimo, correlativo), `titulo`, `descripcion`, `estado`, `orden` (posición dentro de su columna), `padre` (opcional, para tareas hijas).
 - `analisis`: `modelo` y `terminal` que la analizan.
 - `ejecucion`: `modelo` y `terminal` que la ejecutan.
 - `autoejecucion`: activada por defecto. Con ella, la ejecución arranca sola cuando el análisis termina sin preguntas abiertas. Desactivada, la tarea espera en `prepared` a que el humano apruebe el análisis.
+- `ejecucionAprobada`: la pone el humano desde la web cuando `autoejecucion` está desactivada y el análisis le vale. Es lo que desbloquea la ejecución en ese caso.
 - `bloqueada`: hay una pregunta sin contestar.
 - `consumo`: tokens gastados en la tarea, desglosados por fase y por modelo. Ver «Consumo de tokens».
 - `comentarios[]`: el hilo de la tarea.
@@ -79,12 +80,14 @@ Son las columnas del kanban, en este orden. Cada columna tiene un dueño: quien 
 
 ### Marcas sobre la tarea
 
-No son columnas. Se muestran como etiqueta sobre la tarjeta, en cualquier estado:
+No son columnas ni se guardan: se derivan del estado de la tarea al leerla. Se muestran como etiqueta sobre la tarjeta, en cualquier estado:
 
-- **`bloqueada`**: tiene una pregunta sin contestar. Es la marca que el humano tiene que atender.
-- **`sin terminal`**: la fase que toca no tiene terminal asignado. Cualquier terminal puede tomarla.
-- **`en marcha`**: un terminal está trabajando activamente en ella ahora mismo.
-- **`análisis listo`**: el análisis terminó sin preguntas y la tarea espera aprobación del humano porque tiene `autoejecucion` desactivada.
+- **`bloqueada`**: tiene al menos una pregunta sin respuesta. Es la marca que el humano tiene que atender.
+- **`sin terminal`**: la fase que toca (análisis en `prepared` sin análisis hecho, ejecución en el resto) no tiene terminal asignado. Cualquier terminal puede tomarla.
+- **`en marcha`**: un terminal la ha tomado con `tomar_tarea` y todavía no ha escrito el comentario que cierra esa fase.
+- **`análisis listo`**: está en `prepared`, el análisis está hecho, no hay preguntas abiertas, `autoejecucion` está desactivada y el humano aún no ha aprobado.
+
+La fase que toca en una tarea es «análisis» mientras está en `prepared` sin comentario `analisis`, y «ejecución» desde que lo tiene. El análisis se da por hecho con el primer comentario `analisis`.
 
 ### Vueltas atrás
 
@@ -115,6 +118,8 @@ Cada tarea tiene un único hilo, abierto hasta que llega a `finished`. Cada iter
 | `nota` | humano | cualquier indicación durante la tarea, incluidas las vueltas atrás |
 
 Los comentarios se añaden, nunca se editan ni se borran. El hilo es lo que se ve en la web y lo que el agente lee con `leer_tarea`.
+
+El autor lo compone el servidor, nunca el que escribe: para un agente es el modelo asignado a la fase que toca y el nombre del terminal autenticado (`opus@portatil-xinux`); para una persona, su nombre de usuario en la web (`humano:xinux`).
 
 ### Tareas hijas
 
@@ -322,8 +327,15 @@ Todas devuelven Markdown. Las listas devuelven un índice de una línea por elem
 | Operación | Quién la llama | Entrada | Salida |
 |---|---|---|---|
 | `registrar_terminal` | el plugin al arrancar la sesión | nada; el terminal sale del token | nombre del terminal, cuenta y revisión actual; marca el terminal como conectado |
-| `reportar_uso` | el script de statusline del plugin, con cada actualización | las ventanas de `rate_limits` si existen, y el coste de sesión | confirmación |
 | `reportar_consumo` | el bucle, al terminar cada subagente de fase | id de tarea, fase, modelo, tokens totales, llamadas a herramientas, duración | confirmación; el servidor suma al consumo de la tarea y al de sus ancestros |
+
+### API HTTP, fuera del MCP
+
+| Ruta | Quién la llama | Entrada | Efecto |
+|---|---|---|---|
+| `POST /api/uso` | el script de statusline del plugin, con cada actualización | el JSON que Claude Code pasa a la statusline, tal cual | guarda `uso_json` del terminal autenticado por bearer. Es telemetría: no sube la revisión |
+
+Va por HTTP plano y no por MCP porque quien la llama es un script de shell, no un agente.
 
 ### Bucle del agente
 
