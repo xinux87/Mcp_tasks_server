@@ -295,8 +295,9 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 
 - **Vista kanban** con las cinco columnas de estado y **vista lista** con las mismas tareas. Se puede filtrar por terminal, modelo y marca.
 - **Ficha de tarea** con su hilo de comentarios, sus asignaciones, sus tareas hijas y su consumo de tokens.
-- **Gestión simple de usuarios.**
+- **Gestión simple de usuarios.** Cada usuario tiene un color y se enseña siempre como chip con su inicial.
 - **Terminales conectados** con su nombre, cuenta de origen, uso disponible y consumo acumulado del bucle.
+- **Toda acción humana deja rastro de quién la hizo**: las respuestas y notas en el hilo, y el resto (crear, editar, mover, aprobar, altas, bajas, cambios de color y contraseña) en la actividad, visible en la ficha y en `/actividad`.
 
 ### Sesión y seguridad
 
@@ -322,7 +323,9 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 | `POST /tareas/T-0042/nota` | Nota del humano en el hilo |
 | `POST /tareas/T-0042/orden` | Reordena dentro de la columna, o cambia de columna cuando la transición es del humano |
 | `GET /terminales`, `POST /terminales`, `POST /terminales/:id/revocar` | Terminales: lista con uso disponible y conexión; alta que enseña el token una sola vez; revocación |
-| `GET /usuarios`, `POST /usuarios`, `POST /usuarios/:id/borrar`, `POST /usuarios/contrasena` | Usuarios: alta, baja (nunca el último) y cambio de la propia contraseña |
+| `GET /usuarios`, `POST /usuarios`, `POST /usuarios/:id/borrar`, `POST /usuarios/contrasena` | Usuarios: alta con color, baja (nunca el último) y cambio de la propia contraseña |
+| `POST /usuarios/:id/color` | Cambia el color de un usuario |
+| `GET /actividad` | Las últimas cien acciones humanas, con quién hizo cada una |
 | `GET /eventos` | SSE con la revisión actual, para que la lista y el kanban se refresquen |
 
 Las acciones del humano sobre tareas llaman a las funciones de `src/db/`; la web no reimplementa reglas. Un `ErrorDeRegla` en un POST vuelve a pintar la página de origen con el mensaje tal cual y estado 422; una acción que sale bien redirige (POST, redirección, GET). El error de login responde 401 con el formulario.
@@ -339,6 +342,123 @@ Las acciones del humano sobre tareas llaman a las funciones de `src/db/`; la web
 - **SortableJS se carga a demanda** con una etiqueta `<script>` solo donde hay tablero: el resto de páginas no descarga los 45 KB.
 - **`POST /tareas/T-0042/orden`** responde 204, o `{ codigo, mensaje }` con 422 (`nota_obligatoria`, `transicion_no_permitida`, `estado_desconocido`, `orden_invalido`) o 404 (`id_invalido`, `tarea_inexistente`). En la columna Cerradas se muestran las diez más recientes y un enlace a la lista completa.
 - **Orden de rutas.** Hono resuelve por orden de registro: `GET /tareas/kanban` se registra antes que `GET /tareas/:id`.
+
+### Diseño visual
+
+La web se parece a Notion: página limpia, tipografía del sistema, colores neutros, etiquetas de color suave y una barra lateral fija con la navegación. Todo el estilo sale de `src/web/estilos.ts`; los componentes reutilizables (etiquetas, chips, cabecera de página, propiedades) de `src/web/componentes.ts`; el esqueleto de página de `src/web/plantilla.ts`. Ningún estilo en línea en las plantillas.
+
+**Esqueleto**
+
+- **Barra lateral** a la izquierda, 15 rem, fondo `--fondo-lateral`. Arriba el nombre del proyecto; después la navegación en dos bloques: «Tareas» (Lista, Kanban) y «Sistema» (Terminales, Usuarios, Actividad); abajo el chip del usuario de la sesión y el botón «Salir». La entrada activa lleva fondo `--fondo-hover` y texto en negrita. La vista activa se deduce de `vista`.
+- **Por debajo de 48 rem** la barra se oculta y aparece una cabecera con el nombre del proyecto y un botón «☰» que la despliega como panel sobre el contenido; `cliente.ts` alterna la clase `lateral-abierta` en `<body>`. Los `data-vista` y `data-revision` del `<body>` no cambian.
+- **Contenido** con ancho máximo de 60 rem y relleno de 3 rem arriba, salvo el kanban, que ocupa todo el ancho (`ancho: "completo"` en `pagina`).
+- **Cada página empieza con `cabeceraPagina`**: migas (`Tareas › T-0042`), título en 2 rem y negrita, debajo las etiquetas de estado y marcas cuando las hay, y a la derecha las acciones principales como botones. Las páginas sin sesión (login) no tienen barra lateral: una tarjeta centrada de 22 rem con el nombre del proyecto y el formulario.
+
+**Tokens** (variables CSS en `:root`, con su versión en `prefers-color-scheme: dark`):
+
+| Token | Claro | Oscuro |
+|---|---|---|
+| `--fondo` | `#ffffff` | `#191919` |
+| `--fondo-lateral` | `#f7f7f5` | `#202020` |
+| `--fondo-hover` | `rgba(55, 53, 47, 0.08)` | `rgba(255, 255, 255, 0.055)` |
+| `--texto` | `#37352f` | `rgba(255, 255, 255, 0.81)` |
+| `--texto-suave` | `rgba(55, 53, 47, 0.65)` | `rgba(255, 255, 255, 0.44)` |
+| `--borde` | `rgba(55, 53, 47, 0.16)` | `rgba(255, 255, 255, 0.13)` |
+| `--acento` | `#2383e2` | `#529cca` |
+| `--peligro` | `#eb5757` | `#ff7369` |
+
+Tipografía `ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`, 15 px de base, interlineado 1.5. Radio de 4 px en controles y 6 px en tarjetas. Sin sombras salvo la tarjeta del kanban al arrastrar y el panel lateral en móvil. Los controles de formulario no tienen borde propio: fondo `--fondo-hover` suave, y al enfocar un anillo de 2 px en `--acento`.
+
+**Nueve colores de etiqueta**, los de Notion. Cada uno es una clase `.color-<nombre>`: fondo suave y texto oscuro en claro; fondo oscuro y texto `rgba(255, 255, 255, 0.81)` en oscuro.
+
+| Nombre | Claro (fondo / texto) | Oscuro (fondo) |
+|---|---|---|
+| `gris` | `#e3e2e0` / `#32302c` | `#373737` |
+| `marron` | `#eee0da` / `#442a1e` | `#603b2c` |
+| `naranja` | `#fadec9` / `#49290e` | `#854c1d` |
+| `amarillo` | `#fdecc8` / `#402c1b` | `#89632a` |
+| `verde` | `#dbeddb` / `#1c3829` | `#2b593f` |
+| `azul` | `#d3e5ef` / `#183347` | `#28456c` |
+| `morado` | `#e8deee` / `#412454` | `#492f64` |
+| `rosa` | `#f5e0e9` / `#4c2337` | `#69314c` |
+| `rojo` | `#ffe2dd` / `#5d1715` | `#6e3630` |
+
+**Qué color lleva cada cosa**
+
+- Estados: `backlog` gris, `prepared` azul, `doing` amarillo, `done` verde, `finished` marrón.
+- Marcas: `bloqueada` rojo, `sin terminal` naranja, `en marcha` morado, `análisis listo` rosa.
+- Tipos de comentario: `analisis` azul, `pregunta` rojo, `respuesta` verde, `avance` amarillo, `resultado` morado, `nota` gris.
+- Tipo de tarea `pregunta`: rosa.
+- Los usuarios eligen entre los ocho que no son gris. El gris es de quien no tiene color: agentes y usuarios borrados.
+
+**Etiquetas y chips** (`src/web/componentes.ts`)
+
+- `etiqueta(texto, color, clase?)` pinta `<span class="insignia estado-prepared color-azul">prepared</span>`. Estado, marcas y tipos de comentario son etiquetas; las clases `estado-*`, `marca-*` y `tipo-*` se conservan para que los tests las encuentren, y el color va siempre en la última clase.
+- `chipUsuario(nombre, color)` es un círculo con la inicial en mayúscula sobre el color y el nombre al lado: `<span class="chip color-azul"><span class="inicial">X</span>xinux</span>`. Es la única forma de enseñar a un usuario en la web: navegación, hilo, actividad, listas.
+- `chipAutor(autor, usuarios)` traduce el autor de un comentario: `humano:xinux` es el chip de ese usuario, con su color actual o gris si ya no existe; `opus@portatil-xinux` es un chip gris con la inicial del modelo, el modelo y `@terminal` en texto suave.
+
+**Pantallas**
+
+- **Lista**: los mismos grupos por estado, como tabla de Notion: sin borde exterior, cabecera en `--texto-suave`, mayúsculas pequeñas, filas con borde inferior y fondo `--fondo-hover` al pasar. Columnas: Id, Título (con las marcas como etiquetas), Análisis, Ejecución, Creada por (chip) y Actualizada. Los filtros son una fila de desplegables compactos encima, sin caja.
+- **Kanban**: columnas sin fondo; la cabecera de cada columna es la etiqueta de su estado con el contador al lado. Tarjetas con borde `--borde`, fondo `--fondo`, sombra suave al pasar y al arrastrar. Cada tarjeta: id y marcas en una línea, título, y las fases en texto suave.
+- **Ficha**: migas `Tareas › T-0042`, título, etiquetas de estado y marcas, y las acciones hacia delante a la derecha (Pasar a preparadas, Aprobar ejecución, Finalizar). Después el bloque de **propiedades**: filas de dos columnas con el nombre en `--texto-suave` y el valor al lado: Estado, Tipo, Análisis, Ejecución, Autoejecución, Padre, Orden, Creada (chip de quien la creó, o el terminal si fue una propuesta, y la fecha), Revisión. Después Descripción, Hijas (cada una con su etiqueta de estado), Consumo, Hilo, Nota, Actividad. Las **vueltas atrás** (volver a backlog, devolver a doing) y **Editar** van al final como `<details>`, porque son excepcionales.
+- **Hilo**: cada comentario es una tarjeta con cabecera de chip del autor, etiqueta del tipo, `P<n>` cuando toca y la fecha; debajo el cuerpo renderizado; el formulario de respuesta dentro de la tarjeta de la pregunta abierta, con las opciones como tarjetas seleccionables y la recomendada marcada.
+- **Nueva tarea** y **Editar**: una columna, etiquetas encima de los campos; Análisis y Ejecución como dos tarjetas lado a lado a partir de 48 rem.
+- **Terminales**: tabla con chip del dueño, columna «Creado por» y, si está revocado, «Revocado por». El uso disponible se enseña por ventana como barra fina con el porcentaje disponible y la hora de reinicio.
+- **Usuarios**: tabla con chip, fecha de alta, «Alta por» y acciones. El alta lleva un selector de color con las ocho muestras como botones de radio, con la automática preseleccionada. Cada fila lleva el mismo selector en un formulario a `POST /usuarios/:id/color`.
+- **Actividad**: las últimas cien acciones, agrupadas por día; cada línea es chip, frase de la acción, enlace al objeto y hora.
+- **Confirmaciones** (borrar usuario, revocar terminal), la página del token, 404 y 500 usan el mismo esqueleto con una tarjeta.
+
+### Color de usuario
+
+Cada usuario tiene un color, de los ocho que no son gris: `azul, verde, morado, naranja, rosa, amarillo, rojo, marron`, en ese orden.
+
+- **Columna `usuarios.color`**, `TEXT NOT NULL` con `CHECK` sobre los ocho nombres. La migración da a los usuarios existentes un color por su id: el de la posición `(id - 1) % 8` de la lista.
+- **Sin color elegido se asigna el menos usado**; en empate, el primero de la lista. Así lo hacen el CLI y el primer arranque. La lista y el reparto viven en `src/db/colores.ts`.
+- **El alta desde la web permite elegirlo**, y `POST /usuarios/:id/color` lo cambia después: cualquier usuario puede cambiar el de cualquiera, como el resto de la gestión de usuarios. Cambiar el color no sube la revisión: ningún agente lo ve.
+- **El color se lee al pintar, no se guarda con el comentario.** El hilo sigue guardando el autor como texto (`humano:xinux`); la web busca el usuario por nombre al renderizar. Si el usuario se borró, el chip es gris.
+- **El Markdown del MCP no cambia.** El color es de la web.
+
+### Actividad: quién hizo qué
+
+Toda acción humana desde la web deja rastro con el usuario que la hizo. El hilo ya lo hace con las respuestas y las notas; la actividad lo hace con todo lo demás y, además, da una línea de tiempo compacta.
+
+```sql
+CREATE TABLE actividad (
+  id INTEGER PRIMARY KEY,
+  usuario_id INTEGER REFERENCES usuarios(id),
+  usuario_nombre TEXT NOT NULL,
+  accion TEXT NOT NULL,
+  objeto TEXT NOT NULL CHECK (objeto IN ('tarea', 'usuario', 'terminal')),
+  objeto_id INTEGER NOT NULL,
+  objeto_nombre TEXT NOT NULL,
+  detalle TEXT NOT NULL,
+  creado TEXT NOT NULL
+) STRICT;
+CREATE INDEX actividad_por_objeto ON actividad (objeto, objeto_id, id);
+```
+
+| `accion` | `objeto` | `detalle`, compuesto por el servidor |
+|---|---|---|
+| `crear_tarea` | tarea | vacío |
+| `editar_tarea` | tarea | solo los campos que cambiaron, separados por `; `: `título: «A» → «B»`, `descripción`, `autoejecución: activada → desactivada`, `análisis: sonnet@portatil → opus`, `ejecución: …`, `tipo: tarea → pregunta`. Si no cambió nada, no se escribe fila |
+| `mover_tarea` | tarea | `prepared → backlog` |
+| `aprobar_ejecucion` | tarea | vacío |
+| `responder_pregunta` | tarea | `P1: Punto y coma` |
+| `nota` | tarea | los primeros 80 caracteres de la nota |
+| `alta_usuario` | usuario | `color azul` |
+| `baja_usuario` | usuario | vacío |
+| `cambiar_password` | usuario | vacío |
+| `cambiar_color` | usuario | `verde → azul` |
+| `alta_terminal` | terminal | `cuenta xinux@ejemplo.com, de xinux` |
+| `revocar_terminal` | terminal | vacío |
+
+- **Se escribe en la misma transacción que la acción**, desde las funciones de `src/db/` con `registrarActividad` de `src/db/actividad.ts`. Nunca sube la revisión por sí sola: la acción ya lo hace si es contenido, y las que no lo son (contraseña, color) tampoco lo hacen por dejar rastro.
+- **`usuario_nombre` se guarda como texto** para que sobreviva al borrado del usuario, igual que el autor del hilo; al borrar, `usuario_id` queda a nulo. `objeto_nombre` es el título de la tarea o el nombre del usuario o terminal en ese momento, para que la lista global se lea sin buscar.
+- **El CLI y el primer arranque también dejan rastro**, con `usuario_id` nulo y `usuario_nombre` `cli` o `arranque`. Las funciones de bajo nivel (`crearUsuario`, `crearTerminal`) reciben un actor opcional `{ usuarioId }` o `{ nombre }`; sin actor no escriben actividad, que es lo que hacen los tests que montan la base a mano.
+- **Reordenar no deja rastro**: el orden es prioridad, no configuración, y arrastrar produciría una fila por gesto.
+- **Los agentes no escriben actividad.** Lo que hacen ya está en el hilo con su autor.
+- **Lecturas**: `actividadDe(db, objeto, objetoId)` de la más antigua a la más nueva, `actividadReciente(db, limite)` de la más nueva a la más antigua, y `altaPor(db, objeto, objetoId)` con el nombre de quien dio de alta el objeto. Es lo que enseñan la ficha, las páginas de usuarios y terminales, y `GET /actividad`.
 
 ## El servidor MCP
 
