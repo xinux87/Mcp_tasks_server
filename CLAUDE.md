@@ -287,6 +287,35 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 - **Gestión simple de usuarios.**
 - **Terminales conectados** con su nombre, cuenta de origen, uso disponible y consumo acumulado del bucle.
 
+### Sesión y seguridad
+
+- **Login con usuario y contraseña** contra la tabla `usuarios`; contraseñas con scrypt. Cookie de sesión firmada con `SESSION_SECRET`, `HttpOnly`, `SameSite=Lax`, treinta días.
+- **Toda la web exige sesión** salvo `/login` y `/salud`. Sin sesión, redirección a `/login`.
+- **Los formularios son POST con cookie `SameSite=Lax`** y el servidor rechaza cualquier POST cuya cabecera `Sec-Fetch-Site` sea `cross-site`. No hay tokens CSRF aparte.
+- **El Markdown del hilo se renderiza con markdown-it y HTML crudo desactivado.** Es la única entrada de terceros que llega al navegador.
+
+### Rutas
+
+| Ruta | Qué es |
+|---|---|
+| `GET /login`, `POST /login`, `POST /logout` | Sesión |
+| `GET /` | Redirige a `/tareas` |
+| `GET /tareas` | Vista lista: tareas agrupadas por estado en el orden de las columnas, con filtros por estado, terminal y marca |
+| `GET /tareas/kanban` | Vista kanban con las cinco columnas y arrastre entre columnas y dentro de ellas |
+| `GET /tareas/nueva`, `POST /tareas` | Crear una tarea en `backlog` |
+| `GET /tareas/T-0042` | Ficha: campos, descripción, hijas, hilo, preguntas abiertas con formulario de respuesta, nota, acciones según estado, consumo |
+| `POST /tareas/T-0042/editar` | Solo en `backlog`: título, descripción, asignaciones, `autoejecucion` |
+| `POST /tareas/T-0042/mover` | Las transiciones del humano, con nota cuando es vuelta atrás |
+| `POST /tareas/T-0042/aprobar` | Aprueba la ejecución cuando `autoejecucion` está desactivada |
+| `POST /tareas/T-0042/responder/P1` | Guarda la opción elegida por su texto y la nota |
+| `POST /tareas/T-0042/nota` | Nota del humano en el hilo |
+| `POST /tareas/T-0042/orden` | Reordena dentro de la columna, o cambia de columna cuando la transición es del humano |
+| `GET /terminales`, `POST /terminales`, `POST /terminales/:id/revocar` | Terminales: lista con uso disponible y conexión; alta que enseña el token una sola vez; revocación |
+| `GET /usuarios`, `POST /usuarios`, `POST /usuarios/:id/borrar`, `POST /usuarios/contrasena` | Usuarios: alta, baja (nunca el último) y cambio de la propia contraseña |
+| `GET /eventos` | SSE con la revisión actual, para que la lista y el kanban se refresquen |
+
+Las acciones del humano sobre tareas llaman a las funciones de `src/db/`; la web no reimplementa reglas. Un `ErrorDeRegla` se muestra en la página como aviso, con su mensaje tal cual.
+
 ## El servidor MCP
 
 - **Guarda las tareas** y las expone por API. Los agentes las consultan y las actualizan a través del MCP.
@@ -407,11 +436,11 @@ Criterio: el mínimo de piezas que cubra MCP, API, web y persistencia en un solo
 | Runtime | **Node 24 LTS** | LTS con soporte hasta 2028. Ejecuta TypeScript directamente por eliminación de tipos, lo que evita un paso de build en desarrollo y en tests. |
 | Lenguaje | **TypeScript 7**, `strict`, ESM | El SDK de MCP v2 exige TypeScript 6 o superior; la versión publicada es la 7. Solo sintaxis borrable: sin `enum` ni `namespace`, para que Node lo ejecute sin transpilar. |
 | MCP | **`@modelcontextprotocol/server` v2** | SDK oficial, alineado con la especificación 2026-07-28. Se usa `createMcpHandler` con fábrica por petición: no guarda nada entre peticiones y recibe el `authInfo` que le pasa el middleware de autenticación. Las herramientas se registran con `registerTool` y esquemas Zod. El modo de respuesta JSON imprime un aviso del SDK en stderr al crear el handler; es esperado. |
-| HTTP y web | **Hono** sobre `@hono/node-server` | Trabaja con `Request` y `Response` estándar, que es justo lo que expone el handler del SDK v2, sin adaptadores. Trae JSX para renderizar HTML en servidor, cookies firmadas, `bearerAuth` y `streamSSE`. Un solo framework para el MCP, la API y la web. |
+| HTTP y web | **Hono** sobre `@hono/node-server` | Trabaja con `Request` y `Response` estándar, que es justo lo que expone el handler del SDK v2, sin adaptadores. Trae plantillas `html` con escape automático para renderizar en servidor, cookies firmadas, `bearerAuth` y `streamSSE`. Un solo framework para el MCP, la API y la web. |
 | Validación | **Zod v4** | Es lo que el SDK usa para los esquemas de herramientas. Se reutiliza para la API y los formularios. |
 | Persistencia | **SQLite con `node:sqlite`**, modo WAL | Integrado en Node 24, sin módulo nativo ni compilación en la imagen Docker. Un archivo en un volumen. Escrituras síncronas y en transacción, que es lo que pide la regla «escribir confirma». |
 | Acceso a datos | **SQL a mano con sentencias preparadas**, sin ORM | El esquema cabe en una pantalla. Migraciones como archivos SQL numerados aplicados con `PRAGMA user_version`. |
-| Interfaz web | **HTML renderizado en servidor** con JSX de Hono, **htmx** para las interacciones y **SortableJS** para arrastrar tarjetas en el kanban | Sin bundler ni framework de cliente. El servidor es dueño del estado; el navegador solo pide fragmentos. |
+| Interfaz web | **HTML renderizado en servidor** con las plantillas `html` de Hono (`hono/html`), **htmx** para las interacciones y **SortableJS** para arrastrar tarjetas en el kanban | Sin bundler ni framework de cliente. Sin JSX: Node ejecuta TypeScript por eliminación de tipos y no transforma JSX, y las plantillas `html` escapan sola cada interpolación. El servidor es dueño del estado; el navegador solo pide fragmentos. |
 | Actualización en vivo | **SSE** en un endpoint que emite el número de revisión | Es la misma señal de novedad que usan los agentes. Cuando cambia, htmx recarga el fragmento afectado. La telemetría de terminales no mueve la revisión, así que la vista de terminales conectados se refresca por intervalo, no por SSE. |
 | Markdown en la web | **markdown-it** con HTML crudo desactivado | Renderiza el hilo sin permitir etiquetas incrustadas, que es la única fuente de inyección posible. |
 | Autenticación web | Cookie de sesión firmada, contraseñas con **scrypt** de `node:crypto` | Sin dependencias. Gestión simple de usuarios: alta, baja, cambio de contraseña, tokens de terminal. |
@@ -447,7 +476,7 @@ server/                    # el servidor, un paquete npm
     db/                    # apertura, migraciones y consultas SQL
     mcp/                   # una herramienta por archivo, más el handler
     md/                    # render del documento de tarea, índice y novedades
-    web/                   # páginas y fragmentos JSX, rutas, sesión
+    web/                   # rutas, sesión, plantillas html y CSS
     auth/                  # tokens de terminal, contraseñas, cookies
   test/                    # node:test, un archivo por módulo
   Dockerfile
