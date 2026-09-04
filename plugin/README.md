@@ -124,7 +124,7 @@ Sin intervalo, Claude elige uno entre un minuto y una hora según lo que vea: co
 
 Cada disparo es **una vuelta**: sincroniza, y si no hay novedades termina sin gastar casi nada. Si hay trabajo, toma **una** tarea, lanza la fase que toque como subagente con el modelo asignado y reporta su consumo.
 
-La primera vuelta solo registra el terminal en el servidor. El trabajo empieza en la segunda.
+La primera vuelta registra el terminal en el servidor y, si ya hay tareas asignadas, toma la primera.
 
 ## 5. Parar el bucle
 

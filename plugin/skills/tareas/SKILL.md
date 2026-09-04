@@ -89,10 +89,13 @@ plugin. Si esa variable no está definida usa `~/.claude/mcp-tareas/revision`.
 
    Ahora decide con qué revisión sigues:
    - Si `${CLAUDE_PLUGIN_ROOT}/scripts/revision.sh leer` imprime un número, este
-     terminal ya trabajó antes: sigue con ese número y ve al punto 2.
-   - Si no imprime nada, es la primera vez de este terminal: guarda la revisión
-     que devolvió `registrar_terminal` y **termina la vuelta aquí**. No hay
-     historia que recuperar y todo lo anterior a este momento no es tuyo.
+     terminal ya trabajó antes: sigue con ese número.
+   - Si no imprime nada, es la primera vez de este terminal: sigue con `0`. Así
+     la primera llamada a `novedades` trae todo lo que ya esté asignado a este
+     terminal o sin terminal, aunque se creara antes de conectarlo, que es lo
+     normal. Es un índice de una línea por tarea: cuesta poco. **No uses la
+     revisión que devuelve `registrar_terminal`**: dejaría fuera todo lo
+     anterior a este momento.
 
 2. Llama a `novedades` con la última revisión conocida.
 
