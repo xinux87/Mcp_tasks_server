@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
 import { cuerpoPregunta, cuerpoRespuesta } from "../md/pregunta.ts";
+import { registrarActividad } from "./actividad.ts";
 import {
 	ahora,
 	entero,
@@ -441,6 +442,14 @@ export function responder(db: DatabaseSync, datos: Respuesta): Pregunta {
 			texto: cuerpoRespuesta({ opcion: datos.opcion, nota }),
 			preguntaId: pregunta.id,
 		});
+		registrarActividad(conexion, {
+			actor: { usuarioId: datos.usuarioId },
+			accion: "responder_pregunta",
+			objeto: "tarea",
+			objetoId: pregunta.tareaId,
+			objetoNombre: exigirTarea(conexion, pregunta.tareaId).titulo,
+			detalle: `P${pregunta.numero}: ${datos.opcion}`,
+		});
 		const contestada = buscarPregunta(conexion, pregunta.id);
 		if (contestada === undefined) {
 			throw new Error("no se pudo releer la pregunta recién contestada");
@@ -466,12 +475,22 @@ export function notaHumana(db: DatabaseSync, datos: NotaHumana): Comentario {
 		if (tarea.estado === "finished") {
 			throw new ErrorDeRegla("tarea_archivada", "Una tarea finished está archivada y es de solo lectura.");
 		}
-		return insertarComentario(conexion, revision, {
+		const comentario = insertarComentario(conexion, revision, {
 			tareaId: tarea.id,
 			tipo: "nota",
 			autor: autorHumano(conexion, datos.usuarioId),
 			texto: datos.texto,
 			preguntaId: null,
 		});
+		registrarActividad(conexion, {
+			actor: { usuarioId: datos.usuarioId },
+			accion: "nota",
+			objeto: "tarea",
+			objetoId: tarea.id,
+			objetoNombre: tarea.titulo,
+			// El texto entero ya está en el hilo: aquí basta con reconocerla.
+			detalle: datos.texto.slice(0, 80),
+		});
+		return comentario;
 	});
 }

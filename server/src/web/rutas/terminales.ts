@@ -1,5 +1,7 @@
+import type { DatabaseSync } from "node:sqlite";
 import type { Context, Hono } from "hono";
 import { html } from "hono/html";
+import { actividadDe, altaPor } from "../../db/actividad.ts";
 import { altaTerminal, listarTerminales, revocarTerminal, type TerminalListado } from "../../db/admin.ts";
 import { fechaLegible, SIN_DATO } from "../formatos.ts";
 import { campo, ESTADO_AVISO, leerFormulario, mensajeDeRegla } from "../formulario.ts";
@@ -82,7 +84,16 @@ function usoLegible(usoJson: string | null): Html {
 	return SIN_DATOS;
 }
 
-function filaTerminal(terminal: TerminalListado): Html {
+/**
+ * Quién revocó el terminal. Se busca la última revocación del rastro: un
+ * terminal solo se revoca una vez, pero la última es la que vale.
+ */
+function revocadoPor(db: DatabaseSync, terminalId: number): string | null {
+	const rastro = actividadDe(db, "terminal", terminalId);
+	return rastro.findLast((fila) => fila.accion === "revocar_terminal")?.usuarioNombre ?? null;
+}
+
+function filaTerminal(db: DatabaseSync, terminal: TerminalListado): Html {
 	const revocado = terminal.revocadoEn !== null;
 	return html`<tr>
 			<td>${terminal.nombre}</td>
@@ -98,6 +109,8 @@ function filaTerminal(terminal: TerminalListado): Html {
 			<td class="pequeno">${terminal.conectadoEn === null ? "nunca" : fechaLegible(terminal.conectadoEn)}</td>
 			<td class="numero pequeno">${terminal.ultimaRevision === null ? SIN_DATO : terminal.ultimaRevision}</td>
 			<td>${usoLegible(terminal.usoJson)}</td>
+			<td class="pequeno">${altaPor(db, "terminal", terminal.id) ?? SIN_DATO}</td>
+			<td class="pequeno">${revocado ? (revocadoPor(db, terminal.id) ?? SIN_DATO) : ""}</td>
 			<td>
 				${
 					revocado
@@ -118,10 +131,11 @@ function paginaTerminales(c: Context, deps: DependenciasWeb, aviso: string | nul
 						<thead>
 							<tr>
 								<th>Nombre</th><th>Cuenta</th><th>Usuario</th><th>Estado</th>
-								<th>Conectado</th><th class="numero">Última revisión</th><th>Uso disponible</th><th></th>
+								<th>Conectado</th><th class="numero">Última revisión</th><th>Uso disponible</th>
+								<th>Creado por</th><th>Revocado por</th><th></th>
 							</tr>
 						</thead>
-						<tbody>${terminales.map((terminal) => filaTerminal(terminal))}</tbody>
+						<tbody>${terminales.map((terminal) => filaTerminal(deps.db, terminal))}</tbody>
 					</table>
 				</div>`;
 
@@ -207,7 +221,7 @@ export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void
 	app.post("/terminales/:id/revocar", (c) => {
 		const id = Number.parseInt(c.req.param("id") ?? "", 10);
 		try {
-			revocarTerminal(deps.db, id);
+			revocarTerminal(deps.db, id, usuarioActual(c).id);
 			return c.redirect("/terminales", 302);
 		} catch (error) {
 			return paginaTerminales(c, deps, mensajeDeRegla(error));

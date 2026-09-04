@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { hashPassword, verificarPassword } from "../auth/passwords.ts";
 import { crearTerminalConToken, type TerminalConToken } from "../auth/tokens.ts";
 import { ErrorDeRegla } from "../errores.ts";
+import { registrarActividad } from "./actividad.ts";
 import {
 	ahora,
 	enTransaccion,
@@ -12,7 +13,16 @@ import {
 	texto,
 	textoOpcional,
 } from "./base.ts";
-import { buscarUsuarioPorId, buscarUsuarioPorNombre, contarUsuarios, crearUsuario, type Usuario } from "./consultas.ts";
+import { colorElegido } from "./colores.ts";
+import {
+	buscarUsuarioPorId,
+	buscarUsuarioPorNombre,
+	COLUMNAS_USUARIO,
+	comoUsuario,
+	contarUsuarios,
+	crearUsuario,
+	type Usuario,
+} from "./consultas.ts";
 
 /**
  * Gestión de usuarios y terminales desde la web. Las reglas viven aquí, no en
@@ -23,19 +33,16 @@ import { buscarUsuarioPorId, buscarUsuarioPorNombre, contarUsuarios, crearUsuari
 
 /** Todos los usuarios, por orden de alta. */
 export function listarUsuarios(db: DatabaseSync): Usuario[] {
-	return sentencia(db, "SELECT id, nombre, hash_password, creado FROM usuarios ORDER BY id")
-		.all()
-		.map((fila) => ({
-			id: entero(fila, "id"),
-			nombre: texto(fila, "nombre"),
-			hashPassword: texto(fila, "hash_password"),
-			creado: texto(fila, "creado"),
-		}));
+	return sentencia(db, `SELECT ${COLUMNAS_USUARIO} FROM usuarios ORDER BY id`).all().map(comoUsuario);
 }
 
 export type AltaUsuario = {
 	nombre: string;
 	password: string;
+	/** Vacío o ausente: se reparte el color menos usado. */
+	color?: string;
+	/** Quién da el alta. Es el usuario de la sesión que rellena el formulario. */
+	actorId: number;
 };
 
 /** Alta de usuario desde la web: valida y deriva la contraseña con scrypt. */
@@ -50,7 +57,39 @@ export function altaUsuario(db: DatabaseSync, datos: AltaUsuario): Usuario {
 	if (buscarUsuarioPorNombre(db, nombre) !== undefined) {
 		throw new ErrorDeRegla("usuario_repetido", `Ya existe un usuario llamado «${nombre}».`);
 	}
-	return crearUsuario(db, nombre, hashPassword(datos.password)).valor;
+	const color = datos.color === undefined || datos.color.trim() === "" ? undefined : datos.color.trim();
+	return crearUsuario(db, nombre, hashPassword(datos.password), { color, actor: { usuarioId: datos.actorId } }).valor;
+}
+
+export type CambioColor = {
+	usuarioId: number;
+	color: string;
+	actorId: number;
+};
+
+/**
+ * Cambia el color de un usuario. Cualquiera puede cambiar el de cualquiera,
+ * como el resto de la gestión de usuarios. No sube la revisión: el color es de
+ * la web y ningún agente lo ve.
+ */
+export function cambiarColor(db: DatabaseSync, datos: CambioColor): Usuario {
+	return enTransaccion(db, (conexion) => {
+		const usuario = buscarUsuarioPorId(conexion, datos.usuarioId);
+		if (usuario === undefined) {
+			throw new ErrorDeRegla("usuario_inexistente", `No existe el usuario ${datos.usuarioId}.`);
+		}
+		const color = colorElegido(conexion, datos.color);
+		sentencia(conexion, "UPDATE usuarios SET color = ? WHERE id = ?").run(color, usuario.id);
+		registrarActividad(conexion, {
+			actor: { usuarioId: datos.actorId },
+			accion: "cambiar_color",
+			objeto: "usuario",
+			objetoId: usuario.id,
+			objetoNombre: usuario.nombre,
+			detalle: `${usuario.color} → ${color}`,
+		});
+		return { ...usuario, color };
+	});
 }
 
 /** Cuántos terminales cuelgan de un usuario, revocados incluidos. */
@@ -70,7 +109,7 @@ function terminalesDeUsuario(db: DatabaseSync, usuarioId: number): number {
  * se queda sin referencia. El autor de los comentarios del hilo ya está
  * escrito como texto (`humano:xinux`), así que el hilo se lee igual.
  */
-export function borrarUsuario(db: DatabaseSync, usuarioId: number): Usuario {
+export function borrarUsuario(db: DatabaseSync, usuarioId: number, actorId: number): Usuario {
 	return enTransaccionConRevision(db, (conexion) => {
 		const usuario = buscarUsuarioPorId(conexion, usuarioId);
 		if (usuario === undefined) {
@@ -85,6 +124,16 @@ export function borrarUsuario(db: DatabaseSync, usuarioId: number): Usuario {
 				"El usuario tiene terminales a su nombre: los tokens quedarían sin dueño.",
 			);
 		}
+		// El rastro se firma antes de borrar, para que quede aunque el usuario se
+		// borre a sí mismo: la línea siguiente le quita el id a sus propias filas.
+		registrarActividad(conexion, {
+			actor: { usuarioId: actorId },
+			accion: "baja_usuario",
+			objeto: "usuario",
+			objetoId: usuario.id,
+			objetoNombre: usuario.nombre,
+		});
+		sentencia(conexion, "UPDATE actividad SET usuario_id = NULL WHERE usuario_id = ?").run(usuarioId);
 		sentencia(conexion, "UPDATE tareas SET creada_por_usuario_id = NULL WHERE creada_por_usuario_id = ?").run(usuarioId);
 		sentencia(conexion, "UPDATE preguntas SET respondida_por_usuario_id = NULL WHERE respondida_por_usuario_id = ?").run(
 			usuarioId,
@@ -122,6 +171,14 @@ export function cambiarPassword(db: DatabaseSync, datos: CambioPassword): Usuari
 			throw new ErrorDeRegla("password_no_coincide", "La contraseña nueva y su repetición no coinciden.");
 		}
 		sentencia(conexion, "UPDATE usuarios SET hash_password = ? WHERE id = ?").run(hashPassword(datos.nueva), usuario.id);
+		// Cada uno cambia la suya: el actor y el objeto son el mismo usuario.
+		registrarActividad(conexion, {
+			actor: { usuarioId: usuario.id },
+			accion: "cambiar_password",
+			objeto: "usuario",
+			objetoId: usuario.id,
+			objetoNombre: usuario.nombre,
+		});
 		return usuario;
 	});
 }
@@ -185,7 +242,8 @@ export function altaTerminal(db: DatabaseSync, datos: AltaTerminal): TerminalCon
 	if (cuenta === "") {
 		throw new ErrorDeRegla("cuenta_vacia", "El terminal necesita la cuenta de origen de la sesión.");
 	}
-	return crearTerminalConToken(db, datos.usuarioId, nombre, cuenta).valor;
+	// El terminal es del usuario de la sesión, que es también quien lo da de alta.
+	return crearTerminalConToken(db, datos.usuarioId, nombre, cuenta, { usuarioId: datos.usuarioId }).valor;
 }
 
 /** Los terminales que todavía valen: los que se pueden asignar a una tarea. */
@@ -197,7 +255,7 @@ export function terminalesActivos(db: DatabaseSync): TerminalListado[] {
  * Revocar el token desconecta ese terminal y solo ese. Es contenido: sube la
  * revisión global, como el alta.
  */
-export function revocarTerminal(db: DatabaseSync, terminalId: number): TerminalListado {
+export function revocarTerminal(db: DatabaseSync, terminalId: number, actorId: number): TerminalListado {
 	return enTransaccionConRevision(db, (conexion) => {
 		const terminal = listarTerminales(conexion).find((candidato) => candidato.id === terminalId);
 		if (terminal === undefined) {
@@ -208,6 +266,13 @@ export function revocarTerminal(db: DatabaseSync, terminalId: number): TerminalL
 		}
 		const marca = ahora();
 		sentencia(conexion, "UPDATE terminales SET revocado_en = ? WHERE id = ?").run(marca, terminalId);
+		registrarActividad(conexion, {
+			actor: { usuarioId: actorId },
+			accion: "revocar_terminal",
+			objeto: "terminal",
+			objetoId: terminal.id,
+			objetoNombre: terminal.nombre,
+		});
 		return { ...terminal, revocadoEn: marca };
 	}).valor;
 }

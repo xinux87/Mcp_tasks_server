@@ -1,16 +1,32 @@
 import type { Context, Hono } from "hono";
 import { html } from "hono/html";
-import { altaUsuario, borrarUsuario, cambiarPassword, listarUsuarios } from "../../db/admin.ts";
+import { altaPor } from "../../db/actividad.ts";
+import { altaUsuario, borrarUsuario, cambiarColor, cambiarPassword, listarUsuarios } from "../../db/admin.ts";
+import { COLORES_USUARIO } from "../../db/colores.ts";
 import type { Usuario } from "../../db/consultas.ts";
-import { fechaLegible } from "../formatos.ts";
+import { fechaLegible, SIN_DATO } from "../formatos.ts";
 import { campo, ESTADO_AVISO, leerFormulario, mensajeDeRegla } from "../formulario.ts";
 import { type Html, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
 
-function filaUsuario(usuario: Usuario, esElUltimo: boolean): Html {
+/** El color de cada uno se cambia desde su propia fila, sin salir de la lista. */
+function formularioColor(usuario: Usuario): Html {
+	return html`<form class="en-linea" method="post" action="/usuarios/${usuario.id}/color">
+			<select name="color" aria-label="Color de ${usuario.nombre}">
+				${COLORES_USUARIO.map(
+					(color) => html`<option value="${color}" ${color === usuario.color ? "selected" : ""}>${color}</option>`,
+				)}
+			</select>
+			<button type="submit">Cambiar</button>
+		</form>`;
+}
+
+function filaUsuario(usuario: Usuario, altaDe: string | null, esElUltimo: boolean): Html {
 	return html`<tr>
 			<td>${usuario.nombre}</td>
+			<td><span class="insignia color-${usuario.color}">${usuario.color}</span> ${formularioColor(usuario)}</td>
 			<td class="pequeno">${fechaLegible(usuario.creado)}</td>
+			<td class="pequeno">${altaDe ?? SIN_DATO}</td>
 			<td>
 				${
 					esElUltimo
@@ -28,8 +44,10 @@ function paginaUsuarios(c: Context, deps: DependenciasWeb, aviso: string | null)
 	const cuerpo = html`<h1>Usuarios</h1>
 		<div class="tabla-envuelta">
 			<table>
-				<thead><tr><th>Nombre</th><th>Creado</th><th></th></tr></thead>
-				<tbody>${usuarios.map((usuario) => filaUsuario(usuario, esElUltimo))}</tbody>
+				<thead><tr><th>Nombre</th><th>Color</th><th>Creado</th><th>Alta por</th><th></th></tr></thead>
+				<tbody>
+					${usuarios.map((usuario) => filaUsuario(usuario, altaPor(deps.db, "usuario", usuario.id), esElUltimo))}
+				</tbody>
 			</table>
 		</div>
 
@@ -43,6 +61,17 @@ function paginaUsuarios(c: Context, deps: DependenciasWeb, aviso: string | null)
 				<span>Contraseña</span>
 				<input type="password" name="password" autocomplete="new-password" required>
 			</label>
+			<fieldset>
+				<legend>Color</legend>
+				<label class="en-linea">
+					<input type="radio" name="color" value="" checked> automático
+				</label>
+				${COLORES_USUARIO.map(
+					(color) => html`<label class="en-linea">
+						<input type="radio" name="color" value="${color}"> ${color}
+					</label>`,
+				)}
+			</fieldset>
 			<button type="submit" class="principal">Crear usuario</button>
 		</form>
 
@@ -76,7 +105,24 @@ export function registrarRutasUsuarios(app: Hono, deps: DependenciasWeb): void {
 	app.post("/usuarios", async (c) => {
 		const formulario = await leerFormulario(c);
 		try {
-			altaUsuario(deps.db, { nombre: campo(formulario, "nombre"), password: campo(formulario, "password") });
+			altaUsuario(deps.db, {
+				nombre: campo(formulario, "nombre"),
+				password: campo(formulario, "password"),
+				// El radio «automático» manda cadena vacía: se reparte el menos usado.
+				color: campo(formulario, "color"),
+				actorId: usuarioActual(c).id,
+			});
+			return c.redirect("/usuarios", 302);
+		} catch (error) {
+			return paginaUsuarios(c, deps, mensajeDeRegla(error));
+		}
+	});
+
+	app.post("/usuarios/:id/color", async (c) => {
+		const formulario = await leerFormulario(c);
+		const id = Number.parseInt(c.req.param("id") ?? "", 10);
+		try {
+			cambiarColor(deps.db, { usuarioId: id, color: campo(formulario, "color"), actorId: usuarioActual(c).id });
 			return c.redirect("/usuarios", 302);
 		} catch (error) {
 			return paginaUsuarios(c, deps, mensajeDeRegla(error));
@@ -129,7 +175,7 @@ export function registrarRutasUsuarios(app: Hono, deps: DependenciasWeb): void {
 	app.post("/usuarios/:id/borrar", (c) => {
 		const id = Number.parseInt(c.req.param("id") ?? "", 10);
 		try {
-			borrarUsuario(deps.db, id);
+			borrarUsuario(deps.db, id, usuarioActual(c).id);
 			return c.redirect("/usuarios", 302);
 		} catch (error) {
 			return paginaUsuarios(c, deps, mensajeDeRegla(error));

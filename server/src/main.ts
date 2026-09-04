@@ -20,7 +20,8 @@ export function asegurarPrimerUsuario(db: DatabaseSync, config: Config): void {
 	if (config.ADMIN_PASSWORD === undefined) {
 		throw new Error("no hay ningún usuario y falta ADMIN_PASSWORD para crear el primero");
 	}
-	crearUsuario(db, USUARIO_INICIAL, hashPassword(config.ADMIN_PASSWORD));
+	// El primer usuario no lo crea nadie con sesión: lo firma el arranque.
+	crearUsuario(db, USUARIO_INICIAL, hashPassword(config.ADMIN_PASSWORD), { actor: { nombre: "arranque" } });
 	console.log(`usuario inicial creado: ${USUARIO_INICIAL}`);
 }
 
