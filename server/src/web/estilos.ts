@@ -895,4 +895,276 @@ button.enlace:hover {
 		transition: none;
 	}
 }
+
+/* --- pantallas de sistema ---------------------------------------------- */
+
+/* Texto que solo existe para quien no ve la pantalla: el nombre del color de
+   una muestra, que a la vista ya lo dice el propio color. */
+.solo-lectores {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* Una tarjeta que no necesita los 60 rem del contenido: confirmaciones,
+   páginas de error y la del token. */
+.caja-estrecha {
+	max-width: 34rem;
+}
+
+/* Lo último de una tarjeta no separa de su propio borde, igual que lo primero. */
+.caja > :last-child {
+	margin-bottom: 0;
+}
+
+/* El nombre de un campo que no envuelve a su control, como el selector de
+   color: mismo aspecto que el «span» de una etiqueta normal. */
+.nombre-campo {
+	margin: 0 0 0.3rem;
+	color: var(--texto-suave);
+	font-size: 0.85rem;
+}
+
+button.pequeno, .boton.pequeno {
+	padding: 0.15rem 0.55rem;
+}
+
+/* La acción de una fila de terminales es un enlace discreto y no un botón: con
+   diez columnas, el relleno de un botón por fila es justo el ancho que hace
+   que la última columna no quepa. La confirmación que abre sí lleva botón. */
+.accion-fila {
+	color: var(--peligro);
+	font-size: 0.85rem;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.accion-fila:hover {
+	text-decoration: underline;
+}
+
+/* --- selector de color --------------------------------------------------- */
+
+.colores {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.3rem;
+	margin: 0 0 1rem;
+}
+
+/* La muestra no pinta fondo: el color se lo da su clase «.color-*», que está
+   más arriba en la hoja y ganaría a lo que se declarase aquí. */
+.muestra {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.35rem;
+	height: 1.35rem;
+	margin: 0;
+	border-radius: 50%;
+	cursor: pointer;
+}
+
+/* El radio ocupa la muestra entera y no se ve: lo que se pulsa es el color. */
+.muestra input[type="radio"] {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+/* El elegido lleva un anillo, con un hueco del color del fondo para que se
+   distinga en los nueve colores y en los dos modos. */
+.muestra:has(input:checked) {
+	box-shadow: 0 0 0 2px var(--fondo), 0 0 0 3px var(--texto);
+}
+
+.muestra:has(input:focus-visible) {
+	outline: 2px solid var(--acento);
+	outline-offset: 2px;
+}
+
+/* «Automático» no es un color: se enseña con su nombre y borde de puntos. */
+.muestra-auto {
+	width: auto;
+	height: auto;
+	padding: 0.05rem 0.55rem;
+	border: 1px dashed var(--borde);
+	border-radius: 999px;
+	color: var(--texto-suave);
+	font-size: 0.78rem;
+}
+
+/* El cambio de color de una fila: muestras y botón en la misma línea. */
+.cambio-color {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	margin: 0;
+}
+
+.cambio-color .colores {
+	margin: 0;
+}
+
+/* --- terminales ---------------------------------------------------------- */
+
+/* Diez columnas aprietan: la cuenta parte por donde haga falta y el uso reserva
+   lo justo para que la barra se lea. Si aun así no cabe, es «.tabla-envuelta»
+   la que se desplaza, no la página. */
+/* Con diez columnas, el hueco lateral de cada una suma más que cualquier dato:
+   aquí se recorta para que la fila entera quepa sin desplazar la tabla. */
+.tabla-terminales th, .tabla-terminales td {
+	padding-left: 0.4rem;
+	padding-right: 0.4rem;
+}
+
+.celda-cuenta {
+	min-width: 9rem;
+	overflow-wrap: anywhere;
+}
+
+.celda-uso {
+	min-width: 11rem;
+}
+
+.uso {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+}
+
+.uso-ventana {
+	display: grid;
+	gap: 0.15rem;
+}
+
+.uso-cabecera {
+	display: flex;
+	justify-content: space-between;
+	gap: 0.6rem;
+}
+
+.uso-nombre {
+	color: var(--texto-suave);
+}
+
+.uso-cifra {
+	font-variant-numeric: tabular-nums;
+}
+
+.uso-barra {
+	display: block;
+	height: 4px;
+	border-radius: 999px;
+	background: var(--fondo-hover);
+	overflow: hidden;
+}
+
+/* El ancho sale de la decena que calcula el servidor: una regla por valor, y
+   así ninguna plantilla lleva estilos en línea. */
+.uso-relleno {
+	display: block;
+	height: 100%;
+	border-radius: 999px;
+	background: var(--acento);
+}
+
+.uso-relleno[data-nivel="0"] { width: 0; }
+.uso-relleno[data-nivel="1"] { width: 10%; }
+.uso-relleno[data-nivel="2"] { width: 20%; }
+.uso-relleno[data-nivel="3"] { width: 30%; }
+.uso-relleno[data-nivel="4"] { width: 40%; }
+.uso-relleno[data-nivel="5"] { width: 50%; }
+.uso-relleno[data-nivel="6"] { width: 60%; }
+.uso-relleno[data-nivel="7"] { width: 70%; }
+.uso-relleno[data-nivel="8"] { width: 80%; }
+.uso-relleno[data-nivel="9"] { width: 90%; }
+.uso-relleno[data-nivel="10"] { width: 100%; }
+
+/* Queda poco: la barra avisa sola, sin tener que leer la cifra. */
+.uso-relleno[data-nivel="0"],
+.uso-relleno[data-nivel="1"],
+.uso-relleno[data-nivel="2"] {
+	background: var(--peligro);
+}
+
+.uso-reinicio {
+	color: var(--texto-suave);
+	font-size: 0.78rem;
+}
+
+/* --- usuarios ------------------------------------------------------------ */
+
+.tabla-usuarios {
+	min-width: 34rem;
+}
+
+/* --- actividad ----------------------------------------------------------- */
+
+/* La explicación es parte de la cabecera: se pega al título en vez de quedarse
+   flotando entre él y el primer día. */
+.cabecera-pagina + .explicacion {
+	margin: -1.2rem 0 1.6rem;
+}
+
+.dia h2 {
+	margin: 1.6rem 0 0.2rem;
+	color: var(--texto-suave);
+	font-size: 0.78rem;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	font-variant-numeric: tabular-nums;
+}
+
+.dia:first-of-type h2 {
+	margin-top: 0;
+}
+
+.actividad {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.acto {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.2rem 0.45rem;
+	padding: 0.4rem 0.15rem;
+	border-bottom: 1px solid var(--borde);
+}
+
+.acto:last-child {
+	border-bottom: none;
+}
+
+.acto .frase {
+	color: var(--texto-suave);
+}
+
+.acto .detalle {
+	font-size: 0.85rem;
+}
+
+/* La hora se va al extremo: la columna que se lee de un vistazo. */
+.acto .hora {
+	margin-left: auto;
+	padding-left: 0.6rem;
+	font-size: 0.82rem;
+	font-variant-numeric: tabular-nums;
+}
 `;
