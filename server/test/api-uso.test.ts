@@ -7,6 +7,7 @@ import { hashPassword } from "../src/auth/passwords.ts";
 import { crearTerminalConToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { buscarTerminalPorId, crearUsuario, revisionActual } from "../src/db/consultas.ts";
+import { CONFIG_PRUEBA } from "./comun.ts";
 
 const BASE_URL = "http://localhost:3000";
 const URL_USO = new URL("/api/uso", BASE_URL);
@@ -31,7 +32,7 @@ function montar(): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
 	const { valor: usuario } = crearUsuario(db, "xinux", hashPassword("secreta"));
 	const { valor } = crearTerminalConToken(db, usuario.id, "portatil-xinux", "xinux@ejemplo.com");
-	const { app, cerrar } = crearApp({ db, baseUrl: BASE_URL });
+	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
 	return {
 		db,
 		app,

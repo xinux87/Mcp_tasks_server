@@ -30,7 +30,7 @@ function arrancar(): void {
 	const db = abrirBaseDeDatos(ruta);
 	asegurarPrimerUsuario(db, config);
 
-	const { app, cerrar } = crearApp({ db, baseUrl: config.BASE_URL });
+	const { app, cerrar } = crearApp({ db, config });
 	const servidor = serve({ fetch: app.fetch, port: config.PORT, hostname: HOST_ESCUCHA }, (info) => {
 		console.log(`servidor escuchando en http://${HOST_ESCUCHA}:${info.port} (base: ${config.BASE_URL})`);
 		console.log(`base de datos: ${ruta}`);

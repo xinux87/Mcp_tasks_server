@@ -10,6 +10,7 @@ import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { preguntasDeTarea, responder } from "../src/db/hilo.ts";
 import { crearTareaHumana, moverTareaHumano } from "../src/db/tareas.ts";
+import { CONFIG_PRUEBA } from "./comun.ts";
 
 const BASE_URL = "http://localhost:3000";
 const URL_MCP = new URL("/mcp", BASE_URL);
@@ -46,7 +47,7 @@ function montar(): Montaje {
 	});
 	moverTareaHumano(db, { tareaId: tarea.id, usuarioId: usuario.id, estado: "prepared" });
 
-	const { app, cerrar } = crearApp({ db, baseUrl: BASE_URL });
+	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
 	return {
 		db,
 		app,
