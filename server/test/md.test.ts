@@ -5,6 +5,7 @@ import { comentarAnalisis, comentarAvance, comentarResultado, preguntar, respond
 import {
 	crearHija,
 	crearTareaHumana,
+	itemIndiceDe,
 	leerTarea,
 	listarTareas,
 	moverTareaHumano,
@@ -137,6 +138,7 @@ function ejemplo(banco: Banco): { padre: number; hija: number } {
 const DOCUMENTO_ESPERADO = `---
 id: T-0001
 titulo: "Exportar el listado de clientes a CSV"
+tipo: tarea
 estado: done
 orden: 2
 autoejecucion: true
@@ -253,6 +255,7 @@ test("el documento de una hija lleva su padre y el de una tarea nueva va vacío"
 			`---
 id: T-0004
 titulo: "Una nueva"
+tipo: tarea
 estado: backlog
 orden: 1
 autoejecucion: true
@@ -278,6 +281,46 @@ Ninguna.
 ## Hilo
 
 Ninguno.`,
+		);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("una pregunta se ve en el frontmatter y no lleva bloque ni segmento de ejecución", () => {
+	const banco = montar();
+	try {
+		const pregunta = crearTareaHumana(banco.db, {
+			titulo: "¿Cuánto se tarda hoy en cerrar el mes?",
+			descripcion: "Quiero saberlo antes de pedir nada.",
+			usuarioId: banco.xinux,
+			tipo: "pregunta",
+			analisisModelo: "sonnet",
+			analisisTerminalId: banco.portatil,
+		});
+		moverTareaHumano(banco.db, { tareaId: pregunta.id, usuarioId: banco.xinux, estado: "prepared" });
+
+		const documento = sinFechas(documentoTarea(leerTarea(banco.db, pregunta.id) ?? assert.fail("sin tarea")));
+		assert.match(documento, /^titulo: "¿Cuánto se tarda hoy en cerrar el mes\?"\ntipo: pregunta\nestado: prepared$/m);
+		assert.match(documento, /^analisis:\n {2}modelo: sonnet\n {2}terminal: portatil-xinux$/m);
+		assert.doesNotMatch(documento, /^ejecucion:$/m);
+
+		assert.equal(
+			lineaIndice(itemIndiceDe(banco.db, pregunta.id)),
+			"- T-0001 · prepared · pregunta · ¿Cuánto se tarda hoy en cerrar el mes? · analisis: sonnet@portatil-xinux",
+		);
+
+		// Las marcas van después de «pregunta», nunca antes.
+		const sinAsignar = crearTareaHumana(banco.db, {
+			titulo: "¿Y el cierre de año?",
+			descripcion: "d",
+			usuarioId: banco.xinux,
+			tipo: "pregunta",
+		});
+		moverTareaHumano(banco.db, { tareaId: sinAsignar.id, usuarioId: banco.xinux, estado: "prepared" });
+		assert.equal(
+			lineaIndice(itemIndiceDe(banco.db, sinAsignar.id)),
+			"- T-0002 · prepared · pregunta · sin terminal · ¿Y el cierre de año? · analisis: sin asignar",
 		);
 	} finally {
 		banco.cerrar();

@@ -29,8 +29,10 @@ const AYUDA = `Uso: node src/cli.ts <comando>
 
   crear-tarea <usuario> <titulo> <descripcion>
               [--analisis <modelo>[@<terminal>]] [--ejecucion <modelo>[@<terminal>]]
-              [--sin-autoejecucion]
+              [--sin-autoejecucion] [--pregunta]
       Crea una tarea en backlog a nombre del usuario, con sus asignaciones.
+      Con --pregunta la tarea solo tiene fase de análisis: ese comentario es la
+      respuesta y cierra la tarea. La asignación de ejecución se ignora.
 
   mover-tarea <usuario> <id> <estado> [nota]
       Mueve la tarea de columna. Las vueltas atrás exigen nota.
@@ -80,11 +82,12 @@ type Argumentos = {
 	analisis?: string;
 	ejecucion?: string;
 	sinAutoejecucion: boolean;
+	pregunta: boolean;
 };
 
 /** Separa las opciones con guiones de los argumentos posicionales. */
 function partir(argumentos: string[]): Argumentos {
-	const partido: Argumentos = { posicionales: [], sinAutoejecucion: false };
+	const partido: Argumentos = { posicionales: [], sinAutoejecucion: false, pregunta: false };
 	for (let indice = 0; indice < argumentos.length; indice += 1) {
 		const argumento = argumentos[indice];
 		if (argumento === undefined) {
@@ -92,6 +95,10 @@ function partir(argumentos: string[]): Argumentos {
 		}
 		if (argumento === "--sin-autoejecucion") {
 			partido.sinAutoejecucion = true;
+			continue;
+		}
+		if (argumento === "--pregunta") {
+			partido.pregunta = true;
 			continue;
 		}
 		if (argumento === "--analisis" || argumento === "--ejecucion") {
@@ -181,17 +188,20 @@ function comandoCrearTarea(argumentos: string[]): void {
 	const partido = partir(argumentos);
 	const [usuario, titulo, descripcion] = partido.posicionales;
 	if (usuario === undefined || titulo === undefined || descripcion === undefined) {
-		fallar("uso: crear-tarea <usuario> <titulo> <descripcion> [--analisis m[@t]] [--ejecucion m[@t]]");
+		fallar("uso: crear-tarea <usuario> <titulo> <descripcion> [--analisis m[@t]] [--ejecucion m[@t]] [--pregunta]");
 	}
 
 	conBaseDeDatos((db) => {
 		const dueno = exigirUsuario(db, usuario);
 		const analisis = asignacion(db, partido.analisis);
-		const ejecucion = asignacion(db, partido.ejecucion);
+		// Una pregunta no tiene fase de ejecución: lo que venga en --ejecucion
+		// se ignora en vez de guardarse para no usarse nunca.
+		const ejecucion = partido.pregunta ? { modelo: null, terminalId: null } : asignacion(db, partido.ejecucion);
 		const tarea = crearTareaHumana(db, {
 			titulo,
 			descripcion,
 			usuarioId: dueno.id,
+			tipo: partido.pregunta ? "pregunta" : "tarea",
 			autoejecucion: !partido.sinAutoejecucion,
 			analisisModelo: analisis.modelo,
 			analisisTerminalId: analisis.terminalId,

@@ -17,7 +17,7 @@ import { ErrorDeRegla, esErrorDeRegla } from "../../errores.ts";
 import { formatearId, parsearId } from "../../md/ids.ts";
 import { faseLegible } from "../formatos.ts";
 import { campo, ESTADO_AVISO, leerFormulario } from "../formulario.ts";
-import { COLUMNAS, type Html, insigniasMarcas, pagina, type RespuestaHtml } from "../plantilla.ts";
+import { COLUMNAS, type Html, insigniasMarcas, insigniaTipoTarea, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
 
 const MARCAS: readonly Marca[] = ["bloqueada", "sin terminal", "en marcha", "análisis listo"];
@@ -90,9 +90,15 @@ function formularioFiltros(activos: TerminalListado[], filtros: Filtros): Html {
 		</form>`;
 }
 
-/** Las dos fases abreviadas: `sonnet@portatil · opus@portatil`, o «sin asignar». */
+/**
+ * Las dos fases abreviadas: `sonnet@portatil · opus@portatil`, o «sin asignar».
+ * Una pregunta solo tiene análisis, así que enseña esa sola.
+ */
 function fasesLegibles(item: ItemIndice): string {
 	const analisis = faseLegible(item.analisisModelo, item.analisisTerminal);
+	if (item.tipo === "pregunta") {
+		return analisis;
+	}
 	const ejecucion = faseLegible(item.ejecucionModelo, item.ejecucionTerminal);
 	if (analisis === "sin asignar" && ejecucion === "sin asignar") {
 		return "sin asignar";
@@ -109,6 +115,7 @@ function tarjeta(item: ItemIndice): Html {
 	return html`<article class="tarjeta" data-id="${id}" data-estado="${item.estado}">
 			<div class="linea">
 				<a class="id-tarea" href="/tareas/${id}">${id}</a>
+				${insigniaTipoTarea(item.tipo)}
 				${insigniasMarcas(item.marcas)}
 			</div>
 			<p class="titulo">${item.titulo}</p>

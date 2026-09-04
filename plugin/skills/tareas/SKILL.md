@@ -132,10 +132,16 @@ en `prepared` y **no** tiene ningún comentario `analisis` en el hilo; es
 |---|---|
 | Marca `bloqueada` | **Nada.** Hay una pregunta sin contestar. Pasa a la siguiente. |
 | `prepared`, sin comentario `analisis`, y `analisis.terminal` está vacío (marca `sin terminal`) o es este terminal | Candidata a **análisis**. |
+| `prepared`, `tipo: pregunta`, sin comentario `analisis`, y `analisis.terminal` está vacío o es este terminal | Candidata a **análisis**. Es lo único que tiene esa tarea. |
 | `prepared`, con comentario `analisis`, sin marca `bloqueada` ni `análisis listo`, y `ejecucion.terminal` está vacío o es este terminal | Candidata a **ejecución**. |
 | `prepared` con marca `análisis listo` | **Nada.** `autoejecucion` está desactivada y el humano todavía no ha aprobado el análisis. |
 | `doing`, `ejecucion.terminal` es este terminal, y en el hilo hay un comentario `respuesta` posterior a la última `pregunta` | Candidata a **ejecución (retomar)**, con la respuesta en contexto. |
 | `doing` sin respuesta nueva, o `done`, o `finished` | **Nada.** |
+
+Una tarea con `tipo: pregunta` **solo tiene fase de análisis**: su frontmatter
+no lleva bloque `ejecucion:` y su línea de índice tampoco. Al escribir el
+comentario `analisis` el servidor la pasa él solo a `done`: no la ejecutes
+después ni le cambies el estado a mano.
 
 **Una tarea por vuelta como máximo.** Si sale más de una candidata, quédate con
 la que aparezca más arriba en la salida de `novedades`: ese orden es la prioridad
@@ -248,6 +254,20 @@ Documento completo tal como lo devolvió leer_tarea, hilo incluido:
 4. Si de paso descubres trabajo que NO es parte de esta tarea, créalo con
    `mcp__plugin_mcp-tareas_tareas__crear_tarea` con clase `propuesta`. Nace en
    backlog para que lo decida el humano. No lo hagas tú.
+
+## Si la tarea es de tipo pregunta  << SOLO SI EL FRONTMATTER DICE `tipo: pregunta`; SI NO, BORRA ESTE BLOQUE >>
+
+El comentario `analisis` que escribas es la RESPUESTA al humano, no un plan de
+trabajo. Escríbelo en llano y desde su punto de vista: nada de rutas de archivo,
+nombres de función ni códigos internos. Criterio: ¿lo entiende alguien que
+conoce el negocio y no ha visto el código?
+
+No hay fase de ejecución detrás. Al escribir ese comentario la tarea se cierra
+sola y pasa a `done`: no propongas pasos ni esperes a nadie.
+
+Si para responder te hace falta una decisión del humano, usa `preguntar` igual
+que en cualquier otra tarea. Y lo que descubras de paso que habría que hacer no
+va en la respuesta: va como `crear_tarea` con clase `propuesta`.
 
 ## Reglas
 

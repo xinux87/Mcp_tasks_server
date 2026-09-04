@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
-import type { DatabaseSync } from "node:sqlite";
+import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { revisionActual } from "../src/db/consultas.ts";
-import { aplicarMigraciones, leerMigraciones, versionEsquema } from "../src/db/migraciones.ts";
+import {
+	aplicarMigraciones,
+	CARPETA_MIGRACIONES,
+	leerMigraciones,
+	type Migracion,
+	versionEsquema,
+} from "../src/db/migraciones.ts";
 
 function tablas(db: DatabaseSync): string[] {
 	return db
@@ -60,5 +69,45 @@ test("las claves foráneas están activas", () => {
 		});
 	} finally {
 		db.close();
+	}
+});
+
+/** Carpeta con solo las `n` primeras migraciones, para aplicar el esquema por partes. */
+function hasta(carpeta: string, migraciones: Migracion[], cuantas: number): void {
+	for (const migracion of migraciones.slice(0, cuantas)) {
+		copyFileSync(join(CARPETA_MIGRACIONES, migracion.nombre), join(carpeta, migracion.nombre));
+	}
+}
+
+test("la migración del tipo entra en una tabla STRICT con datos y deja las tareas de antes como «tarea»", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		const migraciones = leerMigraciones();
+		const tipo = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-tipo.sql"));
+		assert.ok(tipo > 0, "no está la migración del tipo");
+
+		// El esquema anterior, con una tarea ya escrita: es el caso real de una
+		// base de datos en marcha cuando llega la columna nueva.
+		hasta(carpeta, migraciones, tipo);
+		aplicarMigraciones(db, carpeta);
+		db
+			.prepare(
+				`INSERT INTO tareas (titulo, descripcion, estado, orden, creada, actualizada, revision)
+				VALUES ('De antes', 'd', 'doing', 1, '2026-09-04T00:00:00.000Z', '2026-09-04T00:00:00.000Z', 1)`,
+			)
+			.run();
+
+		hasta(carpeta, migraciones, tipo + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), tipo + 1);
+		assert.equal(db.prepare("SELECT tipo FROM tareas WHERE id = 1").get()?.tipo, "tarea");
+
+		// Y el CHECK vale también para las filas nuevas.
+		assert.throws(() => {
+			db.prepare("UPDATE tareas SET tipo = 'otra cosa' WHERE id = 1").run();
+		});
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
 	}
 });

@@ -9,7 +9,7 @@ import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { listarTerminales, listarUsuarios } from "../src/db/admin.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
 import { comentarAnalisis, preguntar } from "../src/db/hilo.ts";
-import { leerTarea, tomarTarea } from "../src/db/tareas.ts";
+import { exigirTarea, leerTarea, tomarTarea } from "../src/db/tareas.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 type Montaje = {
@@ -166,6 +166,46 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		// La descripción llega renderizada por markdown-it, no en crudo.
 		assert.match(cuerpoFicha, /<strong>negrita<\/strong>/);
 		assert.match(cuerpoFicha, /sin asignar/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("una pregunta se crea con su casilla, sale con badge y sin nada de ejecución", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const alta = await pedir(montaje, "/tareas", {
+			cookie,
+			formulario: {
+				titulo: "¿Cuánto se tarda hoy en cerrar el mes?",
+				descripcion: "Quiero saberlo antes de pedir nada.",
+				pregunta: "on",
+				analisisModelo: "sonnet",
+				analisisTerminal: "",
+				// Lo de ejecución llega del formulario anterior y se ignora.
+				ejecucionModelo: "opus",
+				ejecucionTerminal: "",
+			},
+		});
+		assert.equal(alta.status, 302);
+		const tarea = exigirTarea(montaje.db, 1);
+		assert.equal(tarea.tipo, "pregunta");
+		assert.equal(tarea.ejecucionModelo, null);
+
+		const ficha = await pedir(montaje, "/tareas/T-0001", { cookie });
+		assert.equal(ficha.status, 200);
+		const cuerpo = await ficha.text();
+		assert.match(cuerpo, /<span class="insignia tipo-pregunta">pregunta<\/span>/);
+		assert.doesNotMatch(cuerpo, /<th>Ejecución<\/th>/);
+		assert.doesNotMatch(cuerpo, /<th>Autoejecución<\/th>/);
+		// Al editarla, el formulario tampoco enseña la ejecución.
+		assert.doesNotMatch(cuerpo, /name="ejecucionModelo"/);
+		assert.match(cuerpo, /name="pregunta" checked/);
+
+		// El kanban la marca igual en su tarjeta.
+		const kanban = await pedir(montaje, "/tareas/kanban", { cookie });
+		assert.match(await kanban.text(), /<span class="insignia tipo-pregunta">pregunta<\/span>/);
 	} finally {
 		await montaje.cerrar();
 	}

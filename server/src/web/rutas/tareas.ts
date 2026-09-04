@@ -17,6 +17,7 @@ import {
 	type Marca,
 	moverTareaHumano,
 	type TareaCompleta,
+	type TipoTarea,
 } from "../../db/tareas.ts";
 import { ErrorDeRegla, esErrorDeRegla } from "../../errores.ts";
 import { formatearId, parsearId } from "../../md/ids.ts";
@@ -37,6 +38,7 @@ import {
 	insigniaEstado,
 	insigniasMarcas,
 	insigniaTipo,
+	insigniaTipoTarea,
 	MODELOS_SUGERIDOS,
 	pagina,
 	type RespuestaHtml,
@@ -50,6 +52,7 @@ const MARCAS: readonly Marca[] = ["bloqueada", "sin terminal", "en marcha", "an�
 type ValoresTarea = {
 	titulo: string;
 	descripcion: string;
+	tipo: TipoTarea;
 	autoejecucion: boolean;
 	analisisModelo: string | null;
 	analisisTerminalId: number | null;
@@ -60,6 +63,7 @@ type ValoresTarea = {
 const TAREA_VACIA: ValoresTarea = {
 	titulo: "",
 	descripcion: "",
+	tipo: "tarea",
 	autoejecucion: true,
 	analisisModelo: null,
 	analisisTerminalId: null,
@@ -117,24 +121,31 @@ function numeroONull(valor: string): number | null {
  * cuando algo falla, para que no pierda lo que llevaba escrito.
  */
 function valoresCrudos(formulario: Formulario): ValoresTarea {
+	// En una pregunta no hay ejecución que asignar ni autoejecución que
+	// decidir: el formulario no enseña esos campos, así que lo que llegue en
+	// ellos se ignora en vez de guardarse a medias.
+	const esPregunta = marcado(formulario, "pregunta");
 	return {
 		titulo: campo(formulario, "titulo"),
 		descripcion: campo(formulario, "descripcion"),
-		autoejecucion: marcado(formulario, "autoejecucion"),
+		tipo: esPregunta ? "pregunta" : "tarea",
+		autoejecucion: esPregunta || marcado(formulario, "autoejecucion"),
 		analisisModelo: campoOpcional(formulario, "analisisModelo"),
 		analisisTerminalId: numeroONull(campo(formulario, "analisisTerminal")),
-		ejecucionModelo: campoOpcional(formulario, "ejecucionModelo"),
-		ejecucionTerminalId: numeroONull(campo(formulario, "ejecucionTerminal")),
+		ejecucionModelo: esPregunta ? null : campoOpcional(formulario, "ejecucionModelo"),
+		ejecucionTerminalId: esPregunta ? null : numeroONull(campo(formulario, "ejecucionTerminal")),
 	};
 }
 
 /** Los campos de tarea que comparten «Nueva tarea» y «Editar», ya validados. */
 function valoresDeFormulario(formulario: Formulario, activos: TerminalListado[]): ValoresTarea {
+	const crudos = valoresCrudos(formulario);
 	return {
-		...valoresCrudos(formulario),
+		...crudos,
 		titulo: exigirTitulo(campo(formulario, "titulo")),
 		analisisTerminalId: terminalDeFormulario(activos, campo(formulario, "analisisTerminal")),
-		ejecucionTerminalId: terminalDeFormulario(activos, campo(formulario, "ejecucionTerminal")),
+		ejecucionTerminalId:
+			crudos.tipo === "pregunta" ? null : terminalDeFormulario(activos, campo(formulario, "ejecucionTerminal")),
 	};
 }
 
@@ -155,8 +166,32 @@ function selectTerminal(nombre: string, activos: TerminalListado[], seleccionado
 		</select>`;
 }
 
-/** El formulario de una tarea, compartido por «Nueva tarea» y «Editar». */
+/**
+ * El formulario de una tarea, compartido por «Nueva tarea» y «Editar». En una
+ * pregunta no se pintan ni la autoejecución ni la ejecución: esa tarea solo
+ * tiene fase de análisis y el comentario de análisis la cierra.
+ */
 function camposTarea(valores: ValoresTarea, activos: TerminalListado[]): Html {
+	const esPregunta = valores.tipo === "pregunta";
+	const ejecucion = esPregunta
+		? html``
+		: html`<label>
+				<input type="checkbox" name="autoejecucion"${valores.autoejecucion ? raw(" checked") : ""}>
+				Autoejecución: la ejecución arranca sola cuando el análisis termina sin preguntas abiertas
+			</label>`;
+	const bloqueEjecucion = esPregunta
+		? html``
+		: html`<fieldset>
+				<legend>Ejecución</legend>
+				<label>
+					<span>Modelo</span>
+					<input type="text" name="ejecucionModelo" list="modelos" value="${valores.ejecucionModelo ?? ""}">
+				</label>
+				<label>
+					<span>Terminal</span>
+					${selectTerminal("ejecucionTerminal", activos, valores.ejecucionTerminalId)}
+				</label>
+			</fieldset>`;
 	return html`<label>
 			<span>Título</span>
 			<input type="text" name="titulo" value="${valores.titulo}" required>
@@ -166,9 +201,10 @@ function camposTarea(valores: ValoresTarea, activos: TerminalListado[]): Html {
 			<textarea name="descripcion" rows="10">${valores.descripcion}</textarea>
 		</label>
 		<label>
-			<input type="checkbox" name="autoejecucion"${valores.autoejecucion ? raw(" checked") : ""}>
-			Autoejecución: la ejecución arranca sola cuando el análisis termina sin preguntas abiertas
+			<input type="checkbox" name="pregunta"${esPregunta ? raw(" checked") : ""}>
+			Es una pregunta: la respuesta es el comentario de análisis y la tarea se cierra con él
 		</label>
+		${ejecucion}
 		<datalist id="modelos">${MODELOS_SUGERIDOS.map((modelo) => html`<option value="${modelo}"></option>`)}</datalist>
 		<fieldset>
 			<legend>Análisis</legend>
@@ -181,17 +217,7 @@ function camposTarea(valores: ValoresTarea, activos: TerminalListado[]): Html {
 				${selectTerminal("analisisTerminal", activos, valores.analisisTerminalId)}
 			</label>
 		</fieldset>
-		<fieldset>
-			<legend>Ejecución</legend>
-			<label>
-				<span>Modelo</span>
-				<input type="text" name="ejecucionModelo" list="modelos" value="${valores.ejecucionModelo ?? ""}">
-			</label>
-			<label>
-				<span>Terminal</span>
-				${selectTerminal("ejecucionTerminal", activos, valores.ejecucionTerminalId)}
-			</label>
-		</fieldset>`;
+		${bloqueEjecucion}`;
 }
 
 function filaTarea(db: DatabaseSync, item: ItemIndice): Html {
@@ -268,6 +294,13 @@ function formularioFiltros(activos: TerminalListado[], estado: string, terminal:
 
 function tablaCampos(completa: TareaCompleta): Html {
 	const { tarea } = completa;
+	// En una pregunta la autoejecución y la ejecución no aplican: enseñarlas
+	// haría creer que después del análisis viene otra fase.
+	const ejecucion =
+		tarea.tipo === "pregunta"
+			? html``
+			: html`<tr><th>Autoejecución</th><td>${tarea.autoejecucion ? "activada" : "desactivada"}</td></tr>
+				<tr><th>Ejecución</th><td>${faseLegible(tarea.ejecucionModelo, completa.ejecucionTerminal)}</td></tr>`;
 	return html`<div class="tabla-envuelta">
 			<table>
 				<tbody>
@@ -276,9 +309,8 @@ function tablaCampos(completa: TareaCompleta): Html {
 						<th>Padre</th>
 						<td>${tarea.padreId === null ? html`<span class="silencio">ninguno</span>` : enlaceTarea(tarea.padreId)}</td>
 					</tr>
-					<tr><th>Autoejecución</th><td>${tarea.autoejecucion ? "activada" : "desactivada"}</td></tr>
 					<tr><th>Análisis</th><td>${faseLegible(tarea.analisisModelo, completa.analisisTerminal)}</td></tr>
-					<tr><th>Ejecución</th><td>${faseLegible(tarea.ejecucionModelo, completa.ejecucionTerminal)}</td></tr>
+					${ejecucion}
 					<tr><th>Creada</th><td>${fechaLegible(tarea.creada)}</td></tr>
 					<tr><th>Revisión</th><td>${tarea.revision}</td></tr>
 				</tbody>
@@ -377,13 +409,16 @@ function acciones(completa: TareaCompleta): Html {
 			</div>`;
 	}
 	if (completa.tarea.estado === "prepared") {
-		const aprobar = completa.marcas.includes("análisis listo")
-			? html`<div class="acciones">
+		// Una pregunta no tiene ejecución que aprobar: nunca lleva la marca
+		// «análisis listo», y aquí se dice explícito para que se lea.
+		const aprobar =
+			completa.tarea.tipo !== "pregunta" && completa.marcas.includes("análisis listo")
+				? html`<div class="acciones">
 					<form method="post" action="/tareas/${id}/aprobar">
 						<button type="submit" class="principal">Aprobar ejecución</button>
 					</form>
 				</div>`
-			: html``;
+				: html``;
 		return html`${aprobar}
 			<form method="post" action="${mover}">
 				<input type="hidden" name="estado" value="backlog">
@@ -500,6 +535,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 							{
 								titulo: tarea.titulo,
 								descripcion: tarea.descripcion,
+								tipo: tarea.tipo,
 								autoejecucion: tarea.autoejecucion,
 								analisisModelo: tarea.analisisModelo,
 								analisisTerminalId: tarea.analisisTerminalId,
@@ -517,6 +553,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 			<span class="id-tarea">${id}</span>
 			<h1>${tarea.titulo}</h1>
 			${insigniaEstado(tarea.estado)}
+			${insigniaTipoTarea(tarea.tipo)}
 			${insigniasMarcas(completa.marcas)}
 		</div>
 
