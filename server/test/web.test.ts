@@ -196,7 +196,7 @@ test("una pregunta se crea con su casilla, sale con badge y sin nada de ejecuci�
 		const ficha = await pedir(montaje, "/tareas/T-0001", { cookie });
 		assert.equal(ficha.status, 200);
 		const cuerpo = await ficha.text();
-		assert.match(cuerpo, /<span class="insignia tipo-pregunta">pregunta<\/span>/);
+		assert.match(cuerpo, /<span class="insignia tipo-pregunta color-rosa">pregunta<\/span>/);
 		assert.doesNotMatch(cuerpo, /<th>Ejecución<\/th>/);
 		assert.doesNotMatch(cuerpo, /<th>Autoejecución<\/th>/);
 		// Al editarla, el formulario tampoco enseña la ejecución.
@@ -205,7 +205,7 @@ test("una pregunta se crea con su casilla, sale con badge y sin nada de ejecuci�
 
 		// El kanban la marca igual en su tarjeta.
 		const kanban = await pedir(montaje, "/tareas/kanban", { cookie });
-		assert.match(await kanban.text(), /<span class="insignia tipo-pregunta">pregunta<\/span>/);
+		assert.match(await kanban.text(), /<span class="insignia tipo-pregunta color-rosa">pregunta<\/span>/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -220,7 +220,8 @@ test("mover una tarea: a prepared y de vuelta a backlog, que exige nota", async 
 		const aPrepared = await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "prepared" } });
 		assert.equal(aPrepared.status, 302);
 		const enPrepared = await pedir(montaje, `/tareas/${id}`, { cookie });
-		assert.match(await enPrepared.text(), /<span class="insignia estado-prepared">prepared<\/span>/);
+		// La clase de estado es el gancho; el color va siempre en la última clase.
+		assert.match(await enPrepared.text(), /<span class="insignia estado-prepared color-azul">prepared<\/span>/);
 
 		const sinNota = await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "backlog", nota: "" } });
 		assert.equal(sinNota.status, 422);
@@ -233,9 +234,9 @@ test("mover una tarea: a prepared y de vuelta a backlog, que exige nota", async 
 		assert.equal(conNota.status, 302);
 		const vuelta = await pedir(montaje, `/tareas/${id}`, { cookie });
 		const cuerpo = await vuelta.text();
-		assert.match(cuerpo, /<span class="insignia estado-backlog">backlog<\/span>/);
+		assert.match(cuerpo, /<span class="insignia estado-backlog color-gris">backlog<\/span>/);
 		assert.match(cuerpo, /Falta decidir el formato\./);
-		assert.match(cuerpo, /class="insignia tipo-nota"/);
+		assert.match(cuerpo, /class="insignia tipo-nota color-gris"/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -269,7 +270,7 @@ test("una pregunta abierta se contesta desde la ficha, y solo una vez", async ()
 		const cuerpo = await conPregunta.text();
 		assert.match(cuerpo, /action="\/tareas\/T-0001\/responder\/P1"/);
 		assert.match(cuerpo, /value="Punto y coma"/);
-		assert.match(cuerpo, /class="insignia marca-bloqueada"/);
+		assert.match(cuerpo, /class="insignia marca-bloqueada color-rojo"/);
 
 		const respuesta = await pedir(montaje, `/tareas/${id}/responder/P1`, {
 			cookie,

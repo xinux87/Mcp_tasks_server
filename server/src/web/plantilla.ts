@@ -1,6 +1,17 @@
-import { html } from "hono/html";
+import { html, raw } from "hono/html";
 import type { Usuario } from "../db/consultas.ts";
 import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
+import {
+	COLOR_ESTADO,
+	COLOR_MARCA,
+	COLOR_TIPO,
+	COLOR_TIPO_TAREA,
+	type Color,
+	cabeceraPagina,
+	chipUsuario,
+	etiqueta,
+	type Miga,
+} from "./componentes.ts";
 
 /**
  * Lo que devuelve la plantilla `html` de Hono: HTML con cada interpolación ya
@@ -15,7 +26,7 @@ export type Html = ReturnType<typeof html>;
  */
 export type RespuestaHtml = Response | Promise<Response>;
 
-/** Nombre del proyecto, tal como aparece en la cabecera y en el título. */
+/** Nombre del proyecto, tal como aparece en la barra lateral y en el título. */
 export const NOMBRE_PROYECTO = "MCP Tareas";
 
 /** Las cinco columnas del kanban, en su orden, con el título que se enseña. */
@@ -41,38 +52,73 @@ const CLASE_MARCA: Record<Marca, string> = {
 	"análisis listo": "analisis-listo",
 };
 
-/** Badge de estado. El valor viene de un conjunto cerrado, así que sirve de clase. */
+/** Etiqueta de estado. El valor viene de un conjunto cerrado, así que sirve de clase. */
 export function insigniaEstado(estado: Estado): Html {
-	return html`<span class="insignia estado-${estado}">${estado}</span>`;
+	return etiqueta(estado, COLOR_ESTADO[estado], `estado-${estado}`);
 }
 
-/** Badges de las marcas activas de una tarea, en su orden. */
+/** Etiquetas de las marcas activas de una tarea, en su orden. */
 export function insigniasMarcas(marcas: readonly Marca[]): Html {
-	return html`${marcas.map((marca) => html`<span class="insignia marca-${CLASE_MARCA[marca]}">${marca}</span>`)}`;
-}
-
-/** Badge del tipo de un comentario del hilo. Los seis tipos son un conjunto cerrado. */
-export function insigniaTipo(tipo: string): Html {
-	return html`<span class="insignia tipo-${tipo}">${tipo}</span>`;
+	return html`${marcas.map((marca) => etiqueta(marca, COLOR_MARCA[marca], `marca-${CLASE_MARCA[marca]}`))}`;
 }
 
 /**
- * Badge del tipo de la tarea. Solo se pinta en las preguntas: `tarea` es lo
+ * Etiqueta del tipo de un comentario del hilo. Recibe una cadena porque es lo
+ * que hay guardado; un tipo que no esté en el mapa se pinta en gris en vez de
+ * romper la página.
+ */
+export function insigniaTipo(tipo: string): Html {
+	const colores: Record<string, Color | undefined> = COLOR_TIPO;
+	return etiqueta(tipo, colores[tipo] ?? "gris", `tipo-${tipo}`);
+}
+
+/**
+ * Etiqueta del tipo de la tarea. Solo se pinta en las preguntas: `tarea` es lo
  * normal y decirlo en cada tarjeta no aportaría nada.
  */
 export function insigniaTipoTarea(tipo: TipoTarea): Html {
-	return tipo === "pregunta" ? html`<span class="insignia tipo-pregunta">pregunta</span>` : html``;
+	return tipo === "pregunta" ? etiqueta("pregunta", COLOR_TIPO_TAREA.pregunta, "tipo-pregunta") : html``;
 }
+
+/** Una entrada de la navegación y las vistas que la dejan marcada como activa. */
+type EntradaNav = {
+	href: string;
+	texto: string;
+	vistas: readonly string[];
+};
+
+/**
+ * Los dos bloques de la navegación. La ficha y el alta de tarea marcan
+ * «Lista»: son la misma sección, no otro sitio.
+ */
+const BLOQUES: readonly { titulo: string; entradas: readonly EntradaNav[] }[] = [
+	{
+		titulo: "Tareas",
+		entradas: [
+			{ href: "/tareas", texto: "Lista", vistas: ["lista", "ficha", "tarea", "tarea-nueva"] },
+			{ href: "/tareas/kanban", texto: "Kanban", vistas: ["kanban"] },
+		],
+	},
+	{
+		titulo: "Sistema",
+		entradas: [
+			{ href: "/terminales", texto: "Terminales", vistas: ["terminales"] },
+			{ href: "/usuarios", texto: "Usuarios", vistas: ["usuarios"] },
+			{ href: "/actividad", texto: "Actividad", vistas: ["actividad"] },
+		],
+	},
+];
 
 export type OpcionesPagina = {
 	titulo: string;
-	/** Quién mira. Sin sesión (la pantalla de login) no hay navegación. */
+	/** Quién mira. Sin sesión (la pantalla de login) no hay barra lateral. */
 	usuario: Usuario | null;
 	/** Mensaje de un `ErrorDeRegla` o confirmación, tal cual. */
 	aviso?: string | null;
 	/**
-	 * Qué vista es, para el cliente: `lista`, `kanban`, `ficha`, `terminales`
-	 * o el nombre de la página. Cada una se refresca de una manera.
+	 * Qué vista es, para el cliente y para la navegación: `lista`, `kanban`,
+	 * `ficha`, `terminales`, `usuarios`, `actividad`. Cada una se refresca de
+	 * una manera y marca su entrada en la barra lateral.
 	 */
 	vista?: string;
 	/**
@@ -80,31 +126,49 @@ export type OpcionesPagina = {
 	 * que se refrescan en vivo; sin ella el cliente no abre el SSE.
 	 */
 	revision?: number;
+	/** Con migas o con acciones, la página arranca con `cabeceraPagina`. */
+	migas?: readonly Miga[];
+	/** Etiquetas de estado y marcas, bajo el título. Solo se pintan con cabecera. */
+	etiquetas?: Html;
+	/** Las acciones principales, a la derecha del título. */
+	acciones?: Html;
+	/** El kanban ocupa todo el ancho; el resto se queda en 60 rem. */
+	ancho?: "completo";
 	cuerpo: Html;
 };
 
-function navegacion(usuario: Usuario | null): Html {
-	if (usuario === null) {
-		return html``;
-	}
-	// Las dos vistas de las mismas tareas van juntas y siempre visibles: son
-	// la misma sección, no dos sitios distintos.
-	return html`<nav class="navegacion">
-			<span class="par">
-				Tareas <a href="/tareas">Lista</a> <a href="/tareas/kanban">Kanban</a>
-			</span>
-			<a href="/terminales">Terminales</a>
-			<a href="/usuarios">Usuarios</a>
-			<form method="post" action="/logout" class="en-linea">
-				<button type="submit" class="enlace">Salir</button>
-			</form>
-			<span class="quien">${usuario.nombre}</span>
-		</nav>`;
+function enlaceNav(entrada: EntradaNav, vista: string): Html {
+	const activo = entrada.vistas.includes(vista);
+	return html`<a class="enlace-nav" href="${entrada.href}"${activo ? raw(' aria-current="page"') : ""}>${entrada.texto}</a>`;
+}
+
+/**
+ * La barra lateral: el nombre del proyecto, los dos bloques de navegación y,
+ * abajo, quién está dentro y por dónde se sale.
+ */
+function barraLateral(usuario: Usuario, vista: string): Html {
+	// El color del usuario llega en otro encargo; hasta entonces, gris.
+	return html`<aside class="lateral" id="lateral">
+			<a class="marca" href="/tareas">${NOMBRE_PROYECTO}</a>
+			${BLOQUES.map(
+				(bloque) => html`<nav class="bloque">
+					<h2>${bloque.titulo}</h2>
+					${bloque.entradas.map((entrada) => enlaceNav(entrada, vista))}
+				</nav>`,
+			)}
+			<div class="pie-lateral">
+				${chipUsuario(usuario.nombre, null)}
+				<form method="post" action="/logout" class="en-linea">
+					<button type="submit" class="enlace">Salir</button>
+				</form>
+			</div>
+		</aside>`;
 }
 
 /**
  * Los `data-` del `<body>`: la vista siempre, y la revisión solo donde el
- * refresco en vivo tiene sentido. El cliente no hace nada sin ellos.
+ * refresco en vivo tiene sentido. El cliente no hace nada sin ellos. Ninguna
+ * clase se pinta aquí: `lateral-abierta` la pone solo el navegador.
  */
 function atributosCuerpo(vista: string | undefined, revision: number | undefined): Html {
 	const cual = html` data-vista="${vista ?? "otra"}"`;
@@ -112,10 +176,25 @@ function atributosCuerpo(vista: string | undefined, revision: number | undefined
 }
 
 /**
- * El layout de toda la web: cabecera con el nombre del proyecto y la
- * navegación, zona de aviso, cuerpo y pie. HTML5 en español.
+ * El esqueleto de toda la web: barra lateral fija con la navegación y el
+ * contenido a su derecha. Por debajo de 48 rem la barra se esconde y la
+ * cabecera con el botón «☰» la despliega como panel. HTML5 en español.
  */
-export function pagina({ titulo, usuario, aviso, vista, revision, cuerpo }: OpcionesPagina): Html {
+export function pagina({
+	titulo,
+	usuario,
+	aviso,
+	vista,
+	revision,
+	migas,
+	etiquetas,
+	acciones,
+	ancho,
+	cuerpo,
+}: OpcionesPagina): Html {
+	const conCabecera = migas !== undefined || acciones !== undefined;
+	const clasesContenido = usuario === null ? "contenido contenido-entrada" : "contenido";
+	const clasesDentro = ancho === "completo" ? "dentro dentro-completo" : "dentro";
 	return html`<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -125,17 +204,22 @@ export function pagina({ titulo, usuario, aviso, vista, revision, cuerpo }: Opci
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body${atributosCuerpo(vista, revision)}>
-<header class="cabecera">
+${
+	usuario === null
+		? html``
+		: html`<header class="cabecera-movil">
+	<button type="button" class="alternar-lateral" id="alternar-lateral" aria-controls="lateral" aria-label="Navegación">☰</button>
 	<a class="marca" href="/tareas">${NOMBRE_PROYECTO}</a>
-	${navegacion(usuario)}
 </header>
-<main class="contenido">
-	${aviso === null || aviso === undefined || aviso === "" ? html`` : html`<p class="aviso" role="alert">${aviso}</p>`}
-	${cuerpo}
+${barraLateral(usuario, vista ?? "")}`
+}
+<main class="${clasesContenido}">
+	<div class="${clasesDentro}">
+		${aviso === null || aviso === undefined || aviso === "" ? html`` : html`<p class="aviso" role="alert">${aviso}</p>`}
+		${conCabecera ? cabeceraPagina({ migas, titulo, etiquetas, acciones }) : html``}
+		${cuerpo}
+	</div>
 </main>
-<footer class="pie">
-	<span>${NOMBRE_PROYECTO} · las tareas y quién las trabaja</span>
-</footer>
 <script type="module" src="/static/app.js"></script>
 </body>
 </html>`;

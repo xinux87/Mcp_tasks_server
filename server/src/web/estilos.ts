@@ -3,42 +3,46 @@
  * disco: así el Dockerfile no tiene que copiar nada más que `src/`. La sirve
  * `GET /static/app.css`.
  *
- * Escrita a mano, sin frameworks, y legible en claro y en oscuro: los colores
- * son variables y `prefers-color-scheme` cambia solo las variables.
+ * El diseño es el de «Diseño visual» en CLAUDE.md: página limpia tipo Notion,
+ * tipografía del sistema, colores neutros, etiquetas de color suave y una
+ * barra lateral fija con la navegación. Todo el color sale de variables, y
+ * `prefers-color-scheme` solo cambia las variables: no hay una segunda hoja
+ * para el modo oscuro.
  */
 export const CSS = `:root {
 	color-scheme: light dark;
-	--fondo: #f7f7f5;
-	--fondo-caja: #ffffff;
-	--fondo-suave: #efeee9;
-	--texto: #1d1d1b;
-	--texto-suave: #5f5f58;
-	--borde: #d9d8d0;
-	--acento: #2f5d8a;
-	--acento-texto: #ffffff;
-	--aviso-fondo: #fdeceb;
-	--aviso-borde: #d4756c;
-	--aviso-texto: #7d251c;
-	--peligro: #a5342a;
-	--radio: 6px;
+
+	/* Los ocho tokens de la tabla de CLAUDE.md. Nada más define color. */
+	--fondo: #ffffff;
+	--fondo-lateral: #f7f7f5;
+	--fondo-hover: rgba(55, 53, 47, 0.08);
+	--texto: #37352f;
+	--texto-suave: rgba(55, 53, 47, 0.65);
+	--borde: rgba(55, 53, 47, 0.16);
+	--acento: #2383e2;
+	--peligro: #eb5757;
+
+	/* Medidas: 4 px en controles, 6 px en tarjetas, 15 rem de barra lateral. */
+	--radio: 4px;
+	--radio-tarjeta: 6px;
+	--lateral: 15rem;
+	--ancho-contenido: 60rem;
 }
 
 @media (prefers-color-scheme: dark) {
 	:root {
-		--fondo: #16171a;
-		--fondo-caja: #1f2126;
-		--fondo-suave: #272a30;
-		--texto: #e8e8e4;
-		--texto-suave: #a3a49f;
-		--borde: #383b42;
-		--acento: #7fb0e0;
-		--acento-texto: #10131a;
-		--aviso-fondo: #3a1f1c;
-		--aviso-borde: #a5564c;
-		--aviso-texto: #f3c3bd;
-		--peligro: #e08379;
+		--fondo: #191919;
+		--fondo-lateral: #202020;
+		--fondo-hover: rgba(255, 255, 255, 0.055);
+		--texto: rgba(255, 255, 255, 0.81);
+		--texto-suave: rgba(255, 255, 255, 0.44);
+		--borde: rgba(255, 255, 255, 0.13);
+		--acento: #529cca;
+		--peligro: #ff7369;
 	}
 }
+
+/* --- base ---------------------------------------------------------------- */
 
 * {
 	box-sizing: border-box;
@@ -48,9 +52,10 @@ body {
 	margin: 0;
 	background: var(--fondo);
 	color: var(--texto);
-	font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-	font-size: 16px;
+	font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+	font-size: 15px;
 	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -62,108 +67,311 @@ h1, h2, h3 {
 	margin: 0 0 0.6rem;
 }
 
+/* El título de página, suelto o dentro de «cabeceraPagina», es el mismo. */
 h1 {
-	font-size: 1.5rem;
+	font-size: 2rem;
+	font-weight: 700;
+	letter-spacing: -0.01em;
 }
 
 h2 {
-	font-size: 1.2rem;
+	font-size: 1.15rem;
+	font-weight: 600;
+	margin-top: 1.8rem;
 }
 
 h3 {
 	font-size: 1rem;
+	font-weight: 600;
 }
 
 code, pre {
 	font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-	font-size: 0.9em;
+	font-size: 0.88em;
 }
 
 pre {
-	background: var(--fondo-suave);
-	border-radius: var(--radio);
+	background: var(--fondo-hover);
+	border-radius: var(--radio-tarjeta);
 	padding: 0.7rem 0.9rem;
 	overflow-x: auto;
 }
 
-/* --- cabecera y pie ----------------------------------------------------- */
-
-.cabecera {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 0.6rem 1.2rem;
-	padding: 0.8rem 1.2rem;
-	background: var(--fondo-caja);
-	border-bottom: 1px solid var(--borde);
+/* El foco se ve siempre, y siempre igual: un anillo de 2 px en el acento. */
+:focus-visible {
+	outline: 2px solid var(--acento);
+	outline-offset: 1px;
 }
 
-.marca {
+/* --- esqueleto: barra lateral y contenido -------------------------------- */
+
+.lateral {
+	position: fixed;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	width: var(--lateral);
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+	padding: 0.9rem 0.6rem 0.8rem;
+	background: var(--fondo-lateral);
+	border-right: 1px solid var(--borde);
+	overflow-y: auto;
+	z-index: 20;
+}
+
+.lateral .marca {
+	display: block;
+	padding: 0.25rem 0.5rem 1rem;
+	color: var(--texto);
 	font-weight: 700;
 	text-decoration: none;
+}
+
+.bloque {
+	margin-bottom: 1.1rem;
+}
+
+.bloque h2 {
+	margin: 0 0 0.2rem;
+	padding: 0 0.5rem;
+	color: var(--texto-suave);
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.enlace-nav {
+	display: block;
+	padding: 0.25rem 0.5rem;
+	border-radius: var(--radio);
 	color: var(--texto);
-	letter-spacing: 0.01em;
-}
-
-.navegacion {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 0.2rem 1rem;
-	margin-left: auto;
-}
-
-.navegacion a, .navegacion .enlace {
-	color: var(--acento);
 	text-decoration: none;
 }
 
-.navegacion a:hover, .navegacion .enlace:hover {
-	text-decoration: underline;
+.enlace-nav:hover {
+	background: var(--fondo-hover);
 }
 
-.navegacion .quien {
-	color: var(--texto-suave);
-	font-size: 0.85rem;
+/* La entrada activa: mismo fondo que al pasar por encima, y en negrita. */
+.enlace-nav[aria-current="page"] {
+	background: var(--fondo-hover);
+	font-weight: 600;
 }
 
-.en-linea {
-	display: inline;
+.pie-lateral {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	margin-top: auto;
+	padding-top: 0.8rem;
+	border-top: 1px solid var(--borde);
+}
+
+.pie-lateral form {
 	margin: 0;
 }
 
+/* La cabecera con el botón «☰» solo existe cuando la barra se esconde. */
+.cabecera-movil {
+	display: none;
+}
+
+.alternar-lateral {
+	padding: 0.15rem 0.5rem;
+	border: none;
+	background: none;
+	color: var(--texto);
+	font-size: 1.1rem;
+	line-height: 1;
+}
+
 .contenido {
-	max-width: 68rem;
-	margin: 0 auto;
-	padding: 1.4rem 1.2rem 3rem;
+	margin-left: var(--lateral);
+	padding: 3rem 2.5rem 5rem;
 }
 
-.pie {
-	max-width: 68rem;
+.dentro {
+	max-width: var(--ancho-contenido);
 	margin: 0 auto;
-	padding: 0 1.2rem 2rem;
+}
+
+/* El kanban ocupa todo el ancho: cinco columnas no caben en 60 rem. */
+.dentro-completo {
+	max-width: none;
+}
+
+/* Sin sesión no hay barra lateral: una tarjeta centrada y nada más. */
+.contenido-entrada {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 100dvh;
+	margin-left: 0;
+	padding: 2rem 1rem;
+}
+
+.contenido-entrada .dentro {
+	width: 22rem;
+	max-width: 100%;
+}
+
+.marca-entrada {
+	margin: 0 0 1.2rem;
 	color: var(--texto-suave);
-	font-size: 0.8rem;
+	font-weight: 600;
+	letter-spacing: 0.02em;
 }
 
-/* --- avisos y cajas ----------------------------------------------------- */
+/* --- cabecera de página -------------------------------------------------- */
+
+.cabecera-pagina {
+	margin: 0 0 1.8rem;
+}
+
+.migas {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35rem;
+	margin-bottom: 0.5rem;
+	color: var(--texto-suave);
+	font-size: 0.82rem;
+}
+
+.migas a {
+	color: var(--texto-suave);
+	text-decoration: none;
+}
+
+.migas a:hover {
+	color: var(--texto);
+	text-decoration: underline;
+}
+
+.migas .separador {
+	opacity: 0.6;
+}
+
+.titular {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.6rem 1rem;
+}
+
+.titular h1 {
+	margin: 0;
+}
+
+/* Solo hueco entre filas: entre etiquetas ya separa el margen de «.insignia». */
+.etiquetas {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.3rem 0;
+	margin-top: 0.6rem;
+}
+
+/* --- etiquetas y chips --------------------------------------------------- */
+
+/* Sin clase de color, la etiqueta es gris: es el color de lo que no tiene. El
+   margen separa dos etiquetas seguidas donde no hay un contenedor con hueco. */
+.insignia {
+	display: inline-block;
+	margin-right: 0.25rem;
+	padding: 0.05rem 0.45rem;
+	border-radius: var(--radio);
+	background: var(--fondo-hover);
+	color: var(--texto-suave);
+	font-size: 0.78rem;
+	font-weight: 500;
+	line-height: 1.55;
+	white-space: nowrap;
+}
+
+.chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.05rem 0.5rem 0.05rem 0.15rem;
+	border-radius: 999px;
+	background: var(--fondo-hover);
+	color: var(--texto-suave);
+	font-size: 0.82rem;
+	line-height: 1.6;
+	white-space: nowrap;
+}
+
+/* El círculo de la inicial se tiñe del propio texto del chip: así funciona
+   con los nueve colores y en los dos modos sin repetir ninguna paleta. */
+.chip .inicial {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.2rem;
+	height: 1.2rem;
+	border-radius: 50%;
+	background: color-mix(in srgb, currentColor 22%, transparent);
+	font-size: 0.66rem;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.chip .terminal {
+	color: var(--texto-suave);
+}
+
+/* Los nueve colores, los de Notion. Van después de «.insignia» y «.chip»
+   porque tienen la misma especificidad y aquí manda el último que gana. */
+
+.color-gris { background: #e3e2e0; color: #32302c; }
+.color-marron { background: #eee0da; color: #442a1e; }
+.color-naranja { background: #fadec9; color: #49290e; }
+.color-amarillo { background: #fdecc8; color: #402c1b; }
+.color-verde { background: #dbeddb; color: #1c3829; }
+.color-azul { background: #d3e5ef; color: #183347; }
+.color-morado { background: #e8deee; color: #412454; }
+.color-rosa { background: #f5e0e9; color: #4c2337; }
+.color-rojo { background: #ffe2dd; color: #5d1715; }
+
+@media (prefers-color-scheme: dark) {
+	.color-gris { background: #373737; color: rgba(255, 255, 255, 0.81); }
+	.color-marron { background: #603b2c; color: rgba(255, 255, 255, 0.81); }
+	.color-naranja { background: #854c1d; color: rgba(255, 255, 255, 0.81); }
+	.color-amarillo { background: #89632a; color: rgba(255, 255, 255, 0.81); }
+	.color-verde { background: #2b593f; color: rgba(255, 255, 255, 0.81); }
+	.color-azul { background: #28456c; color: rgba(255, 255, 255, 0.81); }
+	.color-morado { background: #492f64; color: rgba(255, 255, 255, 0.81); }
+	.color-rosa { background: #69314c; color: rgba(255, 255, 255, 0.81); }
+	.color-rojo { background: #6e3630; color: rgba(255, 255, 255, 0.81); }
+}
+
+/* --- avisos, cajas y texto secundario ------------------------------------ */
 
 .aviso {
-	background: var(--aviso-fondo);
-	border: 1px solid var(--aviso-borde);
-	border-left-width: 4px;
+	margin: 0 0 1.4rem;
+	padding: 0.6rem 0.8rem;
 	border-radius: var(--radio);
-	color: var(--aviso-texto);
-	margin: 0 0 1.2rem;
-	padding: 0.7rem 0.9rem;
+	border-left: 3px solid var(--peligro);
+	background: var(--fondo-hover);
+	color: var(--texto);
 }
 
 .caja {
-	background: var(--fondo-caja);
-	border: 1px solid var(--borde);
-	border-radius: var(--radio);
+	margin: 0 0 1.4rem;
 	padding: 1rem 1.1rem;
-	margin: 0 0 1.2rem;
+	border: 1px solid var(--borde);
+	border-radius: var(--radio-tarjeta);
+}
+
+/* Un título dentro de una caja no necesita separarse de su propio borde. */
+.caja > :first-child, .comentario > :first-child {
+	margin-top: 0;
 }
 
 .silencio {
@@ -174,245 +382,9 @@ pre {
 	font-size: 0.85rem;
 }
 
-/* --- tablas ------------------------------------------------------------- */
-
-.tabla-envuelta {
-	overflow-x: auto;
-	margin: 0 0 1.2rem;
-}
-
-table {
-	width: 100%;
-	border-collapse: collapse;
-	background: var(--fondo-caja);
-	border: 1px solid var(--borde);
-	border-radius: var(--radio);
-}
-
-th, td {
-	text-align: left;
-	padding: 0.5rem 0.7rem;
-	border-bottom: 1px solid var(--borde);
-	vertical-align: top;
-}
-
-thead th {
-	background: var(--fondo-suave);
-	font-size: 0.8rem;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--texto-suave);
-}
-
-tbody tr:last-child td {
-	border-bottom: none;
-}
-
-td.numero, th.numero {
-	text-align: right;
-	font-variant-numeric: tabular-nums;
-}
-
-/* --- formularios -------------------------------------------------------- */
-
-form {
-	margin: 0 0 1rem;
-}
-
-fieldset {
-	border: 1px solid var(--borde);
-	border-radius: var(--radio);
-	margin: 0 0 1rem;
-	padding: 0.8rem 1rem 1rem;
-}
-
-legend {
-	color: var(--texto-suave);
-	font-size: 0.85rem;
-	padding: 0 0.3rem;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-}
-
-label {
-	display: block;
-	font-size: 0.9rem;
-	margin: 0 0 0.8rem;
-}
-
-label > span {
-	display: block;
-	color: var(--texto-suave);
-	margin-bottom: 0.2rem;
-}
-
-input[type="text"], input[type="password"], textarea, select {
-	width: 100%;
-	max-width: 40rem;
-	padding: 0.45rem 0.6rem;
-	font: inherit;
-	color: var(--texto);
-	background: var(--fondo);
-	border: 1px solid var(--borde);
-	border-radius: var(--radio);
-}
-
-textarea {
-	min-height: 6rem;
-	resize: vertical;
-}
-
-input[type="checkbox"], input[type="radio"] {
-	margin-right: 0.4rem;
-}
-
-label.opcion {
-	background: var(--fondo-suave);
-	border: 1px solid var(--borde);
-	border-radius: var(--radio);
-	padding: 0.5rem 0.7rem;
-	margin-bottom: 0.5rem;
-}
-
-label.opcion .consecuencia {
-	display: block;
-	color: var(--texto-suave);
-	font-size: 0.85rem;
-	margin: 0.2rem 0 0 1.4rem;
-}
-
-.recomendada {
-	color: var(--acento);
-	font-size: 0.8rem;
-	margin-left: 0.4rem;
-	white-space: nowrap;
-}
-
-button, .boton {
-	font: inherit;
-	padding: 0.4rem 0.9rem;
-	border-radius: var(--radio);
-	border: 1px solid var(--borde);
-	background: var(--fondo-suave);
-	color: var(--texto);
-	cursor: pointer;
-	text-decoration: none;
-	display: inline-block;
-}
-
-button:hover, .boton:hover {
-	border-color: var(--acento);
-}
-
-button.principal {
-	background: var(--acento);
-	border-color: var(--acento);
-	color: var(--acento-texto);
-}
-
-button.peligro, .boton.peligro {
-	color: var(--peligro);
-	border-color: var(--peligro);
-	background: transparent;
-}
-
-button.enlace {
-	background: none;
-	border: none;
-	padding: 0;
-	cursor: pointer;
-}
-
-.acciones {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.6rem 1rem;
-	align-items: flex-start;
-}
-
-.acciones form {
+.en-linea {
+	display: inline;
 	margin: 0;
-}
-
-.filtros {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.6rem 1rem;
-	align-items: flex-end;
-}
-
-.filtros label {
-	margin: 0;
-}
-
-.filtros input, .filtros select {
-	max-width: 14rem;
-}
-
-/* --- insignias ---------------------------------------------------------- */
-
-.insignia {
-	display: inline-block;
-	font-size: 0.75rem;
-	font-weight: 600;
-	letter-spacing: 0.02em;
-	padding: 0.1rem 0.5rem;
-	margin-right: 0.3rem;
-	border-radius: 999px;
-	border: 1px solid var(--borde);
-	background: var(--fondo-suave);
-	color: var(--texto-suave);
-	white-space: nowrap;
-}
-
-.estado-backlog { border-color: #9a9a92; color: #6c6c64; }
-.estado-prepared { border-color: #6d8fbc; color: #37608f; }
-.estado-doing { border-color: #c9963f; color: #8a6413; }
-.estado-done { border-color: #5f9a68; color: #2f6b39; }
-.estado-finished { border-color: #8d8d86; color: #6c6c64; }
-
-.marca-bloqueada { border-color: #c0574c; color: #9c3125; }
-.marca-sin-terminal { border-color: #b08a3a; color: #7f6011; }
-.marca-en-marcha { border-color: #4d8fa8; color: #2b6579; }
-.marca-analisis-listo { border-color: #6b8f4f; color: #47632f; }
-
-.tipo-analisis { border-color: #6d8fbc; color: #37608f; }
-.tipo-pregunta { border-color: #c0574c; color: #9c3125; }
-.tipo-respuesta { border-color: #5f9a68; color: #2f6b39; }
-.tipo-avance { border-color: #4d8fa8; color: #2b6579; }
-.tipo-resultado { border-color: #6b8f4f; color: #47632f; }
-.tipo-nota { border-color: #9a9a92; color: #6c6c64; }
-
-@media (prefers-color-scheme: dark) {
-	.estado-backlog { border-color: #7c7c74; color: #b6b6ae; }
-	.estado-prepared { border-color: #6d8fbc; color: #9dc0e6; }
-	.estado-doing { border-color: #c9963f; color: #e3bb74; }
-	.estado-done { border-color: #5f9a68; color: #93c79b; }
-	.estado-finished { border-color: #7c7c74; color: #b6b6ae; }
-
-	.marca-bloqueada { border-color: #c0574c; color: #eda79e; }
-	.marca-sin-terminal { border-color: #b08a3a; color: #dfbd74; }
-	.marca-en-marcha { border-color: #4d8fa8; color: #93c6da; }
-	.marca-analisis-listo { border-color: #6b8f4f; color: #adc98f; }
-
-	.tipo-analisis { border-color: #6d8fbc; color: #9dc0e6; }
-	.tipo-pregunta { border-color: #c0574c; color: #eda79e; }
-	.tipo-respuesta { border-color: #5f9a68; color: #93c79b; }
-	.tipo-avance { border-color: #4d8fa8; color: #93c6da; }
-	.tipo-resultado { border-color: #6b8f4f; color: #adc98f; }
-	.tipo-nota { border-color: #7c7c74; color: #b6b6ae; }
-}
-
-/* --- lista de tareas ---------------------------------------------------- */
-
-.grupo {
-	margin: 0 0 1.6rem;
-}
-
-.grupo h2 {
-	display: flex;
-	align-items: baseline;
-	gap: 0.5rem;
 }
 
 .contador {
@@ -431,39 +403,298 @@ button.enlace {
 	flex-wrap: wrap;
 	align-items: baseline;
 	gap: 0.5rem;
-	margin-bottom: 1rem;
+	margin-bottom: 1.4rem;
 }
 
-/* --- hilo --------------------------------------------------------------- */
+.grupo {
+	margin: 0 0 1.8rem;
+}
+
+.grupo h2 {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+}
+
+/* --- propiedades --------------------------------------------------------- */
+
+.propiedades {
+	margin: 0 0 1.8rem;
+}
+
+.propiedad {
+	display: grid;
+	grid-template-columns: 10rem 1fr;
+	align-items: baseline;
+	gap: 0.2rem 0.6rem;
+	padding: 0.18rem 0;
+}
+
+.propiedad dt {
+	color: var(--texto-suave);
+	font-size: 0.85rem;
+}
+
+.propiedad dd {
+	margin: 0;
+	min-width: 0;
+}
+
+/* --- tablas -------------------------------------------------------------- */
+
+.tabla-envuelta {
+	overflow-x: auto;
+	margin: 0 0 1.4rem;
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+th, td {
+	text-align: left;
+	padding: 0.45rem 0.6rem;
+	border-bottom: 1px solid var(--borde);
+	vertical-align: top;
+}
+
+thead th {
+	color: var(--texto-suave);
+	font-size: 0.72rem;
+	font-weight: 500;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+/* Las tablas de dos columnas (la ficha) usan «th» como nombre de la fila. */
+tbody th {
+	width: 10rem;
+	color: var(--texto-suave);
+	font-size: inherit;
+	font-weight: 400;
+	letter-spacing: normal;
+	text-transform: none;
+}
+
+tbody tr:hover td {
+	background: var(--fondo-hover);
+}
+
+tbody tr:last-child td, tbody tr:last-child th {
+	border-bottom: none;
+}
+
+td.numero, th.numero {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+/* --- formularios --------------------------------------------------------- */
+
+form {
+	margin: 0 0 1.2rem;
+}
+
+fieldset {
+	margin: 0 0 1rem;
+	padding: 0.8rem 1rem 0.3rem;
+	border: 1px solid var(--borde);
+	border-radius: var(--radio-tarjeta);
+}
+
+legend {
+	padding: 0 0.35rem;
+	color: var(--texto-suave);
+	font-size: 0.72rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+label {
+	display: block;
+	margin: 0 0 0.9rem;
+}
+
+label > span {
+	display: block;
+	margin-bottom: 0.25rem;
+	color: var(--texto-suave);
+	font-size: 0.85rem;
+}
+
+/* Los controles no llevan borde propio: un fondo suave y ya. El borde
+   transparente reserva el sitio para que el foco no mueva el diseño. */
+input[type="text"], input[type="password"], textarea, select {
+	width: 100%;
+	max-width: 34rem;
+	padding: 0.4rem 0.6rem;
+	font: inherit;
+	color: var(--texto);
+	background: var(--fondo-hover);
+	border: 1px solid transparent;
+	border-radius: var(--radio);
+}
+
+input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
+	outline: 2px solid var(--acento);
+	outline-offset: 0;
+}
+
+textarea {
+	min-height: 6rem;
+	resize: vertical;
+}
+
+input[type="checkbox"], input[type="radio"] {
+	margin-right: 0.4rem;
+	accent-color: var(--acento);
+}
+
+label.opcion {
+	padding: 0.5rem 0.7rem;
+	border: 1px solid var(--borde);
+	border-radius: var(--radio-tarjeta);
+	cursor: pointer;
+}
+
+label.opcion:hover {
+	background: var(--fondo-hover);
+}
+
+label.opcion:has(input:checked) {
+	border-color: var(--acento);
+}
+
+label.opcion .consecuencia {
+	display: block;
+	margin: 0.2rem 0 0 1.4rem;
+	color: var(--texto-suave);
+	font-size: 0.85rem;
+}
+
+.recomendada {
+	margin-left: 0.4rem;
+	color: var(--acento);
+	font-size: 0.78rem;
+	white-space: nowrap;
+}
+
+button, .boton {
+	display: inline-block;
+	padding: 0.35rem 0.8rem;
+	font: inherit;
+	color: var(--texto);
+	background: var(--fondo);
+	border: 1px solid var(--borde);
+	border-radius: var(--radio);
+	text-decoration: none;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+button:hover, .boton:hover {
+	background: var(--fondo-hover);
+}
+
+button.principal, .boton.principal {
+	background: var(--acento);
+	border-color: var(--acento);
+	color: #ffffff;
+}
+
+button.principal:hover, .boton.principal:hover {
+	filter: brightness(0.93);
+}
+
+button.peligro, .boton.peligro {
+	color: var(--peligro);
+	background: none;
+	border-color: transparent;
+}
+
+button.peligro:hover, .boton.peligro:hover {
+	background: var(--fondo-hover);
+}
+
+button.enlace {
+	padding: 0;
+	color: var(--texto-suave);
+	background: none;
+	border: none;
+	font-size: 0.85rem;
+}
+
+button.enlace:hover {
+	background: none;
+	color: var(--texto);
+	text-decoration: underline;
+}
+
+.acciones {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 0.5rem 0.7rem;
+}
+
+.acciones form {
+	margin: 0;
+}
+
+/* Los filtros son una fila de desplegables compactos, sin caja: la regla va
+   después de «.caja» para ganarle cuando el formulario lleva las dos clases. */
+.filtros {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 0.5rem 0.8rem;
+	margin: 0 0 1.6rem;
+	padding: 0;
+	border: none;
+}
+
+/* Los desplegables encogen antes que desbordar: en móvil se reparten la fila
+   y bajan a la siguiente, y la página nunca se desplaza en horizontal. */
+.filtros label {
+	flex: 1 1 8rem;
+	min-width: 0;
+	margin: 0;
+}
+
+.filtros input, .filtros select {
+	max-width: 12rem;
+}
+
+/* --- hilo ---------------------------------------------------------------- */
 
 .hilo {
 	display: flex;
 	flex-direction: column;
-	gap: 0.9rem;
-	margin-bottom: 1.4rem;
+	gap: 0.8rem;
+	margin-bottom: 1.6rem;
 }
 
 .comentario {
-	background: var(--fondo-caja);
+	padding: 0.8rem 1rem;
+	background: var(--fondo);
 	border: 1px solid var(--borde);
-	border-left: 4px solid var(--borde);
-	border-radius: var(--radio);
-	padding: 0.7rem 0.9rem;
+	border-radius: var(--radio-tarjeta);
 }
 
 .comentario > header {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 0.4rem 0.7rem;
-	margin-bottom: 0.4rem;
+	align-items: center;
+	gap: 0.35rem 0.6rem;
+	margin-bottom: 0.5rem;
 	color: var(--texto-suave);
 	font-size: 0.85rem;
 }
 
 .comentario .autor {
-	font-weight: 600;
 	color: var(--texto);
+	font-weight: 600;
 }
 
 .cuerpo > :first-child {
@@ -479,21 +710,20 @@ button.enlace {
 }
 
 .responder {
-	border-top: 1px dashed var(--borde);
-	margin-top: 0.8rem;
-	padding-top: 0.8rem;
+	margin: 0.9rem 0 0;
+	padding-top: 0.9rem;
+	border-top: 1px solid var(--borde);
 }
 
-/* --- terminales --------------------------------------------------------- */
+/* --- terminales ---------------------------------------------------------- */
 
 .token {
 	display: block;
-	background: var(--fondo-suave);
-	border: 1px solid var(--borde);
-	border-radius: var(--radio);
-	padding: 0.9rem 1rem;
 	margin: 0.8rem 0;
-	font-size: 1.1rem;
+	padding: 0.8rem 1rem;
+	background: var(--fondo-hover);
+	border-radius: var(--radio-tarjeta);
+	font-size: 1.05rem;
 	word-break: break-all;
 	user-select: all;
 }
@@ -505,32 +735,34 @@ button.enlace {
 	font-size: 0.85rem;
 }
 
-/* --- kanban ------------------------------------------------------------- */
+/* --- kanban -------------------------------------------------------------- */
 
-/* Cinco columnas fijas: si no caben, el tablero se desplaza en horizontal. */
+/* Cinco columnas fijas: si no caben, el tablero se desplaza en horizontal. El
+   mínimo está calculado para que las cinco entren a lo ancho de un portátil. */
 .columnas {
 	display: grid;
-	grid-template-columns: repeat(5, minmax(12rem, 1fr));
-	gap: 0.7rem;
+	grid-template-columns: repeat(5, minmax(11rem, 1fr));
+	gap: 0.9rem;
 	align-items: start;
 	overflow-x: auto;
 	padding-bottom: 0.6rem;
 }
 
+/* Las columnas no tienen fondo: lo que se ve son las tarjetas. */
 .columna {
-	background: var(--fondo-suave);
-	border: 1px solid var(--borde);
-	border-radius: var(--radio);
 	min-width: 0;
-	padding: 0.6rem 0.6rem 0.7rem;
+	padding: 0;
 }
 
 .columna h2 {
-	align-items: baseline;
 	display: flex;
-	font-size: 0.95rem;
+	flex-wrap: wrap;
+	align-items: center;
 	gap: 0.4rem;
-	margin-bottom: 0.5rem;
+	margin: 0 0 0.6rem;
+	padding: 0 0.15rem;
+	font-size: 0.85rem;
+	font-weight: 600;
 }
 
 .columna > p {
@@ -542,16 +774,20 @@ button.enlace {
 .tarjetas {
 	display: flex;
 	flex-direction: column;
-	gap: 0.45rem;
+	gap: 0.4rem;
 	min-height: 3rem;
 }
 
 .tarjeta {
-	background: var(--fondo-caja);
-	border: 1px solid var(--borde);
-	border-radius: var(--radio);
-	cursor: grab;
 	padding: 0.5rem 0.6rem;
+	background: var(--fondo);
+	border: 1px solid var(--borde);
+	border-radius: var(--radio-tarjeta);
+	cursor: grab;
+}
+
+.tarjeta:hover {
+	box-shadow: 0 1px 4px rgb(15 15 15 / 12%);
 }
 
 .tarjeta:active {
@@ -567,22 +803,27 @@ button.enlace {
 }
 
 .tarjeta .linea {
-	align-items: baseline;
 	display: flex;
 	flex-wrap: wrap;
+	align-items: baseline;
 	gap: 0.3rem;
 	margin-bottom: 0.25rem;
 }
 
 .tarjeta .titulo {
-	font-size: 0.92rem;
 	line-height: 1.35;
 }
 
-/* La marca de SortableJS mientras se arrastra. */
+/* El hueco que SortableJS deja donde caería la tarjeta. */
 .tarjeta.arrastrando {
 	border-style: dashed;
 	opacity: 0.45;
+	box-shadow: none;
+}
+
+/* La tarjeta que va con el puntero: la única sombra fuerte de la web. */
+.tarjeta.sortable-chosen, .tarjeta.sortable-drag {
+	box-shadow: 0 6px 16px rgb(15 15 15 / 22%);
 }
 
 .aviso-tablero {
@@ -591,33 +832,67 @@ button.enlace {
 
 /* Aviso de la ficha: no se recarga sola, así que el humano decide cuándo. */
 .aviso-recarga {
-	background: var(--fondo-caja);
-	border: 1px solid var(--acento);
-	border-radius: 0 0 var(--radio) var(--radio);
-	border-top: none;
-	box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
-	left: 50%;
-	padding: 0.5rem 0.9rem;
 	position: fixed;
 	top: 0;
+	left: 50%;
 	transform: translateX(-50%);
-	z-index: 10;
+	padding: 0.5rem 0.9rem;
+	background: var(--fondo);
+	border: 1px solid var(--acento);
+	border-top: none;
+	border-radius: 0 0 var(--radio-tarjeta) var(--radio-tarjeta);
+	z-index: 30;
 }
 
-.navegacion .par {
-	align-items: baseline;
-	color: var(--texto-suave);
-	display: flex;
-	gap: 0.4rem;
-}
+/* --- móvil: la barra lateral se convierte en panel ----------------------- */
 
-@media (max-width: 40rem) {
+@media (max-width: 48rem) {
+	.cabecera-movil {
+		display: flex;
+		position: sticky;
+		top: 0;
+		z-index: 15;
+		align-items: center;
+		gap: 0.6rem;
+		padding: 0.5rem 0.8rem;
+		background: var(--fondo-lateral);
+		border-bottom: 1px solid var(--borde);
+	}
+
+	.cabecera-movil .marca {
+		color: var(--texto);
+		font-weight: 700;
+		text-decoration: none;
+	}
+
+	.lateral {
+		width: min(15rem, 82vw);
+		transform: translateX(-100%);
+		transition: transform 0.15s ease-out;
+		box-shadow: 0 0 24px rgb(15 15 15 / 30%);
+	}
+
+	body.lateral-abierta .lateral {
+		transform: none;
+	}
+
 	.contenido {
-		padding: 1rem 0.8rem 2.5rem;
+		margin-left: 0;
+		padding: 1.6rem 1rem 4rem;
+	}
+
+	.propiedad {
+		grid-template-columns: 1fr;
 	}
 
 	th, td {
 		padding: 0.45rem 0.5rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.lateral {
+		transition: none;
 	}
 }
 `;

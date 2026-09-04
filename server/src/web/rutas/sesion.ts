@@ -3,13 +3,20 @@ import { html } from "hono/html";
 import { verificarPassword } from "../../auth/passwords.ts";
 import { buscarUsuarioPorNombre } from "../../db/consultas.ts";
 import { campo, leerFormulario } from "../formulario.ts";
-import { type Html, pagina } from "../plantilla.ts";
+import { type Html, NOMBRE_PROYECTO, pagina } from "../plantilla.ts";
 import { cerrarSesion, type DependenciasWeb, destinoSeguro, iniciarSesion, leerSesion } from "../sesion.ts";
 
-/** El formulario de entrada. Es la única página de la web que no exige sesión. */
+/**
+ * El formulario de entrada. Es la única página de la web que no exige sesión,
+ * y por eso no tiene barra lateral: una tarjeta centrada y nada más. El aviso
+ * va dentro de la tarjeta, junto al formulario que lo produjo, así que a
+ * `pagina` no se le pasa ninguno.
+ */
 function paginaLogin(volver: string, aviso: string | null): Html {
 	const cuerpo = html`<section class="caja">
+		<p class="marca-entrada">${NOMBRE_PROYECTO}</p>
 		<h1>Entrar</h1>
+		${aviso === null ? html`` : html`<p class="aviso" role="alert">${aviso}</p>`}
 		<form method="post" action="/login">
 			<input type="hidden" name="volver" value="${volver}">
 			<label>
@@ -23,7 +30,7 @@ function paginaLogin(volver: string, aviso: string | null): Html {
 			<button type="submit" class="principal">Entrar</button>
 		</form>
 	</section>`;
-	return pagina({ titulo: "Entrar", usuario: null, aviso, cuerpo });
+	return pagina({ titulo: "Entrar", usuario: null, vista: "login", cuerpo });
 }
 
 /** `GET /login`, `POST /login` y `POST /logout`. */
