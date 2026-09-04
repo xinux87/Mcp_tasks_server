@@ -1,9 +1,21 @@
 import type { DatabaseSync } from "node:sqlite";
 import { hashPassword } from "../src/auth/passwords.ts";
 import { crearTerminalConToken } from "../src/auth/tokens.ts";
+import type { Config } from "../src/config.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
 import { esErrorDeRegla } from "../src/errores.ts";
+
+/** URL pública de las pruebas. En http, así la cookie de sesión no exige `Secure`. */
+export const BASE_URL_PRUEBA = "http://localhost:3000";
+
+/** Configuración mínima para montar la app en memoria. */
+export const CONFIG_PRUEBA: Config = {
+	PORT: 3000,
+	DATA_DIR: ":memory:",
+	BASE_URL: BASE_URL_PRUEBA,
+	SESSION_SECRET: "secreto-de-pruebas",
+};
 
 /** Base en memoria con un humano y dos terminales, que es lo mínimo para probar las reglas. */
 export type Banco = {

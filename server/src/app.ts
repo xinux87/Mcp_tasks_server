@@ -2,8 +2,9 @@ import type { DatabaseSync } from "node:sqlite";
 import { createMcpHonoApp } from "@modelcontextprotocol/hono";
 import type { Hono } from "hono";
 import { authInfoDelContexto, bearerTerminal } from "./auth/bearer.ts";
-import { HOST_ESCUCHA, hostsPermitidos } from "./config.ts";
+import { type Config, HOST_ESCUCHA, hostsPermitidos } from "./config.ts";
 import { crearHandlerMcp } from "./mcp/handler.ts";
+import { montarWeb } from "./web/montar.ts";
 
 declare module "hono" {
 	interface ContextVariableMap {
@@ -18,7 +19,8 @@ declare module "hono" {
 
 export type OpcionesApp = {
 	db: DatabaseSync;
-	baseUrl: string;
+	/** La configuración entera: la web necesita `SESSION_SECRET` además de `BASE_URL`. */
+	config: Config;
 };
 
 export type App = {
@@ -28,13 +30,13 @@ export type App = {
 };
 
 /**
- * La app Hono del servidor. De momento monta `/salud` y `/mcp`; la API de uso,
- * los eventos y la web llegarán en otros encargos (ver «Un solo proceso, un
- * solo puerto» en CLAUDE.md).
+ * La app Hono del servidor. Monta `/salud`, `/mcp` y la web; la API de uso y
+ * los eventos llegarán en otros encargos (ver «Un solo proceso, un solo
+ * puerto» en CLAUDE.md).
  */
-export function crearApp({ db, baseUrl }: OpcionesApp): App {
+export function crearApp({ db, config }: OpcionesApp): App {
 	const handler = crearHandlerMcp(db);
-	const app = createMcpHonoApp({ host: HOST_ESCUCHA, allowedHosts: hostsPermitidos(baseUrl) });
+	const app = createMcpHonoApp({ host: HOST_ESCUCHA, allowedHosts: hostsPermitidos(config.BASE_URL) });
 
 	// Comprobación de vida para Docker. Sin autenticación.
 	app.get("/salud", (c) => c.json({ ok: true }));
@@ -47,6 +49,8 @@ export function crearApp({ db, baseUrl }: OpcionesApp): App {
 			parsedBody: c.get("parsedBody"),
 		});
 	});
+
+	montarWeb(app, { db, config });
 
 	return { app, cerrar: () => handler.close() };
 }

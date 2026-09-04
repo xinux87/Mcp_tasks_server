@@ -8,8 +8,9 @@ import { hashPassword } from "../src/auth/passwords.ts";
 import { crearTerminalConToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
+import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
-const BASE_URL = "http://localhost:3000";
+const BASE_URL = BASE_URL_PRUEBA;
 const URL_MCP = new URL("/mcp", BASE_URL);
 
 type Montaje = {
@@ -26,7 +27,7 @@ function montar(): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
 	const { valor: usuario } = crearUsuario(db, "xinux", hashPassword("secreta"));
 	const { valor } = crearTerminalConToken(db, usuario.id, "portatil-xinux", "xinux@ejemplo.com");
-	const { app, cerrar } = crearApp({ db, baseUrl: BASE_URL });
+	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
 	return {
 		db,
 		app,
