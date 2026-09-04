@@ -49,6 +49,12 @@ herramientas se llaman con el prefijo completo del plugin:
 Si el servidor estuviera configurado fuera del plugin, el prefijo sería
 `mcp__tareas__`. Busca el que exista en tu lista de herramientas.
 
+Cualquier herramienta puede devolver un **resultado de error** con la forma
+`<codigo>: <mensaje>` (por ejemplo `fase_tomada: Otro terminal es el
+responsable…`). Significa que lo pedido no es posible con el estado actual de
+la tarea. No repitas la misma llamada: lee el código y actúa según la tabla de
+abajo o termina la vuelta diciendo qué pasó.
+
 ---
 
 ## Paso 1. Sincronizar con el servidor
@@ -136,8 +142,8 @@ así el humano ve avance de una en una y el consumo queda bien atribuido.
 ## Paso 4. Tomar la fase y lanzar el subagente
 
 1. Llama a `tomar_tarea` con el id y la fase (`analisis` o `ejecucion`).
-   - Si falla porque esa fase ya tiene otro terminal responsable, no insistas:
-     di que la tarea está tomada y termina la vuelta.
+   - Si devuelve el error `fase_tomada`, esa fase ya tiene otro terminal
+     responsable: no insistas, di que la tarea está tomada y termina la vuelta.
    - `tomar_tarea` con fase `ejecucion` pasa la tarea a `doing` ella sola. No
      cambies el estado a mano.
 2. Lanza **un** subagente con la herramienta Agent:
