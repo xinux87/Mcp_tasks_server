@@ -324,6 +324,10 @@ Las acciones del humano sobre tareas llaman a las funciones de `src/db/`; la web
 - **Usuarios.** Borrar un usuario es contenido y sube la revisión; cambiar la contraseña no. No se puede borrar el último usuario (`ultimo_usuario`) ni uno con terminales a su nombre (`usuario_con_terminales`): el token quedaría sin dueño. Al borrar, las referencias en tareas y preguntas quedan a nulo; el autor ya está escrito como texto en el hilo.
 - **Editar una tarea solo en `backlog`** (`solo_en_backlog`): título, descripción, asignaciones y `autoejecucion`.
 - **`markdown-it` trae sus propios tipos**; no se instala `@types/markdown-it`.
+- **Refresco en vivo.** Solo la lista, el kanban y la ficha llevan `data-revision` en el `<body>` y abren la conexión SSE; las demás páginas no la necesitan. La lista se recarga pidiendo la misma dirección con GET, nunca con `reload()`, porque una página pintada como respuesta a un POST reenviaría el formulario. El aviso de la ficha se dispara con cualquier escritura de contenido, porque la revisión es global.
+- **SortableJS se carga a demanda** con una etiqueta `<script>` solo donde hay tablero: el resto de páginas no descarga los 45 KB.
+- **`POST /tareas/T-0042/orden`** responde 204, o `{ codigo, mensaje }` con 422 (`nota_obligatoria`, `transicion_no_permitida`, `estado_desconocido`, `orden_invalido`) o 404 (`id_invalido`, `tarea_inexistente`). En la columna Cerradas se muestran las diez más recientes y un enlace a la lista completa.
+- **Orden de rutas.** Hono resuelve por orden de registro: `GET /tareas/kanban` se registra antes que `GET /tareas/:id`.
 
 ## El servidor MCP
 

@@ -1,7 +1,9 @@
 import type { Hono } from "hono";
 import { html } from "hono/html";
-import { CSS } from "./estilos.ts";
+import { registrarEstaticos } from "./estaticos.ts";
 import { pagina } from "./plantilla.ts";
+import { registrarRutasEventos } from "./rutas/eventos.ts";
+import { registrarRutasKanban } from "./rutas/kanban.ts";
 import { registrarRutasSesion } from "./rutas/sesion.ts";
 import { registrarRutasTareas } from "./rutas/tareas.ts";
 import { registrarRutasTerminales } from "./rutas/terminales.ts";
@@ -12,9 +14,10 @@ export type { DependenciasWeb } from "./sesion.ts";
 
 /**
  * Rutas que exigen sesión. `/login` y `/salud` quedan fuera, como dice
- * «Sesión y seguridad» en CLAUDE.md.
+ * «Sesión y seguridad» en CLAUDE.md. `/eventos` va con cookie de sesión, como
+ * el resto de la web.
  */
-const PRIVADAS = ["/tareas", "/tareas/*", "/terminales", "/terminales/*", "/usuarios", "/usuarios/*"];
+const PRIVADAS = ["/tareas", "/tareas/*", "/terminales", "/terminales/*", "/usuarios", "/usuarios/*", "/eventos"];
 
 /** Rutas de la web que aceptan POST y por tanto necesitan el filtro anti cross-site. */
 const CON_POST = ["/login", "/logout", ...PRIVADAS];
@@ -33,17 +36,16 @@ export function montarWeb(app: Hono, deps: DependenciasWeb): void {
 		app.use(ruta, requiereSesion(deps));
 	}
 
-	// Sin archivos estáticos en disco: la hoja de estilos es una constante.
-	app.get("/static/app.css", (c) =>
-		c.body(CSS, 200, {
-			"Content-Type": "text/css; charset=utf-8",
-			"Cache-Control": "public, max-age=3600",
-		}),
-	);
+	// La hoja de estilos, el JavaScript propio y SortableJS.
+	registrarEstaticos(app);
 
 	app.get("/", (c) => c.redirect("/tareas", 302));
 
 	registrarRutasSesion(app, deps);
+	registrarRutasEventos(app, deps);
+	// El kanban va antes que las rutas de tarea: si no, `/tareas/kanban` se
+	// leería como la ficha de una tarea llamada «kanban».
+	registrarRutasKanban(app, deps);
 	registrarRutasTareas(app, deps);
 	registrarRutasTerminales(app, deps);
 	registrarRutasUsuarios(app, deps);

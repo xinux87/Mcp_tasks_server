@@ -141,7 +141,9 @@ function paginaTerminales(c: Context, deps: DependenciasWeb, aviso: string | nul
 		</form>`;
 
 	return c.html(
-		pagina({ titulo: "Terminales", usuario: usuarioActual(c), aviso, cuerpo }),
+		// Solo esta página se refresca sola: la del token recién creado no, que
+		// se perdería de vista lo único que no se vuelve a enseñar.
+		pagina({ titulo: "Terminales", usuario: usuarioActual(c), vista: "terminales", aviso, cuerpo }),
 		aviso === null ? 200 : ESTADO_AVISO,
 	);
 }

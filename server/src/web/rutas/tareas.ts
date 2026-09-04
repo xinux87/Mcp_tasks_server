@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { Context, Hono } from "hono";
 import { html, raw } from "hono/html";
 import { type TerminalListado, terminalesActivos } from "../../db/admin.ts";
+import { revisionActual } from "../../db/consultas.ts";
 import type { ConsumoDeTarea } from "../../db/consumo.ts";
 import { editarTareaBacklog, exigirTitulo } from "../../db/edicion.ts";
 import { type Comentario, notaHumana, type Pregunta, responder } from "../../db/hilo.ts";
@@ -421,6 +422,7 @@ function paginaNoEncontrada(c: Context, mensaje: string): RespuestaHtml {
 		pagina({
 			titulo: "No encontrada",
 			usuario: usuarioActual(c),
+			vista: "tarea",
 			aviso: mensaje,
 			cuerpo: html`<p><a href="/tareas">Volver a la lista de tareas</a></p>`,
 		}),
@@ -459,7 +461,11 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 				items.filter((item) => item.estado === columna.estado),
 			),
 		)}`;
-	return c.html(pagina({ titulo: "Tareas", usuario: usuarioActual(c), cuerpo }));
+	// `vista` y `revision` son lo que el cliente necesita para refrescarse: la
+	// lista se recarga entera cuando sube la revisión.
+	return c.html(
+		pagina({ titulo: "Tareas", usuario: usuarioActual(c), vista: "lista", revision: revisionActual(db), cuerpo }),
+	);
 }
 
 function paginaNueva(c: Context, deps: DependenciasWeb, valores: ValoresTarea, aviso: string | null): RespuestaHtml {
@@ -471,7 +477,7 @@ function paginaNueva(c: Context, deps: DependenciasWeb, valores: ValoresTarea, a
 			<a class="boton" href="/tareas">Cancelar</a>
 		</form>`;
 	return c.html(
-		pagina({ titulo: "Nueva tarea", usuario: usuarioActual(c), aviso, cuerpo }),
+		pagina({ titulo: "Nueva tarea", usuario: usuarioActual(c), vista: "tarea-nueva", aviso, cuerpo }),
 		aviso === null ? 200 : ESTADO_AVISO,
 	);
 }
@@ -555,7 +561,15 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 		${editar}`;
 
 	return c.html(
-		pagina({ titulo: `${id} · ${tarea.titulo}`, usuario: usuarioActual(c), aviso, cuerpo }),
+		// La ficha no se recarga sola: tiene formularios. El cliente solo avisa.
+		pagina({
+			titulo: `${id} · ${tarea.titulo}`,
+			usuario: usuarioActual(c),
+			vista: "ficha",
+			revision: completa.revisionServidor,
+			aviso,
+			cuerpo,
+		}),
 		aviso === null ? 200 : ESTADO_AVISO,
 	);
 }

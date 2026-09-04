@@ -505,6 +505,112 @@ button.enlace {
 	font-size: 0.85rem;
 }
 
+/* --- kanban ------------------------------------------------------------- */
+
+/* Cinco columnas fijas: si no caben, el tablero se desplaza en horizontal. */
+.columnas {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(12rem, 1fr));
+	gap: 0.7rem;
+	align-items: start;
+	overflow-x: auto;
+	padding-bottom: 0.6rem;
+}
+
+.columna {
+	background: var(--fondo-suave);
+	border: 1px solid var(--borde);
+	border-radius: var(--radio);
+	min-width: 0;
+	padding: 0.6rem 0.6rem 0.7rem;
+}
+
+.columna h2 {
+	align-items: baseline;
+	display: flex;
+	font-size: 0.95rem;
+	gap: 0.4rem;
+	margin-bottom: 0.5rem;
+}
+
+.columna > p {
+	margin: 0.5rem 0 0;
+}
+
+/* La zona donde se sueltan las tarjetas. Con la columna vacía sigue habiendo
+   sitio para soltar. */
+.tarjetas {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+	min-height: 3rem;
+}
+
+.tarjeta {
+	background: var(--fondo-caja);
+	border: 1px solid var(--borde);
+	border-radius: var(--radio);
+	cursor: grab;
+	padding: 0.5rem 0.6rem;
+}
+
+.tarjeta:active {
+	cursor: grabbing;
+}
+
+.tarjeta p {
+	margin: 0 0 0.2rem;
+}
+
+.tarjeta p:last-child {
+	margin-bottom: 0;
+}
+
+.tarjeta .linea {
+	align-items: baseline;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3rem;
+	margin-bottom: 0.25rem;
+}
+
+.tarjeta .titulo {
+	font-size: 0.92rem;
+	line-height: 1.35;
+}
+
+/* La marca de SortableJS mientras se arrastra. */
+.tarjeta.arrastrando {
+	border-style: dashed;
+	opacity: 0.45;
+}
+
+.aviso-tablero {
+	margin-bottom: 0.9rem;
+}
+
+/* Aviso de la ficha: no se recarga sola, así que el humano decide cuándo. */
+.aviso-recarga {
+	background: var(--fondo-caja);
+	border: 1px solid var(--acento);
+	border-radius: 0 0 var(--radio) var(--radio);
+	border-top: none;
+	box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
+	left: 50%;
+	padding: 0.5rem 0.9rem;
+	position: fixed;
+	top: 0;
+	transform: translateX(-50%);
+	z-index: 10;
+}
+
+.navegacion .par {
+	align-items: baseline;
+	color: var(--texto-suave);
+	display: flex;
+	gap: 0.4rem;
+}
+
 @media (max-width: 40rem) {
 	.contenido {
 		padding: 1rem 0.8rem 2.5rem;

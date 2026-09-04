@@ -62,6 +62,16 @@ export type OpcionesPagina = {
 	usuario: Usuario | null;
 	/** Mensaje de un `ErrorDeRegla` o confirmación, tal cual. */
 	aviso?: string | null;
+	/**
+	 * Qué vista es, para el cliente: `lista`, `kanban`, `ficha`, `terminales`
+	 * o el nombre de la página. Cada una se refresca de una manera.
+	 */
+	vista?: string;
+	/**
+	 * Revisión global de la que parte el cliente. Solo la pasan las páginas
+	 * que se refrescan en vivo; sin ella el cliente no abre el SSE.
+	 */
+	revision?: number;
 	cuerpo: Html;
 };
 
@@ -69,8 +79,12 @@ function navegacion(usuario: Usuario | null): Html {
 	if (usuario === null) {
 		return html``;
 	}
+	// Las dos vistas de las mismas tareas van juntas y siempre visibles: son
+	// la misma sección, no dos sitios distintos.
 	return html`<nav class="navegacion">
-			<a href="/tareas">Tareas</a>
+			<span class="par">
+				Tareas <a href="/tareas">Lista</a> <a href="/tareas/kanban">Kanban</a>
+			</span>
 			<a href="/terminales">Terminales</a>
 			<a href="/usuarios">Usuarios</a>
 			<form method="post" action="/logout" class="en-linea">
@@ -81,10 +95,19 @@ function navegacion(usuario: Usuario | null): Html {
 }
 
 /**
+ * Los `data-` del `<body>`: la vista siempre, y la revisión solo donde el
+ * refresco en vivo tiene sentido. El cliente no hace nada sin ellos.
+ */
+function atributosCuerpo(vista: string | undefined, revision: number | undefined): Html {
+	const cual = html` data-vista="${vista ?? "otra"}"`;
+	return revision === undefined ? cual : html`${cual} data-revision="${revision}"`;
+}
+
+/**
  * El layout de toda la web: cabecera con el nombre del proyecto y la
  * navegación, zona de aviso, cuerpo y pie. HTML5 en español.
  */
-export function pagina({ titulo, usuario, aviso, cuerpo }: OpcionesPagina): Html {
+export function pagina({ titulo, usuario, aviso, vista, revision, cuerpo }: OpcionesPagina): Html {
 	return html`<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -93,7 +116,7 @@ export function pagina({ titulo, usuario, aviso, cuerpo }: OpcionesPagina): Html
 <title>${titulo} · ${NOMBRE_PROYECTO}</title>
 <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
+<body${atributosCuerpo(vista, revision)}>
 <header class="cabecera">
 	<a class="marca" href="/tareas">${NOMBRE_PROYECTO}</a>
 	${navegacion(usuario)}
@@ -105,6 +128,7 @@ export function pagina({ titulo, usuario, aviso, cuerpo }: OpcionesPagina): Html
 <footer class="pie">
 	<span>${NOMBRE_PROYECTO} · las tareas y quién las trabaja</span>
 </footer>
+<script type="module" src="/static/app.js"></script>
 </body>
 </html>`;
 }
