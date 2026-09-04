@@ -83,7 +83,7 @@ Son las columnas del kanban, en este orden. Cada columna tiene un dueño: quien 
 No son columnas ni se guardan: se derivan del estado de la tarea al leerla. Se muestran como etiqueta sobre la tarjeta, en cualquier estado:
 
 - **`bloqueada`**: tiene al menos una pregunta sin respuesta. Es la marca que el humano tiene que atender.
-- **`sin terminal`**: la fase que toca (análisis en `prepared` sin análisis hecho, ejecución en el resto) no tiene terminal asignado. Cualquier terminal puede tomarla.
+- **`sin terminal`**: solo en `prepared` y `doing`. La fase que toca (análisis en `prepared` sin análisis hecho, ejecución en el resto) no tiene terminal asignado. Cualquier terminal puede tomarla.
 - **`en marcha`**: un terminal la ha tomado con `tomar_tarea` y todavía no ha escrito el comentario que cierra esa fase.
 - **`análisis listo`**: está en `prepared`, el análisis está hecho, no hay preguntas abiertas, `autoejecucion` está desactivada y el humano aún no ha aprobado.
 
@@ -93,7 +93,7 @@ La fase que toca en una tarea es «análisis» mientras está en `prepared` sin 
 
 Solo las hace el humano y siempre dejan un comentario `nota` explicando por qué:
 
-- De `prepared` a `backlog`, para repensarla. El análisis existente se conserva en el hilo.
+- De `prepared` a `backlog`, para repensarla. El comentario de análisis se conserva en el hilo, pero la tarea vuelve a necesitar análisis y aprobación al salir de nuevo de `backlog`: se repite porque la descripción puede haber cambiado.
 - De `done` a `doing`, cuando el resultado no vale.
 
 El agente nunca mueve una tarea hacia atrás. Si no puede seguir, pregunta o la deja bloqueada.
@@ -137,6 +137,7 @@ Cada tarea guarda cuántos tokens ha costado. Lo reporta el plugin, no el modelo
 - **Cada fase corre como un subagente propio.** Cuando el subagente termina, Claude Code entrega al agente del bucle un aviso con los tokens totales, las llamadas a herramientas y la duración de ese subagente. El bucle reenvía esas cifras con `reportar_consumo`. Si una fase se retoma tras una pregunta, el nuevo consumo se suma al anterior.
 - **Lo que gasta el bucle mientras espera** (llamadas a `novedades`, lecturas de índice) se atribuye al terminal, no a ninguna tarea. Así el coste de una tarea es solo el de trabajarla.
 - **El dato sale de la herramienta, no de una estimación del modelo.** El bucle copia la cifra que le da Claude Code; nunca la calcula ni la redondea.
+- **Reportar consumo sube la revisión global pero no la de la tarea.** Si la subiera, el agente recibiría su propia tarea como novedad justo después de reportar.
 - **El desglose en entrada, salida y caché no está en ese aviso.** Existe en la transcripción de la sesión, pero su formato es interno y no está documentado. Se descarta por ahora; si hiciera falta, sería un campo opcional que solo se rellena cuando se pueda leer de forma estable.
 
 ## Formato Markdown
@@ -150,12 +151,12 @@ Es lo que devuelve `leer_tarea`. Frontmatter YAML con los campos, y después el 
 ```markdown
 ---
 id: T-0042
-titulo: Exportar el listado de clientes a CSV
-estado: doing
+titulo: "Exportar el listado de clientes a CSV"
+estado: done
 orden: 3
 padre: T-0040
 autoejecucion: true
-marcas: [bloqueada, en marcha]
+marcas: []
 analisis:
   modelo: sonnet
   terminal: portatil-xinux
@@ -233,7 +234,11 @@ Convenciones del documento:
 - **Cabecera de cada comentario**: `### tipo · autor · fecha`, y un identificador `P<n>` al final solo en preguntas y respuestas, para saber qué respuesta contesta a qué pregunta.
 - **Autor**: `modelo@terminal` cuando escribe un agente, `humano:<usuario>` cuando escribe una persona.
 - **Fechas** en ISO 8601 y UTC, en el frontmatter y en el hilo.
-- **`marcas`** solo lista las activas. Si no hay ninguna, el campo va vacío.
+- **`marcas`** solo lista las activas, como lista en línea: `[bloqueada, en marcha]`. Si no hay ninguna, `[]`.
+- **`titulo`** va siempre entre comillas dobles, escapado como JSON. El resto de valores van sin comillas.
+- **Una fase sin modelo o sin terminal** escribe `~` en el campo que falta.
+- **`consumo`** solo aparece si la tarea o sus hijas tienen consumo. Si una fase se retoma con otro modelo, las cifras se suman y los modelos se unen con `+`.
+- **Sin hijas**, el bloque dice `Ninguna.`; **sin comentarios**, el hilo dice `Ninguno.`
 - **`revision`** es la revisión global del servidor en el momento de la lectura. El agente la guarda para la siguiente llamada a `novedades`.
 - **La descripción se muestra tal como la escribió el humano**, sin tocar. Es el bloque congelado al salir de `backlog`.
 
@@ -245,7 +250,7 @@ Es lo que devuelven `listar_tareas` y `novedades` por cada tarea. Una línea, si
 - T-0042 · doing · bloqueada · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-xinux · ejecucion: opus@portatil-xinux
 ```
 
-Las marcas van entre el estado y el título, separadas por `·`. Si no hay marcas, no aparece nada en esa posición.
+Las marcas van entre el estado y el título, separadas por `·`. Si no hay marcas, no aparece nada en esa posición. Una fase sin modelo ni terminal se escribe `analisis: sin asignar`; con solo uno de los dos, `analisis: sonnet` o `analisis: @portatil-xinux`.
 
 ### Salida de `novedades`
 
@@ -255,7 +260,7 @@ revision: 190
 ## Tareas nuevas o cambiadas
 
 - T-0042 · doing · bloqueada · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-xinux · ejecucion: opus@portatil-xinux
-- T-0045 · prepared · sin terminal · Migrar el envío de correos a la cola
+- T-0045 · prepared · sin terminal · Migrar el envío de correos a la cola · analisis: sin asignar · ejecucion: sin asignar
 
 ## Preguntas contestadas
 

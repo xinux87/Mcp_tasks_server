@@ -1,4 +1,21 @@
-import type { DatabaseSync, StatementSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
+import {
+	ahora,
+	type ConRevision,
+	enTransaccion,
+	enTransaccionConRevision,
+	entero,
+	enteroOpcional,
+	idInsertado,
+	sentencia,
+	texto,
+	textoOpcional,
+} from "./base.ts";
+
+// Los helpers compartidos viven en `base.ts` para que los usen también
+// `tareas.ts`, `hilo.ts` y `consumo.ts`. Se reexportan desde aquí porque este
+// es el módulo por el que entra el resto del servidor.
+export { ahora, type ConRevision, enTransaccion, enTransaccionConRevision, revisionActual } from "./base.ts";
 
 export type Usuario = {
 	id: number;
@@ -20,71 +37,7 @@ export type Terminal = {
 	revocadoEn: string | null;
 };
 
-/** Valor devuelto por `enTransaccionConRevision`: lo que produjo la función y la nueva revisión. */
-export type ConRevision<T> = {
-	valor: T;
-	revision: number;
-};
-
-// --- utilidades internas -----------------------------------------------------
-
-/**
- * Caché de sentencias preparadas por base de datos. Prepararlas una sola vez
- * es la razón de usar SQL a mano en vez de un ORM.
- */
-const cacheSentencias = new WeakMap<DatabaseSync, Map<string, StatementSync>>();
-
-function sentencia(db: DatabaseSync, sql: string): StatementSync {
-	let porBase = cacheSentencias.get(db);
-	if (porBase === undefined) {
-		porBase = new Map();
-		cacheSentencias.set(db, porBase);
-	}
-	let preparada = porBase.get(sql);
-	if (preparada === undefined) {
-		preparada = db.prepare(sql);
-		porBase.set(sql, preparada);
-	}
-	return preparada;
-}
-
-function texto(fila: Record<string, unknown>, columna: string): string {
-	const valor = fila[columna];
-	if (typeof valor !== "string") {
-		throw new Error(`la columna ${columna} no es texto`);
-	}
-	return valor;
-}
-
-function textoOpcional(fila: Record<string, unknown>, columna: string): string | null {
-	const valor = fila[columna];
-	if (valor === null || valor === undefined) {
-		return null;
-	}
-	if (typeof valor !== "string") {
-		throw new Error(`la columna ${columna} no es texto`);
-	}
-	return valor;
-}
-
-function entero(fila: Record<string, unknown>, columna: string): number {
-	const valor = fila[columna];
-	if (typeof valor === "number") {
-		return valor;
-	}
-	if (typeof valor === "bigint") {
-		return Number(valor);
-	}
-	throw new Error(`la columna ${columna} no es un entero`);
-}
-
-function enteroOpcional(fila: Record<string, unknown>, columna: string): number | null {
-	const valor = fila[columna];
-	if (valor === null || valor === undefined) {
-		return null;
-	}
-	return entero(fila, columna);
-}
+// --- mapeadores de fila ------------------------------------------------------
 
 function comoUsuario(fila: Record<string, unknown>): Usuario {
 	return {
@@ -108,63 +61,6 @@ function comoTerminal(fila: Record<string, unknown>): Terminal {
 		creado: texto(fila, "creado"),
 		revocadoEn: textoOpcional(fila, "revocado_en"),
 	};
-}
-
-function idInsertado(valor: number | bigint): number {
-	return typeof valor === "bigint" ? Number(valor) : valor;
-}
-
-/** Fecha actual en ISO 8601 UTC, el formato en el que se guardan todas las fechas. */
-export function ahora(): string {
-	return new Date().toISOString();
-}
-
-// --- revisión ----------------------------------------------------------------
-
-/** Revisión global actual del servidor. */
-export function revisionActual(db: DatabaseSync): number {
-	const fila = sentencia(db, "SELECT valor FROM revision WHERE id = 1").get();
-	if (fila === undefined) {
-		throw new Error("la tabla revision no tiene la fila 1");
-	}
-	return entero(fila, "valor");
-}
-
-/**
- * Transacción simple, sin tocar el contador de revisión. Es la que usan las
- * escrituras de telemetría de los terminales.
- */
-export function enTransaccion<T>(db: DatabaseSync, fn: (db: DatabaseSync) => T): T {
-	db.exec("BEGIN IMMEDIATE");
-	try {
-		const valor = fn(db);
-		db.exec("COMMIT");
-		return valor;
-	} catch (error) {
-		db.exec("ROLLBACK");
-		throw error;
-	}
-}
-
-/**
- * Envuelve una escritura de contenido: la ejecuta en una transacción que
- * además sube el contador de revisión global. Contenido son tareas,
- * comentarios, preguntas, respuestas, consumo, y altas o revocaciones de
- * usuarios y terminales. La telemetría de los terminales NO pasa por aquí
- * (ver «Señal de novedad» en CLAUDE.md).
- */
-export function enTransaccionConRevision<T>(db: DatabaseSync, fn: (db: DatabaseSync) => T): ConRevision<T> {
-	db.exec("BEGIN IMMEDIATE");
-	try {
-		const valor = fn(db);
-		sentencia(db, "UPDATE revision SET valor = valor + 1 WHERE id = 1").run();
-		const revision = revisionActual(db);
-		db.exec("COMMIT");
-		return { valor, revision };
-	} catch (error) {
-		db.exec("ROLLBACK");
-		throw error;
-	}
 }
 
 // --- usuarios ----------------------------------------------------------------
