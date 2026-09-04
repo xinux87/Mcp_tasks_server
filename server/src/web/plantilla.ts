@@ -147,7 +147,6 @@ function enlaceNav(entrada: EntradaNav, vista: string): Html {
  * abajo, quién está dentro y por dónde se sale.
  */
 function barraLateral(usuario: Usuario, vista: string): Html {
-	// El color del usuario llega en otro encargo; hasta entonces, gris.
 	return html`<aside class="lateral" id="lateral">
 			<a class="marca" href="/tareas">${NOMBRE_PROYECTO}</a>
 			${BLOQUES.map(
@@ -157,7 +156,7 @@ function barraLateral(usuario: Usuario, vista: string): Html {
 				</nav>`,
 			)}
 			<div class="pie-lateral">
-				${chipUsuario(usuario.nombre, null)}
+				${chipUsuario(usuario.nombre, usuario.color)}
 				<form method="post" action="/logout" class="en-linea">
 					<button type="submit" class="enlace">Salir</button>
 				</form>

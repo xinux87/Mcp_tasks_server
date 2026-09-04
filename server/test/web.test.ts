@@ -7,6 +7,7 @@ import { hashPassword } from "../src/auth/passwords.ts";
 import { buscarTerminalPorToken, crearTerminalConToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { listarTerminales, listarUsuarios } from "../src/db/admin.ts";
+import { COLORES_USUARIO } from "../src/db/colores.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
 import { comentarAnalisis, preguntar } from "../src/db/hilo.ts";
 import { exigirTarea, leerTarea, tomarTarea } from "../src/db/tareas.ts";
@@ -89,6 +90,18 @@ function grupo(cuerpo: string, titulo: string): string {
 	const resto = cuerpo.slice(inicio + 4);
 	const fin = resto.indexOf("<h2");
 	return fin < 0 ? resto : resto.slice(0, fin);
+}
+
+/** El JSON de la statusline, tal como lo manda el plugin por `POST /api/uso`. */
+async function reportarUso(montaje: Montaje, token: string, uso: unknown): Promise<Response> {
+	const url = new URL("/api/uso", BASE_URL_PRUEBA);
+	const peticion = new Request(url, {
+		method: "POST",
+		headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+		body: JSON.stringify(uso),
+	});
+	peticion.headers.set("host", url.host);
+	return await montaje.app.fetch(peticion);
 }
 
 /** Crea una tarea desde la web y devuelve su identificador visible. */
@@ -305,12 +318,19 @@ test("un terminal se crea con su token, se lista y se revoca", async () => {
 		const token = encaje?.[1] ?? "";
 		assert.equal(token.length, 43);
 		assert.notEqual(buscarTerminalPorToken(montaje.db, token), undefined);
+		// La página del token no se refresca sola: una recarga se llevaría por
+		// delante lo único que no se vuelve a enseñar.
+		assert.doesNotMatch(cuerpoAlta, /data-vista="terminales"/);
 
 		const lista = await pedir(montaje, "/terminales", { cookie });
 		const cuerpoLista = await lista.text();
 		assert.match(cuerpoLista, /portatil-xinux/);
 		assert.match(cuerpoLista, />activo</);
 		assert.match(cuerpoLista, /sin datos/);
+		// El dueño y quien lo creó van como chip con el color del usuario.
+		assert.match(cuerpoLista, /<span class="chip color-azul"><span class="inicial">X<\/span>xinux<\/span>/);
+		// La telemetría no mueve la revisión: esta vista se refresca por intervalo.
+		assert.match(cuerpoLista, /data-vista="terminales"/);
 
 		const terminalId = listarTerminales(montaje.db)[0]?.id ?? 0;
 		const confirmacion = await pedir(montaje, `/terminales/${terminalId}/revocar`, { cookie });
@@ -320,7 +340,49 @@ test("un terminal se crea con su token, se lista y se revoca", async () => {
 		const revocado = await pedir(montaje, `/terminales/${terminalId}/revocar`, { cookie, formulario: {} });
 		assert.equal(revocado.status, 302);
 		assert.equal(buscarTerminalPorToken(montaje.db, token), undefined);
-		assert.match(await (await pedir(montaje, "/terminales", { cookie })).text(), /revocado /);
+		// La etiqueta dice «revocado» y la fecha va al lado, fuera: dentro no
+		// podría partirse y ensancharía la tabla entera.
+		const yaRevocado = await (await pedir(montaje, "/terminales", { cookie })).text();
+		assert.match(yaRevocado, /<span class="insignia color-gris">revocado<\/span>/);
+		assert.match(yaRevocado, /<span class="pequeno silencio">\d{4}-\d{2}-\d{2} \d{2}:\d{2}<\/span>/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el uso disponible se pinta por ventana como barra, sin estilos en línea", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const alta = await pedir(montaje, "/terminales", {
+			cookie,
+			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+		});
+		const token = /<code class="token">([A-Za-z0-9_-]+)<\/code>/.exec(await alta.text())?.[1] ?? "";
+
+		const reportado = await reportarUso(montaje, token, {
+			rate_limits: {
+				five_hour: { used_percentage: 30, resets_at: "2026-09-04T13:00:00Z" },
+				seven_day: { used_percentage: 95, resets_at: "2026-09-11T13:00:00Z" },
+			},
+		});
+		assert.equal(reportado.status, 204);
+
+		const cuerpo = await (await pedir(montaje, "/terminales", { cookie })).text();
+		assert.match(cuerpo, /<span class="uso-nombre">5 h<\/span>/);
+		assert.match(cuerpo, /70 % disponible/);
+		// El ancho sale de la decena, en un atributo: en las plantillas no hay
+		// estilos en línea que puedan colar nada.
+		assert.match(cuerpo, /<span class="uso-relleno" data-nivel="7"><\/span>/);
+		assert.match(cuerpo, /<span class="uso-relleno" data-nivel="1"><\/span>/);
+		assert.match(cuerpo, /reinicia /);
+		assert.doesNotMatch(cuerpo, /style="/);
+
+		// Sin `rate_limits` queda el coste estimado, que es lo único que tiene
+		// una sesión con clave de API.
+		assert.equal((await reportarUso(montaje, token, { cost: { total_cost_usd: 1.5 } })).status, 204);
+		const conCoste = await (await pedir(montaje, "/terminales", { cookie })).text();
+		assert.match(conCoste, /coste de sesión: \$1\.50/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -335,6 +397,10 @@ test("los usuarios se dan de alta y de baja, pero nunca el último", async () =>
 		assert.equal(listarUsuarios(montaje.db).length, 2);
 
 		const otro = listarUsuarios(montaje.db).find((usuario) => usuario.nombre === "otro");
+		const confirmacion = await pedir(montaje, `/usuarios/${otro?.id ?? 0}/borrar`, { cookie });
+		assert.equal(confirmacion.status, 200);
+		assert.match(await confirmacion.text(), /Sí, borrar/);
+
 		const baja = await pedir(montaje, `/usuarios/${otro?.id ?? 0}/borrar`, { cookie, formulario: {} });
 		assert.equal(baja.status, 302);
 		assert.equal(listarUsuarios(montaje.db).length, 1);
@@ -353,12 +419,96 @@ test("las páginas con sesión son HTML en español", async () => {
 	const montaje = montar();
 	try {
 		const cookie = await entrar(montaje);
-		for (const ruta of ["/tareas", "/tareas/nueva", "/terminales", "/usuarios"]) {
+		for (const ruta of ["/tareas", "/tareas/nueva", "/terminales", "/usuarios", "/actividad"]) {
 			const respuesta = await pedir(montaje, ruta, { cookie });
 			assert.equal(respuesta.status, 200, ruta);
 			assert.equal(respuesta.headers.get("content-type"), "text/html; charset=UTF-8", ruta);
 			assert.match(await respuesta.text(), /<html lang="es">/, ruta);
 		}
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("la barra lateral enseña al usuario de la sesión con su color y marca dónde está", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		// El primer usuario se lleva el primer color de la lista: azul.
+		assert.equal(listarUsuarios(montaje.db)[0]?.color, "azul");
+
+		const sistema: readonly { ruta: string; vista: string }[] = [
+			{ ruta: "/terminales", vista: "terminales" },
+			{ ruta: "/usuarios", vista: "usuarios" },
+			{ ruta: "/actividad", vista: "actividad" },
+		];
+		for (const { ruta, vista } of sistema) {
+			const cuerpo = await (await pedir(montaje, ruta, { cookie })).text();
+			assert.match(cuerpo, /<span class="chip color-azul"><span class="inicial">X<\/span>xinux<\/span>/, ruta);
+			assert.match(cuerpo, new RegExp(`data-vista="${vista}"`), ruta);
+			// Las tres son del bloque «Sistema» y cada una marca su entrada.
+			assert.match(cuerpo, new RegExp(`<a class="enlace-nav" href="${ruta}" aria-current="page">`), ruta);
+		}
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("las páginas de sistema empiezan por su cabecera, con sus acciones", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+
+		const terminales = await (await pedir(montaje, "/terminales", { cookie })).text();
+		assert.match(terminales, /<h1>Terminales<\/h1>/);
+		assert.match(terminales, /<a class="boton principal" href="#nuevo-terminal">Nuevo terminal<\/a>/);
+		assert.match(terminales, /<section class="caja" id="nuevo-terminal">/);
+
+		const usuarios = await (await pedir(montaje, "/usuarios", { cookie })).text();
+		assert.match(usuarios, /<h1>Usuarios<\/h1>/);
+		assert.match(usuarios, /<a class="boton principal" href="#nuevo-usuario">Nuevo usuario<\/a>/);
+		assert.match(usuarios, /<section class="caja" id="nuevo-usuario">/);
+		assert.match(usuarios, /Cambiar mi contraseña/);
+
+		// Una tarjeta con el mensaje y la vuelta, no una página en blanco.
+		const sinTerminal = await pedir(montaje, "/terminales/999/revocar", { cookie });
+		assert.equal(sinTerminal.status, 404);
+		const cuerpo404 = await sinTerminal.text();
+		assert.match(cuerpo404, /<section class="caja caja-estrecha">/);
+		assert.match(cuerpo404, /No existe ese terminal\./);
+		assert.match(cuerpo404, /href="\/terminales"/);
+
+		const sinUsuario = await pedir(montaje, "/usuarios/999/borrar", { cookie });
+		assert.equal(sinUsuario.status, 404);
+		assert.match(await sinUsuario.text(), /No existe ese usuario\./);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el color de un usuario se elige con las ocho muestras, y en el alta hay automático", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		await pedir(montaje, "/usuarios", { cookie, formulario: { nombre: "otro", password: "clave", color: "rosa" } });
+		const otro = listarUsuarios(montaje.db).find((usuario) => usuario.nombre === "otro");
+		assert.equal(otro?.color, "rosa");
+
+		const cuerpo = await (await pedir(montaje, "/usuarios", { cookie })).text();
+		// Cada usuario se enseña con su chip, y su color va en la última clase.
+		assert.match(cuerpo, /<span class="chip color-rosa"><span class="inicial">O<\/span>otro<\/span>/);
+		// Las ocho muestras, con la del usuario marcada y su nombre para quien no
+		// ve el color.
+		for (const color of COLORES_USUARIO) {
+			assert.match(cuerpo, new RegExp(`<label class="muestra color-${color}">`), color);
+		}
+		assert.match(cuerpo, /name="color" value="rosa" checked/);
+		assert.match(cuerpo, /<span class="solo-lectores">rosa<\/span>/);
+		assert.match(cuerpo, /aria-label="Color de otro"/);
+		// El alta trae la muestra «automático» marcada: manda el valor vacío y el
+		// servidor reparte el color menos usado.
+		assert.match(cuerpo, /<input type="radio" name="color" value="" checked>automático/);
+		assert.match(cuerpo, /<form class="cambio-color" method="post" action="\/usuarios\/\d+\/color">/);
 	} finally {
 		await montaje.cerrar();
 	}

@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { html } from "hono/html";
 import { listarUsuarios } from "../db/admin.ts";
+import { COLORES_USUARIO } from "../db/colores.ts";
 import type { TipoComentario } from "../db/hilo.ts";
 import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
 import type { Html } from "./plantilla.ts";
@@ -22,17 +23,12 @@ export type Color = "gris" | "marron" | "naranja" | "amarillo" | "verde" | "azul
  * Los ocho que puede llevar un usuario, en el orden en que se reparten. El
  * gris queda fuera: es el color de quien no tiene, agentes y usuarios
  * borrados.
+ *
+ * La lista vive en `src/db/colores.ts`, que es quien la valida al guardar; aquí
+ * solo se reexporta para que la web tenga una única puerta de entrada. Dos
+ * listas se habrían separado en cuanto se tocara una.
  */
-export const COLORES_USUARIO: readonly Color[] = [
-	"azul",
-	"verde",
-	"morado",
-	"naranja",
-	"rosa",
-	"amarillo",
-	"rojo",
-	"marron",
-];
+export { COLORES_USUARIO };
 
 /** Color de cada estado. Son las cinco columnas del kanban. */
 export const COLOR_ESTADO: Record<Estado, Color> = {
@@ -217,4 +213,38 @@ export function propiedades(filas: readonly Propiedad[]): Html {
 				</div>`,
 			)}
 		</dl>`;
+}
+
+/**
+ * Las ocho muestras de color como botones de radio. Se usa dos veces en la
+ * página de usuarios: en el alta y en cada fila de la tabla.
+ *
+ * Todos los radios se llaman `color` aunque haya varios selectores en la misma
+ * página: un grupo de radios es el de su formulario, y cada selector va en el
+ * suyo.
+ *
+ * `titulo` es el nombre accesible del grupo entero («Color de xinux»): el que
+ * no ve los colores necesita saber de quién es el que está eligiendo. Cada
+ * muestra lleva además el nombre de su color, solo para lectores de pantalla.
+ *
+ * Con `elegido` nulo se antepone la muestra «automático», que manda el valor
+ * vacío para que el servidor reparta el color menos usado. Es lo que hace el
+ * alta, donde todavía no hay color que respetar.
+ */
+export function selectorDeColor(titulo: string, elegido: Color | null): Html {
+	const automatico =
+		elegido === null
+			? html`<label class="muestra muestra-auto">
+				<input type="radio" name="color" value="" checked>automático
+			</label>`
+			: html``;
+	return html`<div class="colores" role="group" aria-label="${titulo}">
+			${automatico}
+			${COLORES_USUARIO.map(
+				(color) => html`<label class="muestra color-${color}">
+					<input type="radio" name="color" value="${color}" ${color === elegido ? "checked" : ""}>
+					<span class="solo-lectores">${color}</span>
+				</label>`,
+			)}
+		</div>`;
 }

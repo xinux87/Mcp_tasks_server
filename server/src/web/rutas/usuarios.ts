@@ -2,31 +2,50 @@ import type { Context, Hono } from "hono";
 import { html } from "hono/html";
 import { altaPor } from "../../db/actividad.ts";
 import { altaUsuario, borrarUsuario, cambiarColor, cambiarPassword, listarUsuarios } from "../../db/admin.ts";
-import { COLORES_USUARIO } from "../../db/colores.ts";
 import type { Usuario } from "../../db/consultas.ts";
+import { buscadorDeColor, type Color, chipUsuario, type Miga, selectorDeColor } from "../componentes.ts";
 import { fechaLegible, SIN_DATO } from "../formatos.ts";
 import { campo, ESTADO_AVISO, leerFormulario, mensajeDeRegla } from "../formulario.ts";
 import { type Html, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
 
+/** Cómo se busca el color de cada usuario que aparece en la página. */
+type ColorDe = (nombre: string) => Color | null;
+
+/**
+ * Nombres del rastro que no son personas: los deja el CLI y el primer arranque,
+ * que no tienen sesión. No llevan chip porque no hay a quién enseñar.
+ */
+const NO_SON_PERSONAS: readonly string[] = ["cli", "arranque"];
+
+/**
+ * Quién dio el alta: una persona va como chip con su color, y en gris si ya no
+ * existe; `cli` y `arranque` van en texto suave; sin dato, una raya.
+ */
+function quien(nombre: string | null, colorDe: ColorDe): Html {
+	if (nombre === null) {
+		return html`<span class="silencio">${SIN_DATO}</span>`;
+	}
+	if (NO_SON_PERSONAS.includes(nombre)) {
+		return html`<span class="silencio">${nombre}</span>`;
+	}
+	return chipUsuario(nombre, colorDe(nombre));
+}
+
 /** El color de cada uno se cambia desde su propia fila, sin salir de la lista. */
 function formularioColor(usuario: Usuario): Html {
-	return html`<form class="en-linea" method="post" action="/usuarios/${usuario.id}/color">
-			<select name="color" aria-label="Color de ${usuario.nombre}">
-				${COLORES_USUARIO.map(
-					(color) => html`<option value="${color}" ${color === usuario.color ? "selected" : ""}>${color}</option>`,
-				)}
-			</select>
-			<button type="submit">Cambiar</button>
+	return html`<form class="cambio-color" method="post" action="/usuarios/${usuario.id}/color">
+			${selectorDeColor(`Color de ${usuario.nombre}`, usuario.color)}
+			<button type="submit" class="pequeno">Cambiar</button>
 		</form>`;
 }
 
-function filaUsuario(usuario: Usuario, altaDe: string | null, esElUltimo: boolean): Html {
+function filaUsuario(usuario: Usuario, altaDe: string | null, colorDe: ColorDe, esElUltimo: boolean): Html {
 	return html`<tr>
-			<td>${usuario.nombre}</td>
-			<td><span class="insignia color-${usuario.color}">${usuario.color}</span> ${formularioColor(usuario)}</td>
+			<td>${chipUsuario(usuario.nombre, usuario.color)}</td>
+			<td>${formularioColor(usuario)}</td>
 			<td class="pequeno">${fechaLegible(usuario.creado)}</td>
-			<td class="pequeno">${altaDe ?? SIN_DATO}</td>
+			<td>${quien(altaDe, colorDe)}</td>
 			<td>
 				${
 					esElUltimo
@@ -37,65 +56,80 @@ function filaUsuario(usuario: Usuario, altaDe: string | null, esElUltimo: boolea
 		</tr>`;
 }
 
+/** El alta, en su tarjeta, a la que apunta la acción de la cabecera. */
+function tarjetaNuevoUsuario(): Html {
+	return html`<section class="caja" id="nuevo-usuario">
+			<h2>Nuevo usuario</h2>
+			<form method="post" action="/usuarios">
+				<label>
+					<span>Nombre</span>
+					<input type="text" name="nombre" autocomplete="off" required>
+				</label>
+				<label>
+					<span>Contraseña</span>
+					<input type="password" name="password" autocomplete="new-password" required>
+				</label>
+				<p class="nombre-campo">Color</p>
+				${selectorDeColor("Color del usuario nuevo", null)}
+				<button type="submit" class="principal">Crear usuario</button>
+			</form>
+		</section>`;
+}
+
+/** Cambiar la propia contraseña. Exige la actual: la cookie sola no basta. */
+function tarjetaContrasena(): Html {
+	return html`<section class="caja">
+			<h2>Cambiar mi contraseña</h2>
+			<form method="post" action="/usuarios/contrasena">
+				<label>
+					<span>Contraseña actual</span>
+					<input type="password" name="actual" autocomplete="current-password" required>
+				</label>
+				<label>
+					<span>Contraseña nueva</span>
+					<input type="password" name="nueva" autocomplete="new-password" required>
+				</label>
+				<label>
+					<span>Repetir la nueva</span>
+					<input type="password" name="repetida" autocomplete="new-password" required>
+				</label>
+				<button type="submit">Cambiar contraseña</button>
+			</form>
+		</section>`;
+}
+
 function paginaUsuarios(c: Context, deps: DependenciasWeb, aviso: string | null): RespuestaHtml {
 	const usuarios = listarUsuarios(deps.db);
+	const colorDe = buscadorDeColor(deps.db);
 	const esElUltimo = usuarios.length <= 1;
 
-	const cuerpo = html`<h1>Usuarios</h1>
-		<div class="tabla-envuelta">
-			<table>
-				<thead><tr><th>Nombre</th><th>Color</th><th>Creado</th><th>Alta por</th><th></th></tr></thead>
+	const cuerpo = html`<div class="tabla-envuelta">
+			<table class="tabla-usuarios">
+				<thead><tr><th>Usuario</th><th>Color</th><th>Alta</th><th>Alta por</th><th></th></tr></thead>
 				<tbody>
-					${usuarios.map((usuario) => filaUsuario(usuario, altaPor(deps.db, "usuario", usuario.id), esElUltimo))}
+					${usuarios.map((usuario) => filaUsuario(usuario, altaPor(deps.db, "usuario", usuario.id), colorDe, esElUltimo))}
 				</tbody>
 			</table>
 		</div>
-
-		<form class="caja" method="post" action="/usuarios">
-			<h2>Nuevo usuario</h2>
-			<label>
-				<span>Nombre</span>
-				<input type="text" name="nombre" autocomplete="off" required>
-			</label>
-			<label>
-				<span>Contraseña</span>
-				<input type="password" name="password" autocomplete="new-password" required>
-			</label>
-			<fieldset>
-				<legend>Color</legend>
-				<label class="en-linea">
-					<input type="radio" name="color" value="" checked> automático
-				</label>
-				${COLORES_USUARIO.map(
-					(color) => html`<label class="en-linea">
-						<input type="radio" name="color" value="${color}"> ${color}
-					</label>`,
-				)}
-			</fieldset>
-			<button type="submit" class="principal">Crear usuario</button>
-		</form>
-
-		<form class="caja" method="post" action="/usuarios/contrasena">
-			<h2>Cambiar mi contraseña</h2>
-			<label>
-				<span>Contraseña actual</span>
-				<input type="password" name="actual" autocomplete="current-password" required>
-			</label>
-			<label>
-				<span>Contraseña nueva</span>
-				<input type="password" name="nueva" autocomplete="new-password" required>
-			</label>
-			<label>
-				<span>Repetir la nueva</span>
-				<input type="password" name="repetida" autocomplete="new-password" required>
-			</label>
-			<button type="submit">Cambiar contraseña</button>
-		</form>`;
+		${tarjetaNuevoUsuario()}
+		${tarjetaContrasena()}`;
 
 	return c.html(
-		pagina({ titulo: "Usuarios", usuario: usuarioActual(c), aviso, cuerpo }),
+		pagina({
+			titulo: "Usuarios",
+			usuario: usuarioActual(c),
+			vista: "usuarios",
+			aviso,
+			acciones: html`<a class="boton principal" href="#nuevo-usuario">Nuevo usuario</a>`,
+			cuerpo,
+		}),
 		aviso === null ? 200 : ESTADO_AVISO,
 	);
+}
+
+/** Las migas de todo lo que cuelga de la lista de usuarios. */
+function migasDe(donde: string): Miga[] {
+	return [{ texto: "Usuarios", href: "/usuarios" }, { texto: donde }];
 }
 
 /** Rutas de usuarios: alta, baja (nunca el último) y cambio de la propia contraseña. */
@@ -153,23 +187,38 @@ export function registrarRutasUsuarios(app: Hono, deps: DependenciasWeb): void {
 				pagina({
 					titulo: "Usuario no encontrado",
 					usuario: usuarioActual(c),
-					aviso: "No existe ese usuario.",
-					cuerpo: html`<p><a href="/usuarios">Volver a usuarios</a></p>`,
+					vista: "usuarios",
+					migas: migasDe("No encontrado"),
+					cuerpo: html`<section class="caja caja-estrecha">
+						<p>No existe ese usuario.</p>
+						<p><a class="boton" href="/usuarios">Volver a usuarios</a></p>
+					</section>`,
 				}),
 				404,
 			);
 		}
 		const propio = usuario.id === usuarioActual(c).id;
-		const cuerpo = html`<h1>Borrar usuario</h1>
-			<p>Se borra el usuario <strong>${usuario.nombre}</strong>. No se puede deshacer.</p>
+		const cuerpo = html`<section class="caja caja-estrecha">
+			<p>
+				Se borra el usuario ${chipUsuario(usuario.nombre, usuario.color)}. No se puede deshacer.
+			</p>
 			${propio ? html`<p class="silencio">Es tu propio usuario: al borrarlo se te cierra la sesión.</p>` : html``}
 			<div class="acciones">
 				<form method="post" action="/usuarios/${usuario.id}/borrar">
 					<button type="submit" class="peligro">Sí, borrar</button>
 				</form>
 				<a class="boton" href="/usuarios">Cancelar</a>
-			</div>`;
-		return c.html(pagina({ titulo: "Borrar usuario", usuario: usuarioActual(c), cuerpo }));
+			</div>
+		</section>`;
+		return c.html(
+			pagina({
+				titulo: "Borrar usuario",
+				usuario: usuarioActual(c),
+				vista: "usuarios",
+				migas: migasDe("Borrar usuario"),
+				cuerpo,
+			}),
+		);
 	});
 
 	app.post("/usuarios/:id/borrar", (c) => {

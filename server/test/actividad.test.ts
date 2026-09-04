@@ -318,6 +318,9 @@ test("la web da de alta con color, lo cambia desde la lista y enseña la activid
 		assert.match(cuerpoLista, /<th>Color<\/th>/);
 		assert.match(cuerpoLista, /<th>Alta por<\/th>/);
 		assert.match(cuerpoLista, /action="\/usuarios\/\d+\/color"/);
+		// Quien dio el alta también va como chip, con su propio color.
+		assert.match(cuerpoLista, /<span class="chip color-azul"><span class="inicial">X<\/span>xinux<\/span>/);
+		assert.match(cuerpoLista, /<label class="muestra color-verde">/);
 
 		const cambio = await pedir(montaje, `/usuarios/${otro?.id ?? 0}/color`, { cookie, formulario: { color: "rosa" } });
 		assert.equal(cambio.status, 302);
@@ -331,10 +334,20 @@ test("la web da de alta con color, lo cambia desde la lista y enseña la activid
 		const actividad = await pedir(montaje, "/actividad", { cookie });
 		assert.equal(actividad.status, 200);
 		const cuerpo = await actividad.text();
-		assert.match(cuerpo, /alta_usuario/);
+		// Cada acción se cuenta en castellano, no con el nombre de la columna.
+		assert.match(cuerpo, /dio de alta al usuario/);
+		assert.match(cuerpo, /cambió el color de/);
 		assert.match(cuerpo, /color verde/);
 		assert.match(cuerpo, /verde → rosa/);
 		assert.match(cuerpo, /<html lang="es">/);
+		// Agrupada por día: una sección por fecha y una lista dentro.
+		assert.match(cuerpo, /<section class="dia">\s*<h2>\d{4}-\d{2}-\d{2}<\/h2>/);
+		assert.match(cuerpo, /<ol class="actividad">/);
+		assert.match(cuerpo, /<time class="hora silencio" datetime="[^"]+">\d{2}:\d{2}<\/time>/);
+		// Quien hizo cada cosa, como chip con su color: xinux es azul y ya cambió
+		// el de «otro» a rosa, así que el nombre del objeto va en negrita.
+		assert.match(cuerpo, /<span class="chip color-azul"><span class="inicial">X<\/span>xinux<\/span>/);
+		assert.match(cuerpo, /<strong class="objeto">otro<\/strong>/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -344,6 +357,9 @@ test("la actividad de una tarea se enlaza a su ficha desde la lista global", asy
 	const montaje = montarWeb();
 	try {
 		const cookie = await entrar(montaje);
+		// El usuario del montaje se crea sin actor: todavía no hay nada que contar.
+		assert.match(await (await pedir(montaje, "/actividad", { cookie })).text(), /Todavía no hay nada\./);
+
 		const creada = await pedir(montaje, "/tareas", {
 			cookie,
 			formulario: { titulo: "Exportar clientes", descripcion: "", autoejecucion: "on" },
@@ -351,8 +367,9 @@ test("la actividad de una tarea se enlaza a su ficha desde la lista global", asy
 		assert.equal(creada.status, 302);
 
 		const cuerpo = await (await pedir(montaje, "/actividad", { cookie })).text();
-		assert.match(cuerpo, /crear_tarea/);
-		assert.match(cuerpo, /href="\/tareas\/T-0001"/);
+		assert.match(cuerpo, /creó la tarea/);
+		assert.match(cuerpo, /<a class="id-tarea" href="\/tareas\/T-0001">T-0001<\/a>/);
+		assert.match(cuerpo, /<span class="objeto">Exportar clientes<\/span>/);
 	} finally {
 		await montaje.cerrar();
 	}

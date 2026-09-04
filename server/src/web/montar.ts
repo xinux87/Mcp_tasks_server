@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { html } from "hono/html";
 import { registrarEstaticos } from "./estaticos.ts";
-import { pagina } from "./plantilla.ts";
+import { NOMBRE_PROYECTO, pagina } from "./plantilla.ts";
 import { registrarRutasActividad } from "./rutas/actividad.ts";
 import { registrarRutasEventos } from "./rutas/eventos.ts";
 import { registrarRutasKanban } from "./rutas/kanban.ts";
@@ -68,12 +68,18 @@ export function montarWeb(app: Hono, deps: DependenciasWeb): void {
 		if (!esDeLaWeb(c.req.path)) {
 			return c.text("Internal Server Error", 500);
 		}
+		// Sin sesión, como el login: una tarjeta centrada. El fallo puede venir de
+		// la propia base de datos, así que esta página no lee nada.
 		return c.html(
 			pagina({
 				titulo: "Error",
 				usuario: null,
-				aviso: "Algo ha fallado en el servidor. Vuelve a intentarlo.",
-				cuerpo: html`<p><a href="/tareas">Volver a la lista de tareas</a></p>`,
+				cuerpo: html`<section class="caja">
+					<p class="marca-entrada">${NOMBRE_PROYECTO}</p>
+					<h1>Algo ha fallado</h1>
+					<p>Ha sido en el servidor, no en lo que pediste. Vuelve a intentarlo.</p>
+					<p><a class="boton" href="/tareas">Volver a la lista de tareas</a></p>
+				</section>`,
 			}),
 			500,
 		);
