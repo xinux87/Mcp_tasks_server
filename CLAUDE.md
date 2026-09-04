@@ -386,8 +386,8 @@ Criterio: el mínimo de piezas que cubra MCP, API, web y persistencia en un solo
 | Pieza | Elección | Por qué |
 |---|---|---|
 | Runtime | **Node 24 LTS** | LTS con soporte hasta 2028. Ejecuta TypeScript directamente por eliminación de tipos, lo que evita un paso de build en desarrollo y en tests. |
-| Lenguaje | **TypeScript 6**, `strict`, ESM | El SDK de MCP v2 exige TypeScript 6 o superior. Solo sintaxis borrable: sin `enum` ni `namespace`, para que Node lo ejecute sin transpilar. |
-| MCP | **`@modelcontextprotocol/server` v2** | SDK oficial, alineado con la especificación 2026-07-28. Se usa `createMcpHandler` con fábrica por petición: no guarda nada entre peticiones y recibe el `authInfo` que le pasa el middleware de autenticación. Las herramientas se registran con `registerTool` y esquemas Zod. |
+| Lenguaje | **TypeScript 7**, `strict`, ESM | El SDK de MCP v2 exige TypeScript 6 o superior; la versión publicada es la 7. Solo sintaxis borrable: sin `enum` ni `namespace`, para que Node lo ejecute sin transpilar. |
+| MCP | **`@modelcontextprotocol/server` v2** | SDK oficial, alineado con la especificación 2026-07-28. Se usa `createMcpHandler` con fábrica por petición: no guarda nada entre peticiones y recibe el `authInfo` que le pasa el middleware de autenticación. Las herramientas se registran con `registerTool` y esquemas Zod. El modo de respuesta JSON imprime un aviso del SDK en stderr al crear el handler; es esperado. |
 | HTTP y web | **Hono** sobre `@hono/node-server` | Trabaja con `Request` y `Response` estándar, que es justo lo que expone el handler del SDK v2, sin adaptadores. Trae JSX para renderizar HTML en servidor, cookies firmadas, `bearerAuth` y `streamSSE`. Un solo framework para el MCP, la API y la web. |
 | Validación | **Zod v4** | Es lo que el SDK usa para los esquemas de herramientas. Se reutiliza para la API y los formularios. |
 | Persistencia | **SQLite con `node:sqlite`**, modo WAL | Integrado en Node 24, sin módulo nativo ni compilación en la imagen Docker. Un archivo en un volumen. Escrituras síncronas y en transacción, que es lo que pide la regla «escribir confirma». |
@@ -454,16 +454,22 @@ plugin/                    # el plugin de Claude Code, sin dependencias
 
 Los que tendrá el paquete `server/` cuando exista el esqueleto. Actualizar esta tabla si cambian.
 
+Todos se ejecutan dentro de `server/`.
+
 | Comando | Qué hace |
 |---|---|
-| `npm run dev` | Arranca con recarga al guardar |
-| `npm test` | Todos los tests |
-| `node --test test/tareas.test.ts` | Un solo archivo de tests |
-| `node --test --test-name-pattern="tomar"` | Solo los tests cuyo nombre encaja |
-| `npm run typecheck` | Comprueba tipos sin emitir |
+| `npm run dev` | Arranca con recarga al guardar; lee `.env` si existe |
+| `npm test` | Typechequea los tests con `tsconfig.test.json` y ejecuta todos |
+| `node --test test/tareas.test.ts` | Un solo archivo de tests, sin el typecheck previo |
+| `node --test --test-name-pattern="tomar" "test/**/*.test.ts"` | Solo los tests cuyo nombre encaja |
+| `npm run typecheck` | Comprueba tipos de `src/` sin emitir |
 | `npm run lint` | Biome: lint y formato |
 | `npm run build` | Emite JavaScript a `dist/` para la imagen |
+| `npm run cli -- crear-usuario <nombre>` | Crea un usuario; la contraseña sale de `ADMIN_PASSWORD` |
+| `npm run cli -- crear-terminal <usuario> <nombre> <cuenta>` | Crea un terminal e imprime su token una sola vez |
 | `docker compose up --build` | Levanta el servidor con su volumen |
+
+`node --test` toma patrones glob, no directorios: `node --test test/` falla. Los tests viven fuera de `rootDir`, por eso tienen su propio `tsconfig.test.json`.
 
 ## El plugin de Claude Code
 

@@ -1,0 +1,33 @@
+{
+	"name": "mcp-tareas-server",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Servidor MCP de tareas: MCP, API y web en un solo proceso",
+	"type": "module",
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"dev": "node --watch --env-file-if-exists=.env src/main.ts",
+		"start": "node dist/main.js",
+		"pretest": "tsc --noEmit -p tsconfig.test.json",
+		"test": "node --test \"test/**/*.test.ts\"",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome check .",
+		"build": "tsc",
+		"cli": "node src/cli.ts"
+	},
+	"dependencies": {
+		"@hono/node-server": "^2.1.1",
+		"@modelcontextprotocol/hono": "^2.0.0",
+		"@modelcontextprotocol/server": "^2.0.0",
+		"hono": "^4.13.5",
+		"zod": "^4.5.4"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.12",
+		"@modelcontextprotocol/client": "^2.0.0",
+		"@types/node": "^24.13.3",
+		"typescript": "^7.0.2"
+	}
+}
