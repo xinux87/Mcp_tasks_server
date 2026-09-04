@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
+import { registrarActividad } from "./actividad.ts";
 import {
 	ahora,
 	booleano,
@@ -442,8 +443,8 @@ export type NuevaTareaHumana = {
 
 /** Tarea escrita por el humano en la web. Nace en `backlog`, que es su columna. */
 export function crearTareaHumana(db: DatabaseSync, datos: NuevaTareaHumana): Tarea {
-	return escribirContenido(db, (conexion, revision) =>
-		insertarTarea(conexion, revision, {
+	return escribirContenido(db, (conexion, revision) => {
+		const tarea = insertarTarea(conexion, revision, {
 			titulo: datos.titulo,
 			descripcion: datos.descripcion,
 			estado: "backlog",
@@ -457,8 +458,16 @@ export function crearTareaHumana(db: DatabaseSync, datos: NuevaTareaHumana): Tar
 			enMarchaTerminalId: null,
 			creadaPorUsuarioId: datos.usuarioId,
 			creadaPorTerminalId: null,
-		}),
-	);
+		});
+		registrarActividad(conexion, {
+			actor: { usuarioId: datos.usuarioId },
+			accion: "crear_tarea",
+			objeto: "tarea",
+			objetoId: tarea.id,
+			objetoNombre: tarea.titulo,
+		});
+		return tarea;
+	});
 }
 
 export type NuevaPropuesta = {
@@ -604,6 +613,14 @@ export function moverTareaHumano(db: DatabaseSync, datos: MovimientoHumano): Tar
 				preguntaId: null,
 			});
 		}
+		registrarActividad(conexion, {
+			actor: { usuarioId: datos.usuarioId },
+			accion: "mover_tarea",
+			objeto: "tarea",
+			objetoId: tarea.id,
+			objetoNombre: tarea.titulo,
+			detalle: `${tarea.estado} → ${datos.estado}`,
+		});
 		return exigirTarea(conexion, tarea.id);
 	});
 }
@@ -636,6 +653,13 @@ export function aprobarEjecucion(db: DatabaseSync, datos: Aprobacion): Tarea {
 			revision,
 			tarea.id,
 		);
+		registrarActividad(conexion, {
+			actor: { usuarioId: datos.usuarioId },
+			accion: "aprobar_ejecucion",
+			objeto: "tarea",
+			objetoId: tarea.id,
+			objetoNombre: tarea.titulo,
+		});
 		return exigirTarea(conexion, tarea.id);
 	});
 }

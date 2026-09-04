@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { html } from "hono/html";
 import { registrarEstaticos } from "./estaticos.ts";
 import { pagina } from "./plantilla.ts";
+import { registrarRutasActividad } from "./rutas/actividad.ts";
 import { registrarRutasEventos } from "./rutas/eventos.ts";
 import { registrarRutasKanban } from "./rutas/kanban.ts";
 import { registrarRutasSesion } from "./rutas/sesion.ts";
@@ -17,7 +18,16 @@ export type { DependenciasWeb } from "./sesion.ts";
  * «Sesión y seguridad» en CLAUDE.md. `/eventos` va con cookie de sesión, como
  * el resto de la web.
  */
-const PRIVADAS = ["/tareas", "/tareas/*", "/terminales", "/terminales/*", "/usuarios", "/usuarios/*", "/eventos"];
+const PRIVADAS = [
+	"/tareas",
+	"/tareas/*",
+	"/terminales",
+	"/terminales/*",
+	"/usuarios",
+	"/usuarios/*",
+	"/actividad",
+	"/eventos",
+];
 
 /** Rutas de la web que aceptan POST y por tanto necesitan el filtro anti cross-site. */
 const CON_POST = ["/login", "/logout", ...PRIVADAS];
@@ -49,6 +59,7 @@ export function montarWeb(app: Hono, deps: DependenciasWeb): void {
 	registrarRutasTareas(app, deps);
 	registrarRutasTerminales(app, deps);
 	registrarRutasUsuarios(app, deps);
+	registrarRutasActividad(app, deps);
 
 	// Lo que no es un `ErrorDeRegla` es un fallo del servidor: se registra en
 	// el log y al navegador solo le llega una página, nunca una traza.

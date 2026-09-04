@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import type { Actor } from "../db/actividad.ts";
 import { buscarTerminalPorTokenHash, type ConRevision, crearTerminal, type Terminal } from "../db/consultas.ts";
 
 /** 32 bytes aleatorios en base64url: 43 caracteres sin relleno. */
@@ -23,14 +24,15 @@ export type TerminalConToken = {
 	token: string;
 };
 
-/** Crea un terminal y su token. Sube la revisión. */
+/** Crea un terminal y su token. Sube la revisión. Sin actor no deja actividad. */
 export function crearTerminalConToken(
 	db: DatabaseSync,
 	usuarioId: number,
 	nombre: string,
 	cuenta: string,
+	actor?: Actor,
 ): ConRevision<TerminalConToken> {
 	const token = generarToken();
-	const { valor, revision } = crearTerminal(db, usuarioId, nombre, cuenta, hashToken(token));
+	const { valor, revision } = crearTerminal(db, usuarioId, nombre, cuenta, hashToken(token), actor);
 	return { valor: { terminal: valor, token }, revision };
 }

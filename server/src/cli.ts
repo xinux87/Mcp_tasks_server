@@ -3,6 +3,7 @@ import { hashPassword } from "./auth/passwords.ts";
 import { crearTerminalConToken } from "./auth/tokens.ts";
 import { leerConfigDatos } from "./config.ts";
 import { abrirBaseDeDatos, rutaBaseDeDatos } from "./db/abrir.ts";
+import type { Actor } from "./db/actividad.ts";
 import { buscarTerminalPorNombre, buscarUsuarioPorNombre, crearUsuario, type Usuario } from "./db/consultas.ts";
 import { preguntasDeTarea, responder } from "./db/hilo.ts";
 import {
@@ -48,6 +49,12 @@ const AYUDA = `Uso: node src/cli.ts <comando>
       Imprime el índice del tablero, una línea por tarea.
 
 La base de datos se busca en DATA_DIR (por defecto /data).`;
+
+/**
+ * Quién firma la actividad de los comandos que no van a nombre de nadie. El
+ * resto de comandos exigen un usuario y firman con él.
+ */
+const ACTOR_CLI: Actor = { nombre: "cli" };
 
 function fallar(mensaje: string): never {
 	console.error(mensaje);
@@ -151,7 +158,8 @@ function comandoCrearUsuario(argumentos: string[]): void {
 		if (buscarUsuarioPorNombre(db, nombre) !== undefined) {
 			fallar(`ya existe un usuario llamado ${nombre}`);
 		}
-		const { valor: usuario, revision } = crearUsuario(db, nombre, hashPassword(password));
+		// El CLI no tiene sesión: firma la actividad con su propio nombre.
+		const { valor: usuario, revision } = crearUsuario(db, nombre, hashPassword(password), { actor: ACTOR_CLI });
 		console.log(`usuario creado: ${usuario.nombre} (id ${usuario.id})`);
 		console.log(`revision: ${revision}`);
 	});
@@ -167,7 +175,7 @@ function comandoCrearTerminal(argumentos: string[]): void {
 
 	conBaseDeDatos((db) => {
 		const dueno = exigirUsuario(db, usuario);
-		const { valor, revision } = crearTerminalConToken(db, dueno.id, nombre, cuenta);
+		const { valor, revision } = crearTerminalConToken(db, dueno.id, nombre, cuenta, ACTOR_CLI);
 		console.log(`terminal creado: ${valor.terminal.nombre} (id ${valor.terminal.id})`);
 		console.log(`cuenta: ${valor.terminal.cuenta}`);
 		console.log(`revision: ${revision}`);

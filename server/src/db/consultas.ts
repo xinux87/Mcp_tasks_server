@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { type Actor, registrarActividad } from "./actividad.ts";
 import {
 	ahora,
 	type ConRevision,
@@ -11,6 +12,7 @@ import {
 	texto,
 	textoOpcional,
 } from "./base.ts";
+import { type ColorUsuario, colorElegido, esColorUsuario } from "./colores.ts";
 
 // Los helpers compartidos viven en `base.ts` para que los usen también
 // `tareas.ts`, `hilo.ts` y `consumo.ts`. Se reexportan desde aquí porque este
@@ -21,6 +23,8 @@ export type Usuario = {
 	id: number;
 	nombre: string;
 	hashPassword: string;
+	/** Uno de los ocho colores de etiqueta. Es de la web: el MCP no lo enseña. */
+	color: ColorUsuario;
 	creado: string;
 };
 
@@ -39,11 +43,23 @@ export type Terminal = {
 
 // --- mapeadores de fila ------------------------------------------------------
 
-function comoUsuario(fila: Record<string, unknown>): Usuario {
+function comoColor(fila: Record<string, unknown>): ColorUsuario {
+	const valor = texto(fila, "color");
+	if (!esColorUsuario(valor)) {
+		throw new Error(`color de usuario desconocido en la base de datos: ${valor}`);
+	}
+	return valor;
+}
+
+/** Las columnas de un usuario. Las comparte todo el que lee la tabla. */
+export const COLUMNAS_USUARIO = "id, nombre, hash_password, color, creado";
+
+export function comoUsuario(fila: Record<string, unknown>): Usuario {
 	return {
 		id: entero(fila, "id"),
 		nombre: texto(fila, "nombre"),
 		hashPassword: texto(fila, "hash_password"),
+		color: comoColor(fila),
 		creado: texto(fila, "creado"),
 	};
 }
@@ -74,27 +90,49 @@ export function contarUsuarios(db: DatabaseSync): number {
 }
 
 export function buscarUsuarioPorNombre(db: DatabaseSync, nombre: string): Usuario | undefined {
-	const fila = sentencia(db, "SELECT id, nombre, hash_password, creado FROM usuarios WHERE nombre = ?").get(nombre);
+	const fila = sentencia(db, `SELECT ${COLUMNAS_USUARIO} FROM usuarios WHERE nombre = ?`).get(nombre);
 	return fila === undefined ? undefined : comoUsuario(fila);
 }
 
 export function buscarUsuarioPorId(db: DatabaseSync, id: number): Usuario | undefined {
-	const fila = sentencia(db, "SELECT id, nombre, hash_password, creado FROM usuarios WHERE id = ?").get(id);
+	const fila = sentencia(db, `SELECT ${COLUMNAS_USUARIO} FROM usuarios WHERE id = ?`).get(id);
 	return fila === undefined ? undefined : comoUsuario(fila);
 }
 
+export type OpcionesUsuario = {
+	/** Sin color se reparte el menos usado. Uno que no exista es un error de regla. */
+	color?: string;
+	/** Sin actor no se escribe actividad: es lo que hacen los tests y las bases de prueba. */
+	actor?: Actor;
+};
+
 /** Crea un usuario. Sube la revisión. */
-export function crearUsuario(db: DatabaseSync, nombre: string, hashPassword: string): ConRevision<Usuario> {
+export function crearUsuario(
+	db: DatabaseSync,
+	nombre: string,
+	hashPassword: string,
+	opciones: OpcionesUsuario = {},
+): ConRevision<Usuario> {
 	return enTransaccionConRevision(db, (conexion) => {
-		const cambios = sentencia(conexion, "INSERT INTO usuarios (nombre, hash_password, creado) VALUES (?, ?, ?)").run(
-			nombre,
-			hashPassword,
-			ahora(),
-		);
+		const color = colorElegido(conexion, opciones.color);
+		const cambios = sentencia(
+			conexion,
+			"INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES (?, ?, ?, ?)",
+		).run(nombre, hashPassword, color, ahora());
 		const id = idInsertado(cambios.lastInsertRowid);
 		const creado = buscarUsuarioPorId(conexion, id);
 		if (creado === undefined) {
 			throw new Error("no se pudo releer el usuario recién creado");
+		}
+		if (opciones.actor !== undefined) {
+			registrarActividad(conexion, {
+				actor: opciones.actor,
+				accion: "alta_usuario",
+				objeto: "usuario",
+				objetoId: creado.id,
+				objetoNombre: creado.nombre,
+				detalle: `color ${creado.color}`,
+			});
 		}
 		return creado;
 	});
@@ -134,6 +172,7 @@ export function crearTerminal(
 	nombre: string,
 	cuenta: string,
 	tokenHash: string,
+	actor?: Actor,
 ): ConRevision<Terminal> {
 	return enTransaccionConRevision(db, (conexion) => {
 		const cambios = sentencia(
@@ -144,6 +183,17 @@ export function crearTerminal(
 		const creado = buscarTerminalPorId(conexion, id);
 		if (creado === undefined) {
 			throw new Error("no se pudo releer el terminal recién creado");
+		}
+		if (actor !== undefined) {
+			const dueno = buscarUsuarioPorId(conexion, usuarioId);
+			registrarActividad(conexion, {
+				actor,
+				accion: "alta_terminal",
+				objeto: "terminal",
+				objetoId: creado.id,
+				objetoNombre: creado.nombre,
+				detalle: `cuenta ${creado.cuenta}, de ${dueno?.nombre ?? usuarioId}`,
+			});
 		}
 		return creado;
 	});
