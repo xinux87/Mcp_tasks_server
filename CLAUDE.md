@@ -58,6 +58,7 @@ Cada encargo que se pasa a un subagente lleva, en este orden:
 ### Campos
 
 - `id` con la forma `T-0042` (cuatro cifras como mínimo, correlativo), `titulo`, `descripcion`, `estado`, `orden` (posición dentro de su columna), `padre` (opcional, para tareas hijas).
+- `tipo`: `tarea` (por defecto) o `pregunta`. Ver «Tareas que son preguntas».
 - `analisis`: `modelo` y `terminal` que la analizan.
 - `ejecucion`: `modelo` y `terminal` que la ejecutan.
 - `autoejecucion`: activada por defecto. Con ella, la ejecución arranca sola cuando el análisis termina sin preguntas abiertas. Desactivada, la tarea espera en `prepared` a que el humano apruebe el análisis.
@@ -128,6 +129,15 @@ Un agente crea tareas por dos motivos distintos, y van a columnas distintas:
 - **Hija de trabajo**: un subagente la crea para dejar visible su parte de la ejecución. Nace directamente en `doing`, colgando de la tarea padre, con las mismas asignaciones. Termina con su propio `resultado` y pasa a `done`; la acepta el humano al aceptar la padre.
 - **Propuesta**: el agente descubre algo que habría que hacer y que no es parte de la tarea actual. Nace en `backlog`, para que el humano decida.
 
+### Tareas que son preguntas
+
+Una pregunta del humano es un encargo cuya salida es una respuesta escrita, no código. Se marca con `tipo: pregunta` al crearla o editarla en `backlog`.
+
+- **Solo tiene fase de análisis.** El comentario `analisis` es la respuesta, y al escribirlo la tarea pasa directamente a `done`. No hay fase de ejecución: `autoejecucion`, la aprobación y la asignación de ejecución no aplican y la web no los muestra.
+- **Puede preguntar a su vez.** Si para responder hace falta una decisión del humano, el agente usa `preguntar` como en cualquier tarea; la pregunta queda bloqueada en `prepared` y, contestada, el mismo terminal la retoma y escribe la respuesta.
+- **Se responde en llano**, desde el punto de vista de quien preguntó, sin rutas de archivo ni códigos internos. Lo que el agente descubra de paso va como propuesta aparte.
+- **En el índice y en el frontmatter** se ve como `tipo: pregunta`, y la línea de índice lleva `pregunta` justo después del estado. Una pregunta no lleva segmento `ejecucion:`.
+
 ### Consumo de tokens
 
 Cada tarea guarda cuántos tokens ha costado. Lo reporta el plugin, no el modelo: el modelo no sabe con precisión lo que consume, y un dato autoinformado no sirve para comparar.
@@ -152,6 +162,7 @@ Es lo que devuelve `leer_tarea`. Frontmatter YAML con los campos, y después el 
 ---
 id: T-0042
 titulo: "Exportar el listado de clientes a CSV"
+tipo: tarea
 estado: done
 orden: 3
 padre: T-0040
@@ -250,7 +261,7 @@ Es lo que devuelven `listar_tareas` y `novedades` por cada tarea. Una línea, si
 - T-0042 · doing · bloqueada · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-xinux · ejecucion: opus@portatil-xinux
 ```
 
-Las marcas van entre el estado y el título, separadas por `·`. Si no hay marcas, no aparece nada en esa posición. Una fase sin modelo ni terminal se escribe `analisis: sin asignar`; con solo uno de los dos, `analisis: sonnet` o `analisis: @portatil-xinux`.
+Las marcas van entre el estado y el título, separadas por `·`. Si no hay marcas, no aparece nada en esa posición. Una tarea de tipo `pregunta` lleva `pregunta` justo después del estado, antes de las marcas, y no lleva segmento `ejecucion:`. Una fase sin modelo ni terminal se escribe `analisis: sin asignar`; con solo uno de los dos, `analisis: sonnet` o `analisis: @portatil-xinux`.
 
 ### Salida de `novedades`
 
@@ -398,7 +409,7 @@ Es la única llamada que hace el agente mientras espera. Si no hay novedades, de
 |---|---|---|---|
 | `listar_tareas` | agente | filtro opcional por estado y terminal | índice: id, estado, título, marcas, asignaciones |
 | `leer_tarea` | agente | id | el Markdown completo de la tarea, hilo incluido |
-| `tomar_tarea` | agente | id, fase (`analisis` o `ejecucion`) | marca el terminal como responsable de esa fase y activa `en marcha`; en `ejecucion` la tarea pasa a `doing` |
+| `tomar_tarea` | agente | id, fase (`analisis` o `ejecucion`), `modelo` opcional | marca el terminal como responsable de esa fase y activa `en marcha`; en `ejecucion` la tarea pasa a `doing`. Si la fase no tenía modelo asignado, queda fijado el recibido; si tenía otro distinto, error `modelo_no_coincide` |
 | `comentar_tarea` | agente o subagente | id, tipo, texto en Markdown, estado opcional | añade el comentario al hilo; cambia el estado si se indica |
 | `crear_tarea` | agente o subagente | título, descripción, clase (`hija` o `propuesta`), id de padre si es hija | id de la nueva tarea |
 
@@ -416,6 +427,7 @@ La respuesta del humano llega por `novedades` y queda como comentario `respuesta
 
 - **El humano asigna modelo y terminal para cada fase.** Si una fase no tiene terminal asignado, cualquier terminal puede tomarla con `tomar_tarea`.
 - **`tomar_tarea` falla si esa fase ya tiene otro terminal** responsable. No hay robo silencioso de tareas.
+- **El modelo con el que se trabaja una fase queda fijado al tomarla.** El bucle pasa en `tomar_tarea` el modelo que va a usar, sea el asignado o el de reserva; así el autor de los comentarios y el consumo cuentan lo mismo y la ficha nunca muestra una fase trabajada sin modelo.
 - **Pasar a `doing` exige análisis y cero preguntas abiertas.** Si el análisis deja preguntas, la tarea se queda en `prepared` y bloqueada hasta que se contesten.
 - **`autoejecucion` es un botón de la tarea, activado por defecto.** Con él, el paso de `prepared` a `doing` lo hace el agente. Sin él, lo hace el humano desde la web.
 - **Pasar a `done` se hace con un comentario `resultado`** que diga qué se construyó y el commit.
