@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Context, Hono } from "hono";
-import { html, raw } from "hono/html";
+import { html } from "hono/html";
 import { type TerminalListado, terminalesActivos } from "../../db/admin.ts";
 import { revisionActual } from "../../db/consultas.ts";
 import {
@@ -15,9 +15,18 @@ import {
 } from "../../db/tareas.ts";
 import { ErrorDeRegla, esErrorDeRegla } from "../../errores.ts";
 import { formatearId, parsearId } from "../../md/ids.ts";
+import { accionNuevaTarea, filtroSelect, rotuloColumna } from "../componentes.ts";
 import { faseLegible } from "../formatos.ts";
 import { campo, ESTADO_AVISO, leerFormulario } from "../formulario.ts";
-import { COLUMNAS, type Html, insigniasMarcas, insigniaTipoTarea, pagina, type RespuestaHtml } from "../plantilla.ts";
+import {
+	COLUMNAS,
+	type Html,
+	insigniaEstado,
+	insigniasMarcas,
+	insigniaTipoTarea,
+	pagina,
+	type RespuestaHtml,
+} from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
 
 const MARCAS: readonly Marca[] = ["bloqueada", "sin terminal", "en marcha", "análisis listo"];
@@ -64,29 +73,29 @@ function tareasFiltradas(db: DatabaseSync, filtros: Filtros): ItemIndice[] {
 
 // --- trozos de página --------------------------------------------------------
 
+/**
+ * La misma fila de filtros que la lista, sin `estado`: aquí el estado es la
+ * columna. «Quitar filtros» solo sale cuando hay algo que quitar.
+ */
 function formularioFiltros(activos: TerminalListado[], filtros: Filtros): Html {
-	return html`<form class="filtros caja" method="get" action="/tareas/kanban">
-			<label>
-				<span>Terminal</span>
-				<select name="terminal">
-					<option value="">todos</option>
-					${activos.map(
-						(t) =>
-							html`<option value="${t.id}"${String(t.id) === filtros.terminal ? raw(" selected") : ""}>${t.nombre}</option>`,
-					)}
-				</select>
-			</label>
-			<label>
-				<span>Marca</span>
-				<select name="marca">
-					<option value="">todas</option>
-					${MARCAS.map(
-						(valor) => html`<option value="${valor}"${valor === filtros.marca ? raw(" selected") : ""}>${valor}</option>`,
-					)}
-				</select>
-			</label>
-			<button type="submit">Filtrar</button>
-			<a class="boton" href="/tareas/kanban">Quitar filtros</a>
+	const hayFiltro = filtros.terminal !== "" || filtros.marca !== "";
+	return html`<form class="filtros" method="get" action="/tareas/kanban">
+			${filtroSelect({
+				nombre: "terminal",
+				titulo: "Terminal",
+				todas: "todos",
+				valores: activos.map((activo) => ({ valor: String(activo.id), texto: activo.nombre })),
+				seleccionado: filtros.terminal,
+			})}
+			${filtroSelect({
+				nombre: "marca",
+				titulo: "Marca",
+				todas: "todas",
+				valores: MARCAS.map((valor) => ({ valor, texto: valor })),
+				seleccionado: filtros.marca,
+			})}
+			<button type="submit" class="pequeno">Filtrar</button>
+			${hayFiltro ? html`<a class="quitar" href="/tareas/kanban">Quitar filtros</a>` : html``}
 		</form>`;
 }
 
@@ -135,7 +144,7 @@ function columna(titulo: string, estado: Estado, items: ItemIndice[], total: num
 			? html`<p class="pequeno"><a href="/tareas?estado=finished">ver todas (${total})</a></p>`
 			: html``;
 	return html`<section class="columna">
-			<h2>${titulo} <span class="contador">${total}</span></h2>
+			<h2>${rotuloColumna(insigniaEstado(estado), titulo, total)}</h2>
 			<div class="tarjetas" data-estado="${estado}">${items.map((item) => tarjeta(item))}</div>
 			${pie}
 		</section>`;
@@ -181,18 +190,17 @@ function tablero(db: DatabaseSync, filtros: Filtros): Html {
 function paginaKanban(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	const { db } = deps;
 	const filtros = filtrosDe(c);
-	const cuerpo = html`<h1>Kanban</h1>
-		<div class="acciones">
-			<a class="boton principal" href="/tareas/nueva">Nueva tarea</a>
-		</div>
-		${formularioFiltros(terminalesActivos(db), filtros)}
+	const cuerpo = html`${formularioFiltros(terminalesActivos(db), filtros)}
 		${tablero(db, filtros)}`;
+	// El tablero ocupa todo el ancho: cinco columnas no caben en 60 rem.
 	return c.html(
 		pagina({
 			titulo: "Kanban",
 			usuario: usuarioActual(c),
 			vista: "kanban",
 			revision: revisionActual(db),
+			acciones: accionNuevaTarea(),
+			ancho: "completo",
 			cuerpo,
 		}),
 	);
