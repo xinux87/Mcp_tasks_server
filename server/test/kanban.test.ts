@@ -121,6 +121,20 @@ test("el kanban pinta las cinco columnas con sus tarjetas", async () => {
 		assert.match(cuerpo, /<body data-vista="kanban" data-revision="\d+">/);
 		assert.match(cuerpo, /sin asignar/);
 		assert.match(cuerpo, /<script type="module" src="\/static\/app\.js"><\/script>/);
+		// Cabecera de página con su acción, y el tablero a todo lo ancho.
+		assert.match(cuerpo, /<div class="dentro dentro-completo">/);
+		assert.match(cuerpo, /<header class="cabecera-pagina">[\s\S]*?<h1>Kanban<\/h1>/);
+		assert.match(cuerpo, /<a class="boton principal" href="\/tareas\/nueva">Nueva tarea<\/a>/);
+		// Cada columna se encabeza con la etiqueta de su estado y el contador.
+		assert.match(
+			cuerpo,
+			/<span class="insignia estado-backlog color-gris">backlog<\/span> Backlog <span class="contador">2<\/span>/,
+		);
+		// Los filtros son una fila de desplegables, sin caja alrededor.
+		assert.match(cuerpo, /<form class="filtros" method="get" action="\/tareas\/kanban">/);
+		assert.doesNotMatch(cuerpo, /Quitar filtros/);
+		const filtrado = await pedir(montaje, "/tareas/kanban?marca=bloqueada", { cookie });
+		assert.match(await filtrado.text(), /<a class="quitar" href="\/tareas\/kanban">Quitar filtros<\/a>/);
 	} finally {
 		await montaje.cerrar();
 	}

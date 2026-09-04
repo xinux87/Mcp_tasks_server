@@ -82,13 +82,15 @@ async function entrar(montaje: Montaje): Promise<string> {
 	return cookieDeSesion(respuesta);
 }
 
-/** El trozo de la lista que va desde el título de un grupo hasta el siguiente. */
+/**
+ * El trozo de la lista que corresponde a un grupo de estado. Se busca por el
+ * rótulo de la columna, que es la etiqueta del estado, el título y el contador.
+ */
 function grupo(cuerpo: string, titulo: string): string {
-	const inicio = cuerpo.indexOf(`<h2>${titulo} `);
-	assert.ok(inicio >= 0, `no aparece el grupo «${titulo}»`);
-	const resto = cuerpo.slice(inicio + 4);
-	const fin = resto.indexOf("<h2");
-	return fin < 0 ? resto : resto.slice(0, fin);
+	const trozos = cuerpo.split('<section class="grupo">');
+	const encontrado = trozos.find((trozo) => trozo.includes(`</span> ${titulo} <span class="contador"`));
+	assert.ok(encontrado !== undefined, `no aparece el grupo «${titulo}»`);
+	return encontrado;
 }
 
 /** Crea una tarea desde la web y devuelve su identificador visible. */
@@ -156,8 +158,22 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		const lista = await pedir(montaje, "/tareas", { cookie });
 		assert.equal(lista.status, 200);
 		const cuerpoLista = await lista.text();
-		assert.match(grupo(cuerpoLista, "Backlog"), /T-0001/);
+		// El grupo se encabeza con la etiqueta del estado, el título y el contador.
+		assert.match(
+			cuerpoLista,
+			/<span class="insignia estado-backlog color-gris">backlog<\/span> Backlog <span class="contador">1<\/span>/,
+		);
+		const backlog = grupo(cuerpoLista, "Backlog");
+		assert.match(backlog, /T-0001/);
+		// «Creada por» enseña el chip de quien la creó, con su color.
+		assert.match(backlog, /<span class="chip color-\w+"><span class="inicial">X<\/span>xinux<\/span>/);
 		assert.match(grupo(cuerpoLista, "Preparadas"), /Ninguna\./);
+		// La lista arranca con «cabeceraPagina» y su acción principal.
+		assert.match(cuerpoLista, /<header class="cabecera-pagina">/);
+		assert.match(cuerpoLista, /<a class="boton principal" href="\/tareas\/nueva">Nueva tarea<\/a>/);
+		// Sin filtros puestos no hay nada que quitar.
+		assert.doesNotMatch(cuerpoLista, /Quitar filtros/);
+		assert.match(await (await pedir(montaje, "/tareas?estado=backlog", { cookie })).text(), /Quitar filtros/);
 
 		const ficha = await pedir(montaje, "/tareas/T-0001", { cookie });
 		assert.equal(ficha.status, 200);
@@ -166,6 +182,16 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		// La descripción llega renderizada por markdown-it, no en crudo.
 		assert.match(cuerpoFicha, /<strong>negrita<\/strong>/);
 		assert.match(cuerpoFicha, /sin asignar/);
+		// Migas «Tareas › T-0001», con la última sin enlace.
+		assert.match(cuerpoFicha, /<nav class="migas"[^>]*>\s*<a href="\/tareas">Tareas<\/a>/);
+		assert.match(cuerpoFicha, /<span>T-0001<\/span>/);
+		// Las propiedades, y solo la transición hacia delante que toca.
+		assert.match(cuerpoFicha, /<dt>Estado<\/dt>/);
+		assert.match(cuerpoFicha, /<dt>Autoejecución<\/dt>\s*<dd>activada<\/dd>/);
+		assert.match(cuerpoFicha, /<dt>Creada<\/dt>/);
+		assert.match(cuerpoFicha, /Pasar a preparadas/);
+		assert.doesNotMatch(cuerpoFicha, /Finalizar/);
+		assert.match(cuerpoFicha, /<h2>Actividad<\/h2>/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -197,11 +223,17 @@ test("una pregunta se crea con su casilla, sale con badge y sin nada de ejecuci�
 		assert.equal(ficha.status, 200);
 		const cuerpo = await ficha.text();
 		assert.match(cuerpo, /<span class="insignia tipo-pregunta color-rosa">pregunta<\/span>/);
-		assert.doesNotMatch(cuerpo, /<th>Ejecución<\/th>/);
-		assert.doesNotMatch(cuerpo, /<th>Autoejecución<\/th>/);
+		// Las propiedades de una pregunta llevan Tipo y no llevan ejecución.
+		assert.match(cuerpo, /<dt>Tipo<\/dt>/);
+		assert.doesNotMatch(cuerpo, /<dt>Ejecución<\/dt>/);
+		assert.doesNotMatch(cuerpo, /<dt>Autoejecución<\/dt>/);
 		// Al editarla, el formulario tampoco enseña la ejecución.
 		assert.doesNotMatch(cuerpo, /name="ejecucionModelo"/);
 		assert.match(cuerpo, /name="pregunta" checked/);
+		// Y en la lista, su columna de ejecución queda vacía.
+		const lista = await (await pedir(montaje, "/tareas", { cookie })).text();
+		assert.match(lista, /<th>Creada por<\/th>/);
+		assert.match(lista, /<td class="pequeno">—<\/td>/);
 
 		// El kanban la marca igual en su tarjeta.
 		const kanban = await pedir(montaje, "/tareas/kanban", { cookie });
@@ -286,6 +318,77 @@ test("una pregunta abierta se contesta desde la ficha, y solo una vez", async ()
 		});
 		assert.equal(repetida.status, 422);
 		assert.match(await repetida.text(), /ya está contestada/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el hilo enseña cada autor como chip y la ficha lleva su rastro de actividad", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const alta = await pedir(montaje, "/tareas", {
+			cookie,
+			formulario: {
+				titulo: "Exportar clientes",
+				descripcion: "Hace falta un CSV.",
+				autoejecucion: "on",
+				analisisModelo: "sonnet",
+				analisisTerminal: "",
+				ejecucionTerminal: "",
+			},
+		});
+		assert.equal(alta.status, 302);
+		await pedir(montaje, "/tareas/T-0001/mover", { cookie, formulario: { estado: "prepared" } });
+
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const terminalId = valor.terminal.id;
+		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId });
+		comentarAnalisis(montaje.db, { tareaId: 1, terminalId, texto: "Hay que añadir un botón al listado." });
+		preguntar(montaje.db, {
+			tareaId: 1,
+			terminalId,
+			pregunta: "¿Qué separador usamos en el CSV?",
+			porQueImporta: "La hoja de cálculo de los comerciales está en español.",
+			opciones: [
+				{ texto: "Punto y coma", consecuencia: "Se abre directamente en su hoja de cálculo." },
+				{ texto: "No hacer nada", consecuencia: "Siguen copiando a mano." },
+			],
+			recomendacion: "Punto y coma",
+		});
+
+		// Con la pregunta abierta, sus opciones son tarjetas seleccionables.
+		const abierta = await (await pedir(montaje, "/tareas/T-0001", { cookie })).text();
+		assert.match(abierta, /<label class="opcion">/);
+		assert.match(abierta, /<span class="recomendada">recomendada<\/span>/);
+
+		await pedir(montaje, "/tareas/T-0001/responder/P1", {
+			cookie,
+			formulario: { opcion: "Punto y coma", nota: "Ya lo cambiaremos." },
+		});
+
+		const cuerpo = await (await pedir(montaje, "/tareas/T-0001", { cookie })).text();
+		// El agente: chip gris con la inicial del modelo y su terminal detrás.
+		assert.match(
+			cuerpo,
+			/<span class="chip color-gris"><span class="inicial">S<\/span>sonnet<span class="terminal">@portatil-xinux<\/span><\/span>/,
+		);
+		// El humano: el chip de su usuario, con el color que tiene ahora.
+		assert.match(cuerpo, /<span class="chip color-\w+"><span class="inicial">X<\/span>xinux<\/span>/);
+		assert.match(cuerpo, /<span class="insignia tipo-analisis color-azul">analisis<\/span>/);
+		assert.match(cuerpo, /<span>P1<\/span>/);
+		// Contestada, ya no hay formulario de respuesta en su tarjeta.
+		assert.doesNotMatch(cuerpo, /class="responder"/);
+
+		// La actividad, de lo más antiguo a lo más nuevo y con la frase de cada acción.
+		const actividad = cuerpo.slice(cuerpo.indexOf('<ol class="actividad">'));
+		assert.ok(actividad.startsWith('<ol class="actividad">'), "falta la lista de actividad");
+		assert.ok(actividad.indexOf("creó la tarea") < actividad.indexOf("movió la tarea"), "el rastro va del revés");
+		assert.match(actividad, /respondió/);
+		assert.match(actividad, /P1: Punto y coma/);
+
+		// La vuelta atrás está, pero plegada: es excepcional.
+		assert.match(cuerpo, /<details class="caja">\s*<summary><strong>Volver a backlog<\/strong><\/summary>/);
 	} finally {
 		await montaje.cerrar();
 	}

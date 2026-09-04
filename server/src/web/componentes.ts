@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
-import { html } from "hono/html";
-import { listarUsuarios } from "../db/admin.ts";
+import { html, raw } from "hono/html";
+import { listarTerminales, listarUsuarios } from "../db/admin.ts";
 import type { TipoComentario } from "../db/hilo.ts";
 import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
 import type { Html } from "./plantilla.ts";
@@ -217,4 +217,85 @@ export function propiedades(filas: readonly Propiedad[]): Html {
 				</div>`,
 			)}
 		</dl>`;
+}
+
+/**
+ * El rótulo de una columna de estado: su etiqueta, el título que se lee y
+ * cuántas tareas hay. Lo comparten la lista, donde encabeza cada grupo, y el
+ * kanban, donde encabeza cada columna.
+ *
+ * Recibe la etiqueta ya pintada en vez del estado: `insigniaEstado` vive en
+ * `plantilla.ts`, que importa este archivo, y pedirla desde aquí cerraría el
+ * círculo entre los dos módulos.
+ */
+export function rotuloColumna(insignia: Html, titulo: string, total: number): Html {
+	return html`${insignia} ${titulo} <span class="contador">${total}</span>`;
+}
+
+/** El alta de tarea: la acción principal de la lista y del kanban. */
+export function accionNuevaTarea(): Html {
+	return html`<a class="boton principal" href="/tareas/nueva">Nueva tarea</a>`;
+}
+
+/** Una opción de un desplegable de filtro: el valor que viaja y lo que se lee. */
+export type OpcionFiltro = {
+	valor: string;
+	texto: string;
+};
+
+export type OpcionesFiltro = {
+	nombre: string;
+	titulo: string;
+	/** La primera opción, la de no filtrar por este campo: «todos», «todas». */
+	todas: string;
+	valores: readonly OpcionFiltro[];
+	seleccionado: string;
+};
+
+/**
+ * Un desplegable de la fila de filtros, igual en la lista y en el kanban. La
+ * opción de valor vacío está siempre y es la que deja pasar todo.
+ */
+export function filtroSelect({ nombre, titulo, todas, valores, seleccionado }: OpcionesFiltro): Html {
+	return html`<label>
+			<span>${titulo}</span>
+			<select name="${nombre}">
+				<option value=""${seleccionado === "" ? raw(" selected") : ""}>${todas}</option>
+				${valores.map(
+					(opcion) =>
+						html`<option value="${opcion.valor}"${opcion.valor === seleccionado ? raw(" selected") : ""}>${opcion.texto}</option>`,
+				)}
+			</select>
+		</label>`;
+}
+
+/** Quién creó una tarea, tal como lo guarda la fila: una persona o un terminal. */
+export type QuienCreo = {
+	usuarioId: number | null;
+	terminalId: number | null;
+};
+
+/**
+ * Cómo se enseña quién creó una tarea: el chip de la persona con su color, el
+ * nombre del terminal en gris cuando la creó un agente, y `null` cuando no
+ * consta ninguno de los dos, para que cada pantalla decida qué escribir en su
+ * lugar.
+ *
+ * Las dos tablas se leen una vez por página, como en `buscadorDeColor`: la
+ * lista pinta una fila por tarea y no puede consultar la base en cada una.
+ */
+export function buscadorDeCreador(db: DatabaseSync): (quien: QuienCreo) => Html | null {
+	const usuarios = new Map(listarUsuarios(db).map((usuario) => [usuario.id, usuario]));
+	const terminales = new Map(listarTerminales(db).map((terminal) => [terminal.id, terminal.nombre]));
+	return ({ usuarioId, terminalId }) => {
+		const usuario = usuarioId === null ? undefined : usuarios.get(usuarioId);
+		if (usuario !== undefined) {
+			return chipUsuario(usuario.nombre, usuario.color);
+		}
+		const terminal = terminalId === null ? undefined : terminales.get(terminalId);
+		if (terminal !== undefined) {
+			return html`<span class="silencio">${terminal}</span>`;
+		}
+		return null;
+	};
 }

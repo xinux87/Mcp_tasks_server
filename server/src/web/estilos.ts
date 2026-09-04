@@ -895,4 +895,147 @@ button.enlace:hover {
 		transition: none;
 	}
 }
+
+/* --- pantallas de tareas --------------------------------------------- */
+
+/* La fila de filtros es compacta: los desplegables se quedan en su ancho en
+   vez de repartirse la fila, y encogen solo cuando no caben. El botón y el
+   enlace se alinean con su base, que es donde el ojo espera encontrarlos. */
+.filtros label {
+	flex: 0 1 10rem;
+}
+
+.filtros button {
+	padding: 0.3rem 0.7rem;
+}
+
+.filtros .quitar {
+	padding-bottom: 0.35rem;
+	color: var(--texto-suave);
+	font-size: 0.85rem;
+	text-decoration: none;
+}
+
+.filtros .quitar:hover {
+	color: var(--texto);
+	text-decoration: underline;
+}
+
+/* La etiqueta de estado ya trae su propio margen: en un rótulo con hueco
+   propio sumarían dos separaciones seguidas. */
+.grupo h2 .insignia, .columna h2 .insignia, .etiquetas .insignia {
+	margin-right: 0;
+}
+
+/* En la lista, el título manda: el resto de columnas se lee de refilón. */
+.grupo td:first-child, .grupo th:first-child {
+	width: 6rem;
+}
+
+.grupo tbody td:nth-child(3), .grupo tbody td:nth-child(4) {
+	color: var(--texto-suave);
+}
+
+/* El grupo de las cerradas se pliega; el triángulo no debe empujar el rótulo. */
+.grupo summary {
+	cursor: pointer;
+	font-size: 1.15rem;
+	font-weight: 600;
+	margin-bottom: 0.6rem;
+}
+
+/* --- casillas y opciones: la marca a un lado, el texto y su detalle al otro */
+
+label.casilla, label.opcion {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	align-items: baseline;
+}
+
+/* El texto de la casilla es el texto de la página, no un rótulo de campo: la
+   regla general de «label > span» lo dejaría suave y pequeño. */
+label.casilla .que, label.opcion .que {
+	grid-column: 2;
+	margin: 0;
+	color: var(--texto);
+	font-size: inherit;
+}
+
+label.casilla .detalle, label.opcion .consecuencia {
+	grid-column: 2;
+	margin: 0.1rem 0 0;
+	color: var(--texto-suave);
+	font-size: 0.85rem;
+}
+
+/* Va dentro del texto de la opción, no debajo. */
+label.opcion .recomendada {
+	display: inline;
+}
+
+/* --- nueva tarea y edición ----------------------------------------------- */
+
+/* Las dos fases, lado a lado a partir de 48 rem. Cuando solo hay una (una
+   pregunta no tiene ejecución) ocupa el ancho entero en vez de dejar hueco. */
+.fases {
+	display: grid;
+	gap: 0 1rem;
+}
+
+.fases > fieldset:only-child {
+	grid-column: 1 / -1;
+}
+
+@media (min-width: 48rem) {
+	.fases {
+		grid-template-columns: 1fr 1fr;
+	}
+}
+
+/* --- ficha --------------------------------------------------------------- */
+
+.hijas {
+	margin: 0 0 1.4rem;
+	padding: 0;
+	list-style: none;
+}
+
+.hijas li {
+	padding: 0.2rem 0;
+}
+
+/* El rastro de la tarea: una línea por acción, de la más antigua a la más
+   nueva. Sin numerar: lo que ordena es la fecha del final. */
+.actividad {
+	margin: 0 0 1.4rem;
+	padding: 0;
+	list-style: none;
+}
+
+.actividad li {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.35rem;
+	padding: 0.25rem 0;
+	border-bottom: 1px solid var(--borde);
+}
+
+.actividad li:last-child {
+	border-bottom: none;
+}
+
+/* La fecha se va al final de la línea, que es donde no estorba al leer. */
+.actividad li > :last-child {
+	margin-left: auto;
+}
+
+/* Los detalles plegados del final (vueltas atrás, editar) son excepcionales. */
+details.caja > summary {
+	cursor: pointer;
+}
+
+details.caja[open] > summary {
+	margin-bottom: 0.9rem;
+}
 `;
