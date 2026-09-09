@@ -3,7 +3,7 @@
  * en disco: lo sirve `GET /static/app.js` como módulo ES. Es lo único que
  * corre en el navegador, aparte de SortableJS.
  *
- * Hace cuatro cosas, y ninguna más:
+ * Hace cinco cosas, y ninguna más:
  *
  * 1. Refresco en vivo: escucha `/eventos` (SSE con la revisión global) y,
  *    según la vista, recarga el fragmento del tablero, recarga la página o
@@ -13,6 +13,7 @@
  *    revisión porque su telemetría no es contenido.
  * 4. Despliega la barra lateral en móvil, alternando la clase
  *    `lateral-abierta` en el `<body>`.
+ * 5. Copia al portapapeles los bloques de comandos del tutorial de conexión.
  *
  * Escrito sin acentos graves ni interpolaciones para que quepa tal cual en
  * esta plantilla de TypeScript. Nunca escribe `innerHTML` con nada que no
@@ -316,6 +317,48 @@ function prepararLateral() {
 	});
 }
 
+// --- copiar bloques de comandos ----------------------------------------------
+
+/**
+ * El botón «Copiar» de cada bloque del tutorial de conexión. Sin API de
+ * portapapeles (una red local por http no es un contexto seguro, y ahí no
+ * existe) los botones se esconden: el texto se sigue pudiendo seleccionar a
+ * mano, y un botón que no hace nada engaña.
+ */
+function prepararCopias() {
+	const botones = document.querySelectorAll(".copiar");
+	if (botones.length === 0) {
+		return;
+	}
+	const portapapeles = window.navigator.clipboard;
+	if (portapapeles === undefined || typeof portapapeles.writeText !== "function") {
+		for (const boton of botones) {
+			boton.hidden = true;
+		}
+		return;
+	}
+	for (const boton of botones) {
+		boton.addEventListener("click", function () {
+			const bloque = boton.closest(".bloque-codigo");
+			const codigo = bloque === null ? null : bloque.querySelector("code");
+			if (codigo === null) {
+				return;
+			}
+			portapapeles.writeText(codigo.textContent || "").then(
+				function () {
+					boton.textContent = "Copiado";
+					window.setTimeout(function () {
+						boton.textContent = "Copiar";
+					}, 2000);
+				},
+				function () {
+					boton.textContent = "No se pudo";
+				},
+			);
+		});
+	}
+}
+
 // --- refresco en vivo --------------------------------------------------------
 
 function alSubirLaRevision() {
@@ -361,6 +404,7 @@ function escucharEventos() {
 // --- arranque ----------------------------------------------------------------
 
 prepararLateral();
+prepararCopias();
 escucharEventos();
 
 if (elTablero() !== null) {

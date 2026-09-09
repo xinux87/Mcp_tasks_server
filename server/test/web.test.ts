@@ -5,6 +5,7 @@ import type { Hono } from "hono";
 import { crearApp } from "../src/app.ts";
 import { hashPassword } from "../src/auth/passwords.ts";
 import { buscarTerminalPorToken, crearTerminalConToken } from "../src/auth/tokens.ts";
+import type { Config } from "../src/config.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { listarTerminales, listarUsuarios } from "../src/db/admin.ts";
 import { COLORES_USUARIO } from "../src/db/colores.ts";
@@ -20,10 +21,10 @@ type Montaje = {
 };
 
 /** Base en memoria con un usuario, y la app entera montada, sin abrir puerto. */
-function montar(): Montaje {
+function montar(config: Config = CONFIG_PRUEBA): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
 	crearUsuario(db, "xinux", hashPassword("secreta"));
-	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
+	const { app, cerrar } = crearApp({ db, config });
 	return {
 		db,
 		app,
@@ -630,6 +631,101 @@ test("nada de lo que escribe el humano llega al navegador sin escapar", async ()
 			assert.ok(!cuerpo.includes("<img src=x"), `${ruta} dejó pasar una etiqueta img`);
 			assert.match(cuerpo, /&lt;script&gt;/);
 		}
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+/** La configuración de un servidor al que se llega también por una IP de la red. */
+const CONFIG_CON_DIRECCIONES: Config = { ...CONFIG_PRUEBA, DIRECCIONES: ["http://192.168.50.5:3000"] };
+
+test("el Host de una dirección configurada pasa y el de otra da 403", async () => {
+	const montaje = montar(CONFIG_CON_DIRECCIONES);
+	try {
+		// El middleware compara solo el hostname, así que el puerto de la cabecera
+		// no tiene por qué ser el de la dirección configurada.
+		const propia = await pedir(montaje, "/salud", { cabeceras: { host: "192.168.50.5:3020" } });
+		assert.equal(propia.status, 200);
+
+		const local = await pedir(montaje, "/salud", { cabeceras: { host: "127.0.0.1:3000" } });
+		assert.equal(local.status, 200);
+
+		const ajena = await pedir(montaje, "/salud", { cabeceras: { host: "ajeno.example" } });
+		assert.equal(ajena.status, 403);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("la página del terminal creado lleva el tutorial con el token y las direcciones", async () => {
+	const montaje = montar(CONFIG_CON_DIRECCIONES);
+	try {
+		const cookie = await entrar(montaje);
+		const alta = await pedir(montaje, "/terminales", {
+			cookie,
+			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+		});
+		const cuerpo = await alta.text();
+		const token = /<code class="token">([A-Za-z0-9_-]+)<\/code>/.exec(cuerpo)?.[1] ?? "";
+		assert.equal(token.length, 43);
+
+		// Las direcciones, cada una con su origen. La base es la de las pruebas.
+		assert.match(cuerpo, /<code>http:\/\/localhost:3000<\/code><\/td><td class="pequeno">la configurada como base</);
+		assert.match(
+			cuerpo,
+			/<code>http:\/\/192\.168\.50\.5:3000<\/code><\/td><td class="pequeno">configurada en DIRECCIONES</,
+		);
+		// La recomendada para otra máquina es la privada, no localhost.
+		assert.match(cuerpo, /<code>servidor_url<\/code><\/td><td><code>http:\/\/192\.168\.50\.5:3000<\/code>/);
+		// El token, dentro del comando sin plugin y dentro del archivo de la statusline.
+		assert.match(
+			cuerpo,
+			new RegExp(
+				`claude mcp add --transport http tareas http://192\\.168\\.50\\.5:3000/mcp --header &quot;Authorization: Bearer ${token}&quot;`,
+			),
+		);
+		assert.match(cuerpo, new RegExp(`SERVIDOR_URL=http://192\\.168\\.50\\.5:3000\nTOKEN=${token}`));
+		assert.match(cuerpo, /\/plugin install mcp-tareas@mcp-tareas-marketplace/);
+		assert.match(cuerpo, /\/loop \/mcp-tareas:tareas/);
+		// La advertencia de Docker, que es la trampa de las direcciones detectadas.
+		assert.match(cuerpo, /Docker[\s\S]*máquina anfitriona/);
+		// Cada bloque de comandos se puede copiar.
+		assert.match(
+			cuerpo,
+			/<div class="bloque-codigo">\s*<button type="button" class="boton pequeno copiar">Copiar<\/button>/,
+		);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el tutorial sin token está siempre en /terminales/conectar", async () => {
+	const montaje = montar(CONFIG_CON_DIRECCIONES);
+	try {
+		const sinSesion = await pedir(montaje, "/terminales/conectar");
+		assert.equal(sinSesion.status, 302);
+		assert.equal(sinSesion.headers.get("location"), "/login?volver=%2Fterminales%2Fconectar");
+
+		const cookie = await entrar(montaje);
+		const { valor } = crearTerminalConToken(montaje.db, listarUsuarios(montaje.db)[0]?.id ?? 0, "sobremesa", "x@y.z");
+		// La cabecera dice por dónde ha entrado el navegador: no es ninguna de las
+		// conocidas, así que sale como una fila más.
+		const respuesta = await pedir(montaje, "/terminales/conectar", {
+			cookie,
+			cabeceras: { host: "127.0.0.1:3000" },
+		});
+		assert.equal(respuesta.status, 200);
+		const cuerpo = await respuesta.text();
+		assert.match(cuerpo, /data-vista="conectar"/);
+		assert.match(cuerpo, /Bearer &lt;token&gt;/);
+		assert.match(cuerpo, /TOKEN=&lt;token&gt;/);
+		assert.match(
+			cuerpo,
+			/<code>http:\/\/127\.0\.0\.1:3000<\/code><\/td><td class="pequeno">la que estás usando ahora en el navegador</,
+		);
+		// Ningún token de verdad se enseña aquí.
+		assert.ok(!cuerpo.includes(valor.token), "el tutorial sin token enseñó un token real");
+		assert.doesNotMatch(cuerpo, /<code class="token">/);
 	} finally {
 		await montaje.cerrar();
 	}

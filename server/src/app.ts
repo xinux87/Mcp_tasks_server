@@ -3,7 +3,8 @@ import { createMcpHonoApp } from "@modelcontextprotocol/hono";
 import type { Hono } from "hono";
 import { montarApiUso } from "./api/uso.ts";
 import { authInfoDelContexto, bearerTerminal } from "./auth/bearer.ts";
-import { type Config, HOST_ESCUCHA, hostsPermitidos } from "./config.ts";
+import { type Config, HOST_ESCUCHA } from "./config.ts";
+import { hostsPermitidos } from "./direcciones.ts";
 import { crearHandlerMcp } from "./mcp/handler.ts";
 import { montarWeb } from "./web/montar.ts";
 
@@ -37,7 +38,7 @@ export type App = {
  */
 export function crearApp({ db, config }: OpcionesApp): App {
 	const handler = crearHandlerMcp(db);
-	const app = createMcpHonoApp({ host: HOST_ESCUCHA, allowedHosts: hostsPermitidos(config.BASE_URL) });
+	const app = createMcpHonoApp({ host: HOST_ESCUCHA, allowedHosts: hostsPermitidos(config) });
 
 	// Comprobación de vida para Docker. Sin autenticación.
 	app.get("/salud", (c) => c.json({ ok: true }));

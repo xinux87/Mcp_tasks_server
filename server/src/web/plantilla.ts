@@ -120,7 +120,7 @@ const BLOQUES: readonly { titulo: string; entradas: readonly EntradaNav[] }[] = 
 	{
 		titulo: "Sistema",
 		entradas: [
-			{ href: "/terminales", texto: "Terminales", vistas: ["terminales"] },
+			{ href: "/terminales", texto: "Terminales", vistas: ["terminales", "conectar"] },
 			{ href: "/usuarios", texto: "Usuarios", vistas: ["usuarios"] },
 			{ href: "/actividad", texto: "Actividad", vistas: ["actividad"] },
 		],

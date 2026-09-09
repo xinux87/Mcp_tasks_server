@@ -747,6 +747,49 @@ button.enlace:hover {
 	font-size: 0.85rem;
 }
 
+/* --- tutorial de conexión ------------------------------------------------ */
+
+/* Los pasos van numerados por la propia lista: el número a la izquierda y el
+   contenido del paso debajo de su título. */
+.pasos {
+	margin: 0;
+	padding-left: 1.5rem;
+}
+
+.pasos > li {
+	margin-bottom: 1.6rem;
+}
+
+.pasos > li:last-child {
+	margin-bottom: 0;
+}
+
+.pasos > li > h3:first-child {
+	margin-top: 0;
+}
+
+.tutorial table {
+	width: auto;
+}
+
+/* Un bloque copiable: el botón flota sobre la esquina del código, que le deja
+   sitio con su propio relleno. */
+.bloque-codigo {
+	position: relative;
+	margin-bottom: 0.9rem;
+}
+
+.bloque-codigo pre {
+	margin: 0;
+	padding-right: 5.5rem;
+}
+
+.bloque-codigo .copiar {
+	position: absolute;
+	top: 0.45rem;
+	right: 0.45rem;
+}
+
 /* --- kanban -------------------------------------------------------------- */
 
 /* Cinco columnas fijas: si no caben, el tablero se desplaza en horizontal. El

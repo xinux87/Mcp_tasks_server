@@ -1,4 +1,21 @@
 import * as z from "zod";
+import { sinBarraFinal } from "./direcciones.ts";
+
+/**
+ * `DIRECCIONES`: URLs base separadas por comas por las que también se llega al
+ * servidor. Se admiten en la cabecera `Host` y salen en el tutorial de
+ * conexión. Cada una tiene que ser absoluta, y la barra final sobra.
+ */
+const listaDeDirecciones = z
+	.string()
+	.transform((valor) =>
+		valor
+			.split(",")
+			.map((trozo) => trozo.trim())
+			.filter((trozo) => trozo !== ""),
+	)
+	.pipe(z.array(z.url({ error: "cada dirección de DIRECCIONES tiene que ser una URL absoluta" })))
+	.transform((direcciones) => direcciones.map(sinBarraFinal));
 
 /**
  * Variables de entorno del servidor. La tabla de referencia está en
@@ -14,6 +31,7 @@ const esquemaConfig = z.object({
 	BASE_URL: z.url({ error: "BASE_URL es obligatoria y tiene que ser una URL absoluta" }),
 	SESSION_SECRET: z.string().min(1, { error: "SESSION_SECRET es obligatoria" }),
 	ADMIN_PASSWORD: z.string().min(1).optional(),
+	DIRECCIONES: listaDeDirecciones.optional(),
 });
 
 export type Config = z.infer<typeof esquemaConfig>;
@@ -46,14 +64,4 @@ export function leerConfigDatos(entorno: NodeJS.ProcessEnv = process.env): Confi
 		throw new Error(`configuración inválida:\n${formatearError(resultado.error)}`);
 	}
 	return resultado.data;
-}
-
-/**
- * Hostnames aceptados en la cabecera `Host` (protección contra DNS rebinding).
- * Además del host público de `BASE_URL` se admite localhost, porque el
- * HEALTHCHECK de la imagen Docker llama a `http://127.0.0.1:3000/salud`.
- */
-export function hostsPermitidos(baseUrl: string): string[] {
-	const publico = new URL(baseUrl).hostname;
-	return [...new Set([publico, "localhost", "127.0.0.1", "[::1]"])];
 }

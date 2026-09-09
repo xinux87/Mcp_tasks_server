@@ -1,13 +1,16 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Context, Hono } from "hono";
 import { html } from "hono/html";
+import type { Config } from "../../config.ts";
 import { actividadDe, altaPor } from "../../db/actividad.ts";
 import { altaTerminal, listarTerminales, revocarTerminal, type TerminalListado } from "../../db/admin.ts";
+import { direccionesDelServidor } from "../../direcciones.ts";
 import { buscadorDeColor, type Color, chipUsuario, etiqueta, type Miga } from "../componentes.ts";
 import { fechaLegible, SIN_DATO } from "../formatos.ts";
 import { campo, ESTADO_AVISO, leerFormulario, mensajeDeRegla } from "../formulario.ts";
 import { type Html, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
+import { tutorialConexion } from "../tutorial.ts";
 
 /** Cómo se busca el color de cada usuario que aparece en la página. */
 type ColorDe = (nombre: string) => Color | null;
@@ -227,11 +230,34 @@ function paginaTerminales(c: Context, deps: DependenciasWeb, aviso: string | nul
 			usuario: usuarioActual(c),
 			vista: "terminales",
 			aviso,
-			acciones: html`<a class="boton principal" href="#nuevo-terminal">Nuevo terminal</a>`,
+			acciones: html`<a class="boton" href="/terminales/conectar">Cómo conectar un terminal</a>
+				<a class="boton principal" href="#nuevo-terminal">Nuevo terminal</a>`,
 			cuerpo: html`${tabla}${tarjetaNuevoTerminal()}`,
 		}),
 		aviso === null ? 200 : ESTADO_AVISO,
 	);
+}
+
+/**
+ * Por dónde ha entrado el navegador: la cabecera `Host` con el esquema de
+ * `BASE_URL`. Es la dirección que seguro funciona desde donde se está mirando,
+ * y por eso el tutorial la enseña cuando no es ninguna de las conocidas.
+ */
+function direccionDelNavegador(c: Context, config: Config): string | null {
+	const host = c.req.header("host");
+	if (host === undefined || host === "") {
+		return null;
+	}
+	return `${new URL(config.BASE_URL).protocol}//${host}`;
+}
+
+/** El tutorial de conexión con las direcciones de este servidor y el token que toque. */
+function tutorialDe(c: Context, config: Config, token: string): Html {
+	return tutorialConexion({
+		direcciones: direccionesDelServidor(config),
+		direccionActual: direccionDelNavegador(c, config),
+		token,
+	});
 }
 
 /** Las migas de todo lo que cuelga de la lista de terminales. */
@@ -251,7 +277,7 @@ export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void
 				nombre: campo(formulario, "nombre"),
 				cuenta: campo(formulario, "cuenta"),
 			});
-			const cuerpo = html`<section class="caja caja-estrecha">
+			const cuerpo = html`<section class="caja">
 				<p>
 					Terminal <strong>${creado.terminal.nombre}</strong> para la cuenta
 					<strong>${creado.terminal.cuenta}</strong>.
@@ -260,7 +286,8 @@ export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void
 				<code class="token">${creado.token}</code>
 				<p class="pequeno silencio">Cópialo en la configuración del plugin, nunca en el repositorio.</p>
 				<p><a class="boton" href="/terminales">Volver a terminales</a></p>
-			</section>`;
+			</section>
+			${tutorialDe(c, deps.config, creado.token)}`;
 			// Sin `vista`: esta página no se refresca sola, porque una recarga se
 			// llevaría por delante lo único que no se vuelve a enseñar.
 			return c.html(
@@ -275,6 +302,27 @@ export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void
 			return paginaTerminales(c, deps, mensajeDeRegla(error));
 		}
 	});
+
+	// El mismo tutorial sin token, siempre disponible. Va antes que
+	// `/terminales/:id/revocar` por claridad; no chocan, porque esa lleva un
+	// segmento más.
+	app.get("/terminales/conectar", (c) =>
+		c.html(
+			pagina({
+				titulo: "Cómo conectar un terminal",
+				usuario: usuarioActual(c),
+				// Vista propia y no «terminales»: esta página no se refresca por
+				// intervalo, que perdería el sitio en un texto largo.
+				vista: "conectar",
+				migas: migasDe("Cómo conectar"),
+				cuerpo: html`<p>
+						Crea el terminal en <a href="/terminales">Terminales</a> y usa el token que te enseñe la
+						web una sola vez. Aquí va como <code>&lt;token&gt;</code>.
+					</p>
+					${tutorialDe(c, deps.config, "<token>")}`,
+			}),
+		),
+	);
 
 	// Sin JavaScript: el botón de la tabla lleva a esta página y aquí está el POST.
 	app.get("/terminales/:id/revocar", (c) => {
