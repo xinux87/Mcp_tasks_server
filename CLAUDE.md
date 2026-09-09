@@ -58,7 +58,9 @@ Cada encargo que se pasa a un subagente lleva, en este orden:
 ### Campos
 
 - `id` con la forma `T-0042` (cuatro cifras como mínimo, correlativo), `titulo`, `descripcion`, `estado`, `orden` (posición dentro de su columna), `padre` (opcional, para tareas hijas).
-- `tipo`: `tarea` (por defecto) o `pregunta`. Ver «Tareas que son preguntas».
+- `tipo`: `tarea` (por defecto), `pregunta` o `funcionalidad`. Ver «Tareas que son preguntas» y «Funcionalidades».
+- `dependeDe[]`: tareas que tienen que estar `done` o `finished` antes de que esta se pueda tomar. Ver «Dependencias».
+- `rama`: rama de git en la que se trabaja la tarea, opcional. Una funcionalidad la fija y sus partes la heredan.
 - `analisis`: `modelo` y `terminal` que la analizan.
 - `ejecucion`: `modelo` y `terminal` que la ejecutan.
 - `autoejecucion`: activada por defecto. Con ella, la ejecución arranca sola cuando el análisis termina sin preguntas abiertas. Desactivada, la tarea espera en `prepared` a que el humano apruebe el análisis.
@@ -86,7 +88,8 @@ No son columnas ni se guardan: se derivan del estado de la tarea al leerla. Se m
 - **`bloqueada`**: tiene al menos una pregunta sin respuesta. Es la marca que el humano tiene que atender.
 - **`sin terminal`**: solo en `prepared` y `doing`. La fase que toca (análisis en `prepared` sin análisis hecho, ejecución en el resto) no tiene terminal asignado. Cualquier terminal puede tomarla.
 - **`en marcha`**: un terminal la ha tomado con `tomar_tarea` y todavía no ha escrito el comentario que cierra esa fase.
-- **`análisis listo`**: está en `prepared`, el análisis está hecho, no hay preguntas abiertas, `autoejecucion` está desactivada y el humano aún no ha aprobado.
+- **`análisis listo`**: está en `prepared`, el análisis está hecho, no hay preguntas abiertas, `autoejecucion` está desactivada y el humano aún no ha aprobado. En una funcionalidad significa que la descomposición está lista para revisar.
+- **`esperando`**: solo en `prepared`. Tiene alguna dependencia que todavía no está `done` ni `finished`. Ningún terminal puede tomarla y `novedades` no la ofrece.
 
 La fase que toca en una tarea es «análisis» mientras está en `prepared` sin comentario `analisis`, y «ejecución» desde que lo tiene. El análisis se da por hecho con el primer comentario `analisis`.
 
@@ -127,7 +130,38 @@ El autor lo compone el servidor, nunca el que escribe: para un agente es el mode
 Un agente crea tareas por dos motivos distintos, y van a columnas distintas:
 
 - **Hija de trabajo**: un subagente la crea para dejar visible su parte de la ejecución. Nace directamente en `doing`, colgando de la tarea padre, con las mismas asignaciones. Termina con su propio `resultado` y pasa a `done`; la acepta el humano al aceptar la padre.
-- **Propuesta**: el agente descubre algo que habría que hacer y que no es parte de la tarea actual. Nace en `backlog`, para que el humano decida.
+- **Propuesta**: el agente descubre algo que habría que hacer y que no es parte de la tarea actual. Nace en `backlog`, para que el humano decida. Puede ser de tipo `tarea` o, si lo descubierto es grande, `funcionalidad`.
+- **Parte**: la crea el análisis de una funcionalidad al descomponerla. Nace en `backlog` colgando de la funcionalidad, hereda su `rama` y sus modelos y terminales por defecto, y puede depender de otras partes. El humano la revisa antes de aprobar la descomposición.
+
+### Dependencias
+
+Una tarea puede depender de otras: `dependeDe` es una lista de ids. Sirve dentro de una funcionalidad para ordenar sus partes y fuera de ella para cualquier tarea suelta.
+
+- **Una dependencia está satisfecha cuando la tarea de la que se depende está `done` o `finished`.** Basta con `done`: lo construido y medido ya existe, y esperar a que el humano lo acepte convertiría su revisión en cuello de botella.
+- **Con alguna dependencia sin satisfacer, la tarea lleva la marca `esperando`**: `tomar_tarea` falla con `esperando_dependencias` y `novedades` no la ofrece. Vale para las dos fases: analizar una parte antes de que exista aquello de lo que depende es analizar a ciegas.
+- **Se fijan en `backlog`**, desde la web, el CLI o `crear_tarea`, y se congelan al salir de `backlog` como el resto de asignaciones. Una tarea no puede depender de sí misma ni cerrar un ciclo (`dependencia_ciclica`).
+- **En el frontmatter** aparece `dependeDe: [T-0041, T-0043]` solo cuando hay alguna. En el bloque de hijas de la tarea padre, cada línea lleva `depende de: T-0041` cuando toca.
+
+### Funcionalidades
+
+Una funcionalidad es lo que pide el humano en lenguaje de negocio: qué quiere conseguir, para quién y por qué, sin decir cómo. Se marca con `tipo: funcionalidad`. Su «ejecución» son sus partes: es un evolutivo dentro de la plataforma.
+
+| Columna | Qué significa para una funcionalidad | Quién la mueve |
+|---|---|---|
+| `backlog` | Idea. El humano la redacta, la prioriza y, si quiere, le pone `rama` y los modelos y terminales por defecto de sus partes. | humano |
+| `prepared` | **Descomposición.** El modelo de análisis pregunta lo de negocio y crea las partes con `crear_tarea` clase `parte`, con su orden y sus dependencias; después escribe el comentario `analisis` con el resumen de la descomposición. Las partes nacen en `backlog`. La funcionalidad queda con la marca `análisis listo`. | agente de análisis |
+| `doing` | **El evolutivo en marcha.** El humano revisa las partes en `backlog` (edita, borra, añade) y aprueba la descomposición: la funcionalidad pasa a `doing` y sus partes en `backlog` pasan a `prepared` con su orden. Desde ahí cada parte sigue el ciclo normal. | el humano al aprobar |
+| `done` | Todas las partes están `finished`. El servidor la mueve solo en la misma transacción que cierra la última parte y escribe un comentario `resultado` con autor `servidor` que lista cada parte con su commit. | servidor |
+| `finished` | El humano la da por entregada tras verla en el producto. | humano |
+
+- **No tiene fase de ejecución propia** ni `autoejecucion`: la aprobación de la descomposición es siempre del humano, porque es la decisión que más dinero gobierna. En `doing` no se ofrece a ningún terminal.
+- **Modelos y terminales de la funcionalidad son los valores por defecto de sus partes.** El análisis de la funcionalidad usa su fase de análisis; sus campos de ejecución no se usan en ella misma, solo se heredan.
+- **El análisis exige al menos una parte** (`sin_partes`). Si el agente concluye que no es viable, lo pregunta con `preguntar` en vez de descomponer.
+- **Rama.** Si tiene `rama`, las partes la heredan y los agentes de ejecución trabajan en ella: la crean desde la principal si no existe y hacen ahí sus commits. Al aprobar la descomposición, el servidor crea una última parte «Integrar la rama `<rama>` en la principal» que depende de todas las demás; su ejecución fusiona sin fast-forward, pasa la verificación del repositorio y cita el commit de fusión.
+- **Partes añadidas después.** En `doing`, el humano puede crear más partes desde la web con la funcionalidad como padre; nacen en `backlog` y él las pasa a `prepared`. Las hijas de trabajo que creen los agentes de una parte cuelgan de la parte, no de la funcionalidad, y no cuentan para cerrarla.
+- **Vueltas atrás.** De `prepared` a `backlog` repite el análisis y deja las partes en `backlog` para que el humano las borre o las conserve. De `done` a `doing` con nota, cuando lo entregado no vale: el humano crea las partes que falten.
+- **En el índice y en el frontmatter** se ve como `tipo: funcionalidad`, y la línea de índice lleva `funcionalidad 3/7` justo después del estado: partes cerradas sobre partes totales. No lleva segmento `ejecucion:`. El frontmatter añade `rama` si la tiene y `partes: 7` y `partesCerradas: 3`.
+- **Borrar.** Una tarea en `backlog` se puede borrar desde la web y el CLI (`borrar_tarea`, solo en `backlog`, error `solo_en_backlog`), con rastro en la actividad. Es lo que permite podar una descomposición antes de aprobarla. Fuera de `backlog` nada se borra.
 
 ### Tareas que son preguntas
 
@@ -261,7 +295,7 @@ Es lo que devuelven `listar_tareas` y `novedades` por cada tarea. Una línea, si
 - T-0042 · doing · bloqueada · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-xinux · ejecucion: opus@portatil-xinux
 ```
 
-Las marcas van entre el estado y el título, separadas por `·`. Si no hay marcas, no aparece nada en esa posición. Una tarea de tipo `pregunta` lleva `pregunta` justo después del estado, antes de las marcas, y no lleva segmento `ejecucion:`. Una fase sin modelo ni terminal se escribe `analisis: sin asignar`; con solo uno de los dos, `analisis: sonnet` o `analisis: @portatil-xinux`.
+Las marcas van entre el estado y el título, separadas por `·`. Si no hay marcas, no aparece nada en esa posición. Una tarea de tipo `pregunta` lleva `pregunta` justo después del estado, antes de las marcas, y no lleva segmento `ejecucion:`. Una de tipo `funcionalidad` lleva `funcionalidad 3/7` en esa misma posición, con las partes cerradas sobre el total, y tampoco lleva `ejecucion:`. Una parte lleva `padre: T-0050` como último segmento. Una fase sin modelo ni terminal se escribe `analisis: sin asignar`; con solo uno de los dos, `analisis: sonnet` o `analisis: @portatil-xinux`.
 
 ### Salida de `novedades`
 
@@ -318,7 +352,10 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 | `GET /tareas/T-0042` | Ficha: campos, descripción, hijas, hilo, preguntas abiertas con formulario de respuesta, nota, acciones según estado, consumo |
 | `POST /tareas/T-0042/editar` | Solo en `backlog`: título, descripción, asignaciones, `autoejecucion` |
 | `POST /tareas/T-0042/mover` | Las transiciones del humano, con nota cuando es vuelta atrás |
-| `POST /tareas/T-0042/aprobar` | Aprueba la ejecución cuando `autoejecucion` está desactivada |
+| `POST /tareas/T-0042/aprobar` | Aprueba la ejecución cuando `autoejecucion` está desactivada; en una funcionalidad, aprueba la descomposición: pasa a `doing` y sus partes en `backlog` a `prepared` |
+| `POST /tareas/T-0042/borrar` | Solo en `backlog`, con confirmación en página aparte |
+| `GET /funcionalidades` | Las funcionalidades como filas: estado, progreso en partes cerradas sobre total, bloqueadas y esperando, consumo acumulado, rama y quién la creó |
+| `GET /tareas/T-0050` de una funcionalidad | Su ficha es su propio tablero: encima la descripción, el hilo de decisiones y el botón de aprobar la descomposición; debajo el kanban solo con sus partes, cada una con sus dependencias |
 | `POST /tareas/T-0042/responder/P1` | Guarda la opción elegida por su texto y la nota |
 | `POST /tareas/T-0042/nota` | Nota del humano en el hilo |
 | `POST /tareas/T-0042/orden` | Reordena dentro de la columna, o cambia de columna cuando la transición es del humano |
@@ -336,7 +373,8 @@ Las acciones del humano sobre tareas llaman a las funciones de `src/db/`; la web
 - **El CSS y el JavaScript propio se sirven desde constantes** (`src/web/estilos.ts` en `/static/app.css`, `src/web/cliente.ts` en `/static/app.js`). SortableJS se instala como dependencia npm y se sirve desde `node_modules` en `/static/sortable.min.js`. No hay archivos estáticos en disco ni cambios en el Dockerfile.
 - **Arrastrar una tarjeta en el kanban** llama a `POST /tareas/T-0042/orden` con la columna y la posición de destino. Dentro de la misma columna es `reordenar`; a otra columna es `moverTareaHumano` seguido de `reordenar`, y si la transición exige nota el navegador la pide antes de enviar. Una transición no permitida devuelve 422 y el tablero se recarga tal como está en el servidor.
 - **Usuarios.** Borrar un usuario es contenido y sube la revisión; cambiar la contraseña no. No se puede borrar el último usuario (`ultimo_usuario`) ni uno con terminales a su nombre (`usuario_con_terminales`): el token quedaría sin dueño. Al borrar, las referencias en tareas y preguntas quedan a nulo; el autor ya está escrito como texto en el hilo.
-- **Editar una tarea solo en `backlog`** (`solo_en_backlog`): título, descripción, asignaciones y `autoejecucion`.
+- **Editar una tarea solo en `backlog`** (`solo_en_backlog`): título, descripción, asignaciones y `autoejecucion`. También `tipo`, `rama`, padre (una funcionalidad) y dependencias (cualquier tarea que no sea ella misma ni cierre un ciclo).
+- **Funcionalidades en el kanban y la lista globales.** Aparecen como tarjetas con la etiqueta `funcionalidad 3/7`; sus partes llevan el chip de la funcionalidad y se puede filtrar por ella. Las tareas sueltas siguen existiendo: no todo cuelga de una funcionalidad. La marca `esperando` se pinta en naranja como `sin terminal`, y el tipo `funcionalidad` en azul.
 - **`markdown-it` trae sus propios tipos**; no se instala `@types/markdown-it`.
 - **Refresco en vivo.** Solo la lista, el kanban y la ficha llevan `data-revision` en el `<body>` y abren la conexión SSE; las demás páginas no la necesitan. La lista se recarga pidiendo la misma dirección con GET, nunca con `reload()`, porque una página pintada como respuesta a un POST reenviaría el formulario. El aviso de la ficha se dispara con cualquier escritura de contenido, porque la revisión es global.
 - **SortableJS se carga a demanda** con una etiqueta `<script>` solo donde hay tablero: el resto de páginas no descarga los 45 KB.
@@ -523,7 +561,7 @@ Va por HTTP plano y no por MCP porque quien la llama es un script de shell, no u
 |---|---|---|---|
 | `novedades` | el agente, en cada vuelta del bucle | última revisión que conoce | tareas en `prepared` o `doing` asignadas a este terminal, o sin terminal, nuevas o cambiadas desde esa revisión; preguntas contestadas; y la revisión actual |
 
-Es la única llamada que hace el agente mientras espera. Si no hay novedades, devuelve solo la revisión actual. Las tareas en `backlog` nunca aparecen.
+Es la única llamada que hace el agente mientras espera. Si no hay novedades, devuelve solo la revisión actual. Las tareas en `backlog` nunca aparecen, ni las que llevan la marca `esperando`, ni una funcionalidad en `doing`: esa no tiene nada que un agente pueda hacer.
 
 ### Tareas
 
@@ -531,9 +569,10 @@ Es la única llamada que hace el agente mientras espera. Si no hay novedades, de
 |---|---|---|---|
 | `listar_tareas` | agente | filtro opcional por estado y terminal | índice: id, estado, título, marcas, asignaciones |
 | `leer_tarea` | agente | id | el Markdown completo de la tarea, hilo incluido |
-| `tomar_tarea` | agente | id, fase (`analisis` o `ejecucion`), `modelo` opcional | marca el terminal como responsable de esa fase y activa `en marcha`; en `ejecucion` la tarea pasa a `doing`. Si la fase no tenía modelo asignado, queda fijado el recibido; si tenía otro distinto, error `modelo_no_coincide` |
+| `tomar_tarea` | agente | id, fase (`analisis` o `ejecucion`), `modelo` opcional | marca el terminal como responsable de esa fase y activa `en marcha`; en `ejecucion` la tarea pasa a `doing`. Si la fase no tenía modelo asignado, queda fijado el recibido; si tenía otro distinto, error `modelo_no_coincide`. Con dependencias sin satisfacer, error `esperando_dependencias`. Una funcionalidad solo admite la fase `analisis` (`funcionalidad_sin_ejecucion`) |
 | `comentar_tarea` | agente o subagente | id, tipo, texto en Markdown, estado opcional | añade el comentario al hilo; cambia el estado si se indica |
-| `crear_tarea` | agente o subagente | título, descripción, clase (`hija` o `propuesta`), id de padre si es hija | id de la nueva tarea |
+| `crear_tarea` | agente o subagente | título, descripción, clase (`hija`, `propuesta` o `parte`), id de padre si es hija o parte, `tipo` opcional en una propuesta (`tarea` o `funcionalidad`), `dependeDe` opcional en una parte (ids de otras partes del mismo padre) | id de la nueva tarea. Una parte solo se crea desde el análisis de una funcionalidad en `prepared` por su terminal de análisis (`solo_desde_descomposicion`) |
+| `borrar_tarea` | no existe como herramienta MCP | | Borrar es del humano: web y CLI |
 
 ### Preguntas
 
