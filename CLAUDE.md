@@ -361,7 +361,8 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 | `POST /tareas/T-0042/responder/P1` | Guarda la opción elegida por su texto y la nota |
 | `POST /tareas/T-0042/nota` | Nota del humano en el hilo |
 | `POST /tareas/T-0042/orden` | Reordena dentro de la columna, o cambia de columna cuando la transición es del humano |
-| `GET /terminales`, `POST /terminales`, `POST /terminales/:id/revocar` | Terminales: lista con uso disponible y conexión; alta que enseña el token una sola vez; revocación |
+| `GET /terminales`, `POST /terminales`, `POST /terminales/:id/revocar` | Terminales: lista con uso disponible y conexión; alta que enseña el token una sola vez junto con el tutorial de conexión; revocación |
+| `GET /terminales/conectar` | El tutorial de conexión sin token, con las direcciones del servidor |
 | `GET /usuarios`, `POST /usuarios`, `POST /usuarios/:id/borrar`, `POST /usuarios/contrasena` | Usuarios: alta con color, baja (nunca el último) y cambio de la propia contraseña |
 | `POST /usuarios/:id/color` | Cambia el color de un usuario |
 | `GET /actividad` | Las últimas cien acciones humanas, con quién hizo cada una |
@@ -539,6 +540,16 @@ Verificado contra la documentación de Claude Code:
 - **La cuenta de origen no se puede leer de forma documentada.** El correo está en las credenciales locales, cuyo formato es interno e inestable. El usuario la escribe, junto con el nombre del terminal, al crear el terminal en la web. El plugin no la conoce: el servidor la obtiene del token.
 - **El uso disponible que muestra la web** es, por ventana, el porcentaje que queda y cuándo se reinicia.
 
+### Direcciones del servidor y tutorial de conexión
+
+Un terminal suele estar en otra máquina de la misma red, así que el servidor tiene que saber por qué direcciones se le puede llegar y enseñarlas.
+
+- **Direcciones conocidas**: `BASE_URL`, las que lista la variable `DIRECCIONES` (URLs base separadas por comas, por ejemplo `http://192.168.1.10:3020`), y, si `DIRECCIONES` no está definida, las que el propio proceso detecta en sus interfaces de red: IPv4 de rangos privados (`10/8`, `172.16/12`, `192.168/16`) con el puerto de `PORT`. Dentro de Docker las interfaces detectadas son las del contenedor, no las del anfitrión: por eso existe `DIRECCIONES`, y el tutorial lo advierte.
+- **Todas las direcciones conocidas se admiten en la cabecera `Host`**, además de `localhost`. La protección contra DNS rebinding sigue activa para cualquier otro host.
+- **La página «Terminal creado»**, además del token, lleva el tutorial de conexión con el token ya puesto: las direcciones del servidor (la de `BASE_URL`, la que el navegador está usando ahora según su cabecera `Host` y las privadas conocidas), la instalación del plugin desde el catálogo de este repositorio o con `--plugin-dir`, los dos valores que pide al activarse, la alternativa sin plugin con `claude mcp add` por HTTP y cabecera bearer, la configuración de la statusline, el arranque con `/loop /mcp-tareas:tareas`, y cómo comprobar que ha conectado: la fila del terminal pasa a «conectado». Cada bloque es copiable.
+- **El mismo tutorial sin token** está siempre en `GET /terminales/conectar`, con `<token>` como marcador, enlazado desde la lista de terminales.
+- **Los comandos del tutorial se verifican contra la documentación de Claude Code** cuando se escriben; no se inventan.
+
 ## Operaciones del MCP
 
 Todas devuelven Markdown. Las listas devuelven un índice de una línea por elemento, nunca el contenido completo, para mantener bajo el consumo de contexto.
@@ -691,6 +702,7 @@ plugin/                    # el plugin de Claude Code, sin dependencias
 | `BASE_URL` | URL pública, para enlaces y validación de host | obligatoria |
 | `SESSION_SECRET` | Firma de la cookie de sesión | obligatoria |
 | `ADMIN_PASSWORD` | Contraseña del primer usuario, solo en el primer arranque | obligatoria si no hay usuarios |
+| `DIRECCIONES` | URLs base adicionales por las que se llega al servidor, separadas por comas; se admiten en `Host` y salen en el tutorial | si falta, se detectan las IPs privadas del proceso |
 
 ### Comandos
 
