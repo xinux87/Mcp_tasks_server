@@ -13,6 +13,7 @@ import {
 	textoOpcional,
 } from "./base.ts";
 import { buscarTerminalPorId, buscarUsuarioPorId } from "./consultas.ts";
+import { exigirPartes } from "./funcionalidades.ts";
 import { contarPreguntasAbiertas, exigirTarea, faseQueToca, type Tarea, tocarTarea } from "./tareas.ts";
 
 /** Los seis tipos de comentario del hilo. Se añaden, nunca se editan ni se borran. */
@@ -225,7 +226,9 @@ const CERRAR_PREGUNTA = `
  * Comentario `analisis`: qué hay que hacer, plan y riesgos. Es el que da el
  * análisis por hecho y suelta la marca «en marcha» de esa fase. En una tarea
  * de tipo `pregunta` ese comentario es la respuesta al humano y cierra la
- * tarea: pasa directamente a `done`, al final de esa columna.
+ * tarea: pasa directamente a `done`, al final de esa columna. En una
+ * funcionalidad es el resumen de la descomposición, y exige que las partes ya
+ * estén creadas.
  */
 export function comentarAnalisis(db: DatabaseSync, datos: ComentarioDeAgente): Comentario {
 	return escribirContenido(db, (conexion, revision) => {
@@ -238,6 +241,11 @@ export function comentarAnalisis(db: DatabaseSync, datos: ComentarioDeAgente): C
 		}
 		if (tarea.analisisTerminalId !== datos.terminalId) {
 			throw new ErrorDeRegla("fase_no_tomada", "Este terminal no es el responsable del análisis de esta tarea.");
+		}
+		// El análisis de una funcionalidad es su descomposición: sin partes no
+		// hay nada que el humano pueda aprobar.
+		if (tarea.tipo === "funcionalidad") {
+			exigirPartes(conexion, tarea);
 		}
 		// El autor se compone antes de marcar el análisis como hecho: la fase
 		// que toca todavía es «análisis» y el modelo es el de esa fase.

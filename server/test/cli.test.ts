@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { abrirBaseDeDatos, rutaBaseDeDatos } from "../src/db/abrir.ts";
+import { crearParte } from "../src/db/funcionalidades.ts";
 import { comentarAnalisis, preguntar } from "../src/db/hilo.ts";
 import { tomarTarea } from "../src/db/tareas.ts";
 
@@ -210,6 +211,77 @@ test("el CLI contesta una pregunta por el texto de la opción y aprueba el anál
 		const otraVez = cli(dataDir, "responder", "xinux", "T-0001", "P1", "No hacer nada");
 		assert.equal(otraVez.codigo, 1);
 		assert.match(otraVez.salida, /^pregunta_ya_respondida: /m);
+	} finally {
+		rmSync(dataDir, { recursive: true, force: true });
+	}
+});
+
+test("el CLI crea una funcionalidad con rama y dependencias, la aprueba y borra en backlog", () => {
+	const dataDir = mkdtempSync(join(tmpdir(), "mcp-tareas-cli-"));
+	try {
+		bien(dataDir, "crear-usuario", "xinux", "secreta");
+		bien(dataDir, "crear-terminal", "xinux", "portatil-a", "xinux@ejemplo.com");
+		bien(
+			dataDir,
+			"crear-tarea",
+			"xinux",
+			"Que los comerciales se bajen sus listados",
+			"Hoy copian los datos a mano.",
+			"--funcionalidad",
+			"--rama",
+			"evolutivo/csv",
+			"--analisis",
+			"sonnet@portatil-a",
+			"--ejecucion",
+			"opus@portatil-a",
+		);
+		const documento = bien(dataDir, "ver-tarea", "T-0001");
+		assert.match(documento, /^tipo: funcionalidad$/m);
+		assert.match(documento, /^rama: evolutivo\/csv$/m);
+		// Una funcionalidad no lleva bloque de ejecución, aunque sus partes lo hereden.
+		assert.doesNotMatch(documento, /^ejecucion:$/m);
+		assert.match(bien(dataDir, "listar"), /^- T-0001 · backlog · funcionalidad 0\/0 · /m);
+
+		// Dependencias y padre desde la línea de comandos.
+		bien(dataDir, "crear-tarea", "xinux", "Primera", "d");
+		bien(dataDir, "crear-tarea", "xinux", "Segunda", "d", "--depende-de", "T-0002");
+		assert.match(bien(dataDir, "ver-tarea", "T-0003"), /^dependeDe: \[T-0002\]$/m);
+		bien(dataDir, "crear-tarea", "xinux", "Una parte a mano", "d", "--padre", "T-0001");
+		assert.match(bien(dataDir, "ver-tarea", "T-0004"), /^padre: T-0001$/m);
+
+		// Solo una funcionalidad puede ser padre.
+		const padreMalo = cli(dataDir, "crear-tarea", "xinux", "Otra", "d", "--padre", "T-0002");
+		assert.equal(padreMalo.codigo, 1);
+		assert.match(padreMalo.salida, /^padre_no_es_funcionalidad: /m);
+
+		// Borrar es de backlog: lo que permite podar la descomposición.
+		assert.match(bien(dataDir, "borrar-tarea", "xinux", "T-0004"), /^borrada: T-0004 · Una parte a mano$/m);
+		assert.doesNotMatch(bien(dataDir, "listar"), /Una parte a mano/);
+
+		bien(dataDir, "mover-tarea", "xinux", "T-0001", "prepared");
+		const fuera = cli(dataDir, "borrar-tarea", "xinux", "T-0001");
+		assert.equal(fuera.codigo, 1);
+		assert.match(fuera.salida, /^solo_en_backlog: /m);
+
+		// La descomposición la hace el agente por el MCP: aquí con las funciones
+		// de dominio, para probar solo la aprobación del humano.
+		const db = abrirBaseDeDatos(rutaBaseDeDatos(dataDir));
+		try {
+			tomarTarea(db, { tareaId: 1, fase: "analisis", terminalId: 1 });
+			crearParte(db, { titulo: "Sacar los datos", descripcion: "d", padreId: 1, terminalId: 1 });
+			comentarAnalisis(db, { tareaId: 1, terminalId: 1, texto: "una parte" });
+		} finally {
+			db.close();
+		}
+
+		assert.match(bien(dataDir, "listar"), /^- T-0001 · prepared · funcionalidad 0\/1 · análisis listo · /m);
+		assert.match(bien(dataDir, "aprobar", "xinux", "T-0001"), /^aprobada: T-0001$/m);
+		const tras = bien(dataDir, "listar");
+		// La parte sale del backlog, y con ella la de integrar la rama, que ya
+		// cuenta en el progreso de la funcionalidad.
+		assert.match(tras, /^- T-0001 · doing · funcionalidad 0\/2 · /m);
+		assert.match(tras, /^- T-0004 · prepared · Sacar los datos · .+ · padre: T-0001$/m);
+		assert.match(tras, /^- T-0005 · prepared · esperando · Integrar la rama `evolutivo\/csv` en la principal · /m);
 	} finally {
 		rmSync(dataDir, { recursive: true, force: true });
 	}

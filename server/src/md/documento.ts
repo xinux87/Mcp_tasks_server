@@ -1,6 +1,6 @@
 import type { ConsumoDeTarea, ConsumoFase } from "../db/consumo.ts";
 import type { Comentario } from "../db/hilo.ts";
-import type { TareaCompleta } from "../db/tareas.ts";
+import type { HijaDeTarea, TareaCompleta } from "../db/tareas.ts";
 import { formatearId } from "./ids.ts";
 
 /**
@@ -65,11 +65,23 @@ function frontmatter(completa: TareaCompleta): string {
 		lineas.push(`padre: ${formatearId(tarea.padreId)}`);
 	}
 	lineas.push(`autoejecucion: ${tarea.autoejecucion}`);
+	// La rama y las dependencias solo se escriben cuando las hay: en la mayoría
+	// de las tareas serían dos líneas vacías en cada lectura.
+	if (tarea.rama !== null) {
+		lineas.push(`rama: ${tarea.rama}`);
+	}
+	if (completa.dependeDe.length > 0) {
+		lineas.push(`dependeDe: [${completa.dependeDe.map(formatearId).join(", ")}]`);
+	}
 	lineas.push(`marcas: [${completa.marcas.join(", ")}]`);
+	// El progreso de una funcionalidad: partes cerradas sobre partes totales.
+	if (completa.partes !== null && completa.partesCerradas !== null) {
+		lineas.push(`partes: ${completa.partes}`, `partesCerradas: ${completa.partesCerradas}`);
+	}
 	lineas.push(...faseFrontmatter("analisis", tarea.analisisModelo, completa.analisisTerminal));
-	// Una pregunta no tiene fase de ejecución: el bloque no se pinta, para que
-	// el agente no lea una asignación que no va a usar nunca.
-	if (tarea.tipo !== "pregunta") {
+	// Ni una pregunta ni una funcionalidad tienen fase de ejecución: el bloque
+	// no se pinta, para que el agente no lea una asignación que no va a usar.
+	if (tarea.tipo === "tarea") {
 		lineas.push(...faseFrontmatter("ejecucion", tarea.ejecucionModelo, completa.ejecucionTerminal));
 	}
 	lineas.push(`creada: ${tarea.creada}`);
@@ -98,6 +110,18 @@ function cabecera(comentario: Comentario, numeroDePregunta: Map<number, number>)
 }
 
 /**
+ * Una hija en el bloque de hijas. Las partes de una funcionalidad llevan
+ * detrás de qué hermanas dependen, que es el orden de la descomposición.
+ */
+function lineaHija(hija: HijaDeTarea): string {
+	const partes = [formatearId(hija.id), hija.estado, hija.titulo];
+	if (hija.dependeDe.length > 0) {
+		partes.push(`depende de: ${hija.dependeDe.map(formatearId).join(", ")}`);
+	}
+	return `- ${partes.join(" · ")}`;
+}
+
+/**
  * El documento Markdown de una tarea, que es lo que devuelve `leer_tarea`.
  * El servidor es el único que escribe este formato: los agentes solo mandan
  * contenido, así que ninguno puede romper la estructura.
@@ -108,7 +132,7 @@ export function documentoTarea(completa: TareaCompleta): string {
 	if (completa.hijas.length === 0) {
 		bloques.push("Ninguna.");
 	} else {
-		bloques.push(completa.hijas.map((hija) => `- ${formatearId(hija.id)} · ${hija.estado} · ${hija.titulo}`).join("\n"));
+		bloques.push(completa.hijas.map(lineaHija).join("\n"));
 	}
 
 	bloques.push("## Hilo");

@@ -1,0 +1,351 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { dependenciasDe } from "../src/db/dependencias.ts";
+import { crearParte, partesDe } from "../src/db/funcionalidades.ts";
+import { comentarAnalisis, comentarResultado, preguntar } from "../src/db/hilo.ts";
+import {
+	aprobarEjecucion,
+	borrarTareaBacklog,
+	crearHija,
+	crearTareaHumana,
+	exigirTarea,
+	itemIndiceDe,
+	leerTarea,
+	marcasDe,
+	moverTareaHumano,
+	type Tarea,
+	tareasParaTerminalDesde,
+	tomarTarea,
+} from "../src/db/tareas.ts";
+import { formatearId } from "../src/md/ids.ts";
+import { lineaIndice } from "../src/md/indice.ts";
+import { codigoDe, montar } from "./comun.ts";
+
+type Banco = ReturnType<typeof montar>;
+
+const OPCIONES = [
+	{ texto: "Sí", consecuencia: "se hace." },
+	{ texto: "No hacer nada", consecuencia: "se queda como está." },
+];
+
+/** Una funcionalidad ya en `prepared`, lista para descomponer. */
+function funcionalidad(banco: Banco, rama: string | null = "evolutivo/csv"): Tarea {
+	const creada = crearTareaHumana(banco.db, {
+		titulo: "Que los comerciales se bajen sus listados",
+		descripcion: "Hoy copian los datos a mano y se equivocan.",
+		usuarioId: banco.xinux,
+		tipo: "funcionalidad",
+		rama,
+		analisisModelo: "sonnet",
+		analisisTerminalId: banco.portatil,
+		ejecucionModelo: "opus",
+		ejecucionTerminalId: banco.portatil,
+	});
+	return moverTareaHumano(banco.db, { tareaId: creada.id, usuarioId: banco.xinux, estado: "prepared" });
+}
+
+/** Trabaja una parte de punta a punta y la deja aceptada, como haría el agente y el humano. */
+function cerrarParte(banco: Banco, tareaId: number, resultado: string): void {
+	tomarTarea(banco.db, { tareaId, fase: "analisis", terminalId: banco.portatil });
+	comentarAnalisis(banco.db, { tareaId, terminalId: banco.portatil, texto: "plan de la parte" });
+	tomarTarea(banco.db, { tareaId, fase: "ejecucion", terminalId: banco.portatil });
+	comentarResultado(banco.db, { tareaId, terminalId: banco.portatil, texto: resultado });
+	moverTareaHumano(banco.db, { tareaId, usuarioId: banco.xinux, estado: "finished" });
+}
+
+test("una funcionalidad con rama: se descompone, se aprueba, se ejecuta parte a parte y se cierra sola", () => {
+	const banco = montar();
+	try {
+		const evolutivo = funcionalidad(banco);
+		assert.equal(evolutivo.tipo, "funcionalidad");
+		assert.equal(evolutivo.rama, "evolutivo/csv");
+
+		// La descomposición es del terminal de análisis y de nadie más.
+		assert.equal(
+			codigoDe(() =>
+				crearParte(banco.db, {
+					titulo: "Ajena",
+					descripcion: "d",
+					padreId: evolutivo.id,
+					terminalId: banco.sobremesa,
+				}),
+			),
+			"solo_desde_descomposicion",
+		);
+
+		tomarTarea(banco.db, { tareaId: evolutivo.id, fase: "analisis", terminalId: banco.portatil, modelo: "sonnet" });
+		const datos = crearParte(banco.db, {
+			titulo: "Sacar los datos del listado",
+			descripcion: "Con los filtros que el comercial tenga puestos.",
+			padreId: evolutivo.id,
+			terminalId: banco.portatil,
+		});
+		const boton = crearParte(banco.db, {
+			titulo: "Poner el botón de descarga",
+			descripcion: "En la pantalla de clientes.",
+			padreId: evolutivo.id,
+			terminalId: banco.portatil,
+			dependeDe: [datos.id],
+		});
+		const aviso = crearParte(banco.db, {
+			titulo: "Avisar cuando la descarga falle",
+			descripcion: "Para que no se enteren por el cliente.",
+			padreId: evolutivo.id,
+			terminalId: banco.portatil,
+			dependeDe: [boton.id],
+		});
+
+		// Nace en backlog, colgando de la funcionalidad y con todo lo suyo heredado.
+		assert.equal(datos.estado, "backlog");
+		assert.equal(datos.padreId, evolutivo.id);
+		assert.equal(datos.rama, "evolutivo/csv");
+		assert.equal(datos.analisisModelo, "sonnet");
+		assert.equal(datos.analisisTerminalId, banco.portatil);
+		assert.equal(datos.ejecucionModelo, "opus");
+		assert.equal(datos.ejecucionTerminalId, banco.portatil);
+		assert.deepEqual(dependenciasDe(banco.db, boton.id), [datos.id]);
+
+		// Una parte solo depende de sus hermanas.
+		const suelta = crearTareaHumana(banco.db, { titulo: "Suelta", descripcion: "d", usuarioId: banco.xinux });
+		assert.equal(
+			codigoDe(() =>
+				crearParte(banco.db, {
+					titulo: "Cuarta",
+					descripcion: "d",
+					padreId: evolutivo.id,
+					terminalId: banco.portatil,
+					dependeDe: [suelta.id],
+				}),
+			),
+			"dependencia_fuera_de_la_funcionalidad",
+		);
+
+		// El análisis cierra la descomposición y la deja lista para el humano.
+		comentarAnalisis(banco.db, {
+			tareaId: evolutivo.id,
+			terminalId: banco.portatil,
+			texto: "Tres partes: los datos, el botón y el aviso.",
+		});
+		const descompuesta = exigirTarea(banco.db, evolutivo.id);
+		assert.equal(descompuesta.estado, "prepared");
+		assert.equal(descompuesta.analisisHecho, true);
+		assert.equal(descompuesta.enMarchaTerminalId, null);
+		// La autoejecución no cuenta en una funcionalidad: aprueba el humano.
+		assert.equal(descompuesta.autoejecucion, true);
+		assert.deepEqual(marcasDe(descompuesta, 0), ["análisis listo"]);
+		assert.match(lineaIndice(itemIndiceDe(banco.db, evolutivo.id)), / · prepared · funcionalidad 0\/3 · /);
+		assert.doesNotMatch(lineaIndice(itemIndiceDe(banco.db, evolutivo.id)), /ejecucion:/);
+		assert.match(lineaIndice(itemIndiceDe(banco.db, datos.id)), new RegExp(` · padre: ${formatearId(evolutivo.id)}$`));
+
+		// Una funcionalidad no se ejecuta: se ejecutan sus partes.
+		assert.equal(
+			codigoDe(() => tomarTarea(banco.db, { tareaId: evolutivo.id, fase: "ejecucion", terminalId: banco.portatil })),
+			"funcionalidad_sin_ejecucion",
+		);
+
+		// Aprobar la descomposición saca las partes del backlog en su orden y
+		// añade la de integrar la rama, que depende de todas las demás.
+		const enMarcha = aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux });
+		assert.equal(enMarcha.estado, "doing");
+		const partes = leerTarea(banco.db, evolutivo.id)?.hijas ?? [];
+		assert.equal(partes.length, 4);
+		const integrar = partes[3];
+		assert.ok(integrar);
+		assert.equal(integrar.titulo, "Integrar la rama `evolutivo/csv` en la principal");
+		assert.deepEqual(integrar.dependeDe, [datos.id, boton.id, aviso.id]);
+		for (const parte of [datos.id, boton.id, aviso.id, integrar.id]) {
+			assert.equal(exigirTarea(banco.db, parte).estado, "prepared", `la parte ${parte} no salió del backlog`);
+		}
+		assert.deepEqual(
+			[datos.id, boton.id, aviso.id, integrar.id].map((parte) => exigirTarea(banco.db, parte).orden),
+			[1, 2, 3, 4],
+		);
+		assert.equal(exigirTarea(banco.db, integrar.id).rama, "evolutivo/csv");
+
+		// En doing la funcionalidad no es trabajo de nadie: solo sale la primera
+		// parte, porque las demás esperan.
+		assert.deepEqual(
+			tareasParaTerminalDesde(banco.db, { terminalId: banco.portatil, revision: 0 }).map((item) => item.id),
+			[datos.id],
+		);
+		assert.equal(
+			codigoDe(() => tomarTarea(banco.db, { tareaId: boton.id, fase: "analisis", terminalId: banco.portatil })),
+			"esperando_dependencias",
+		);
+
+		// Las partes se ejecutan y se aceptan una a una.
+		cerrarParte(banco, datos.id, "Qué se construyó: la consulta.\n\nCommit: aaaaaaa");
+		assert.equal(exigirTarea(banco.db, evolutivo.id).estado, "doing");
+		assert.deepEqual(partesDe(banco.db, evolutivo.id), { total: 4, cerradas: 1 });
+		assert.match(lineaIndice(itemIndiceDe(banco.db, evolutivo.id)), / · doing · funcionalidad 1\/4 · /);
+
+		cerrarParte(banco, boton.id, "Qué se construyó: el botón.\n\nCommit: bbbbbbb");
+		// Una parte puede cerrarse sin citar commit: se cuenta tal cual.
+		cerrarParte(banco, aviso.id, "Qué se construyó: el aviso, que ya estaba hecho.");
+		assert.equal(exigirTarea(banco.db, evolutivo.id).estado, "doing");
+
+		// La última parte cierra la funcionalidad en la misma transacción.
+		cerrarParte(banco, integrar.id, "Qué se construyó: la fusión.\n\nCommit: eeeeeee");
+		const cerrada = leerTarea(banco.db, evolutivo.id);
+		assert.equal(cerrada?.tarea.estado, "done");
+		const resultado = cerrada?.comentarios.at(-1);
+		assert.equal(resultado?.tipo, "resultado");
+		assert.equal(resultado?.autor, "servidor");
+		assert.equal(
+			resultado?.texto,
+			[
+				`- ${formatearId(datos.id)} · Sacar los datos del listado · Commit: aaaaaaa`,
+				`- ${formatearId(boton.id)} · Poner el botón de descarga · Commit: bbbbbbb`,
+				`- ${formatearId(aviso.id)} · Avisar cuando la descarga falle · sin commit`,
+				`- ${formatearId(integrar.id)} · Integrar la rama \`evolutivo/csv\` en la principal · Commit: eeeeeee`,
+			].join("\n"),
+		);
+
+		// Y de done sale a finished como cualquier otra tarea.
+		assert.equal(
+			moverTareaHumano(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux, estado: "finished" }).estado,
+			"finished",
+		);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("sin rama no se crea la parte de integrar, y las hijas de trabajo de una parte no cuentan", () => {
+	const banco = montar();
+	try {
+		const evolutivo = funcionalidad(banco, null);
+		tomarTarea(banco.db, { tareaId: evolutivo.id, fase: "analisis", terminalId: banco.portatil });
+		const unica = crearParte(banco.db, {
+			titulo: "Sacar los datos del listado",
+			descripcion: "d",
+			padreId: evolutivo.id,
+			terminalId: banco.portatil,
+		});
+		assert.equal(unica.rama, null);
+		comentarAnalisis(banco.db, { tareaId: evolutivo.id, terminalId: banco.portatil, texto: "una sola parte" });
+		aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux });
+		assert.deepEqual(partesDe(banco.db, evolutivo.id), { total: 1, cerradas: 0 });
+
+		// La hija de trabajo cuelga de la parte, no de la funcionalidad, y no
+		// hace falta cerrarla para que la funcionalidad se cierre.
+		tomarTarea(banco.db, { tareaId: unica.id, fase: "analisis", terminalId: banco.portatil });
+		comentarAnalisis(banco.db, { tareaId: unica.id, terminalId: banco.portatil, texto: "plan" });
+		tomarTarea(banco.db, { tareaId: unica.id, fase: "ejecucion", terminalId: banco.portatil });
+		const hija = crearHija(banco.db, {
+			titulo: "La consulta",
+			descripcion: "d",
+			padreId: unica.id,
+			terminalId: banco.portatil,
+		});
+		assert.equal(hija.padreId, unica.id);
+		// Y de la funcionalidad no cuelga trabajo suelto: solo partes.
+		assert.equal(
+			codigoDe(() =>
+				crearHija(banco.db, {
+					titulo: "Colgada de la funcionalidad",
+					descripcion: "d",
+					padreId: evolutivo.id,
+					terminalId: banco.portatil,
+				}),
+			),
+			"funcionalidad_sin_ejecucion",
+		);
+		comentarResultado(banco.db, { tareaId: unica.id, terminalId: banco.portatil, texto: "hecho\n\nCommit: aaaaaaa" });
+		moverTareaHumano(banco.db, { tareaId: unica.id, usuarioId: banco.xinux, estado: "finished" });
+
+		const cerrada = leerTarea(banco.db, evolutivo.id);
+		assert.equal(cerrada?.tarea.estado, "done");
+		assert.equal(
+			cerrada?.comentarios.at(-1)?.texto,
+			`- ${formatearId(unica.id)} · Sacar los datos del listado · Commit: aaaaaaa`,
+		);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("el análisis de una funcionalidad exige partes, y la aprobación exige análisis sin preguntas", () => {
+	const banco = montar();
+	try {
+		const evolutivo = funcionalidad(banco);
+		tomarTarea(banco.db, { tareaId: evolutivo.id, fase: "analisis", terminalId: banco.portatil });
+		assert.equal(
+			codigoDe(() =>
+				comentarAnalisis(banco.db, { tareaId: evolutivo.id, terminalId: banco.portatil, texto: "no es viable" }),
+			),
+			"sin_partes",
+		);
+		assert.equal(
+			codigoDe(() => aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux })),
+			"analisis_no_hecho",
+		);
+
+		crearParte(banco.db, { titulo: "Una parte", descripcion: "d", padreId: evolutivo.id, terminalId: banco.portatil });
+		preguntar(banco.db, {
+			tareaId: evolutivo.id,
+			terminalId: banco.portatil,
+			pregunta: "¿Entra también el cierre de año?",
+			porQueImporta: "cambia el tamaño del evolutivo.",
+			opciones: OPCIONES,
+			recomendacion: "Sí",
+		});
+		comentarAnalisis(banco.db, { tareaId: evolutivo.id, terminalId: banco.portatil, texto: "una parte" });
+		assert.equal(
+			codigoDe(() => aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux })),
+			"tarea_bloqueada",
+		);
+		// Bloqueada gana a «análisis listo» en el orden de las marcas.
+		assert.deepEqual(marcasDe(exigirTarea(banco.db, evolutivo.id), 1), ["bloqueada"]);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("borrar una tarea solo se hace en backlog, sin hijas, y se lleva su hilo por delante", () => {
+	const banco = montar();
+	try {
+		const evolutivo = funcionalidad(banco);
+		tomarTarea(banco.db, { tareaId: evolutivo.id, fase: "analisis", terminalId: banco.portatil });
+		const parte = crearParte(banco.db, {
+			titulo: "Una parte que sobra",
+			descripcion: "d",
+			padreId: evolutivo.id,
+			terminalId: banco.portatil,
+		});
+		const otra = crearTareaHumana(banco.db, {
+			titulo: "Depende de la que sobra",
+			descripcion: "d",
+			usuarioId: banco.xinux,
+			dependeDe: [parte.id],
+		});
+
+		// La funcionalidad está en prepared y además tiene una parte colgando.
+		assert.equal(
+			codigoDe(() => borrarTareaBacklog(banco.db, { tareaId: evolutivo.id, actor: { usuarioId: banco.xinux } })),
+			"solo_en_backlog",
+		);
+		moverTareaHumano(banco.db, {
+			tareaId: evolutivo.id,
+			usuarioId: banco.xinux,
+			estado: "backlog",
+			nota: "hay que repensarla",
+		});
+		assert.equal(
+			codigoDe(() => borrarTareaBacklog(banco.db, { tareaId: evolutivo.id, actor: { usuarioId: banco.xinux } })),
+			"con_hijas",
+		);
+
+		// La parte sí se borra: es lo que permite podar la descomposición.
+		const borrada = borrarTareaBacklog(banco.db, { tareaId: parte.id, actor: { usuarioId: banco.xinux } });
+		assert.equal(borrada.titulo, "Una parte que sobra");
+		assert.equal(leerTarea(banco.db, parte.id), undefined);
+		assert.deepEqual(dependenciasDe(banco.db, otra.id), []);
+		// Y ahora la funcionalidad se queda sin hijas y se puede borrar.
+		borrarTareaBacklog(banco.db, { tareaId: evolutivo.id, actor: { usuarioId: banco.xinux } });
+		assert.equal(leerTarea(banco.db, evolutivo.id), undefined);
+		assert.equal(banco.db.prepare("SELECT COUNT(*) AS t FROM comentarios").get()?.t, 0);
+	} finally {
+		banco.cerrar();
+	}
+});

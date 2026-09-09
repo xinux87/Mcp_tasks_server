@@ -1,9 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
+import { formatearId } from "../md/ids.ts";
 import { registrarActividad } from "./actividad.ts";
 import { ahora, escribirContenido, sentencia, texto } from "./base.ts";
+import { dependenciasDe, detalleDependencias, escribirDependencias } from "./dependencias.ts";
 import { autorHumano } from "./hilo.ts";
-import { exigirTarea, type Tarea, type TipoTarea } from "./tareas.ts";
+import { exigirPadreFuncionalidad, exigirTarea, type Tarea, type TipoTarea } from "./tareas.ts";
 
 /**
  * Un título vacío deja la tarea sin nada que leer en el índice. Se comprueba
@@ -22,8 +24,16 @@ export type EdicionTarea = {
 	usuarioId: number;
 	titulo: string;
 	descripcion: string;
-	/** Se puede convertir una tarea en pregunta y al revés, mientras esté en `backlog`. */
+	/** Se puede cambiar de tipo (tarea, pregunta o funcionalidad) mientras esté en `backlog`. */
 	tipo: TipoTarea;
+	/**
+	 * Los tres campos que se pueden dejar fuera: sin ellos la tarea se queda
+	 * con la rama, el padre y las dependencias que ya tenía. La web que aún no
+	 * los enseña no los toca.
+	 */
+	rama?: string | null;
+	padreId?: number | null;
+	dependeDe?: number[];
 	autoejecucion: boolean;
 	analisisModelo: string | null;
 	analisisTerminalId: number | null;
@@ -45,6 +55,11 @@ function faseComoTexto(conexion: DatabaseSync, fase: Fase): string {
 		return `${fase.modelo}@${terminal}`;
 	}
 	return fase.modelo ?? (terminal === null ? "sin asignar" : `@${terminal}`);
+}
+
+/** `T-0050`, o «ninguno» cuando la tarea no cuelga de nadie. */
+function nombreDePadre(padreId: number | null): string {
+	return padreId === null ? "ninguno" : formatearId(padreId);
 }
 
 /** `análisis: sonnet@portatil → opus`, o nada si la fase se quedó igual. */
@@ -75,6 +90,12 @@ function cambiosDeLaEdicion(conexion: DatabaseSync, antes: Tarea, despues: Edici
 	}
 	if (antes.tipo !== despues.tipo) {
 		cambios.push(`tipo: ${antes.tipo} → ${despues.tipo}`);
+	}
+	if (despues.rama !== undefined && antes.rama !== despues.rama) {
+		cambios.push(`rama: ${antes.rama ?? "ninguna"} → ${despues.rama ?? "ninguna"}`);
+	}
+	if (despues.padreId !== undefined && antes.padreId !== despues.padreId) {
+		cambios.push(`padre: ${nombreDePadre(antes.padreId)} → ${nombreDePadre(despues.padreId)}`);
 	}
 	cambios.push(
 		cambioDeFase(
@@ -111,12 +132,16 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 				`La tarea está en ${tarea.estado}: al salir de backlog la descripción y las asignaciones se congelan. Deja una nota en el hilo.`,
 			);
 		}
+		const padreId = datos.padreId === undefined ? tarea.padreId : datos.padreId;
+		if (padreId !== null && padreId !== tarea.padreId) {
+			exigirPadreFuncionalidad(conexion, padreId);
+		}
 		// Se calcula antes del UPDATE: después ya no se sabe qué había.
-		const detalle = cambiosDeLaEdicion(conexion, tarea, datos, titulo);
+		const cambios = [cambiosDeLaEdicion(conexion, tarea, datos, titulo)];
 		sentencia(
 			conexion,
 			`UPDATE tareas
-				SET titulo = ?, descripcion = ?, tipo = ?, autoejecucion = ?,
+				SET titulo = ?, descripcion = ?, tipo = ?, rama = ?, padre_id = ?, autoejecucion = ?,
 					analisis_modelo = ?, analisis_terminal_id = ?,
 					ejecucion_modelo = ?, ejecucion_terminal_id = ?,
 					actualizada = ?, revision = ?
@@ -125,6 +150,8 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 			titulo,
 			datos.descripcion,
 			datos.tipo,
+			datos.rama === undefined ? tarea.rama : datos.rama,
+			padreId,
 			datos.autoejecucion ? 1 : 0,
 			datos.analisisModelo,
 			datos.analisisTerminalId,
@@ -134,6 +161,16 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 			revision,
 			tarea.id,
 		);
+		// Las dependencias se comparan con las que había: son filas aparte, no
+		// una columna de la tarea.
+		if (datos.dependeDe !== undefined) {
+			const antes = dependenciasDe(conexion, tarea.id);
+			const despues = escribirDependencias(conexion, tarea.id, datos.dependeDe);
+			if (antes.join(",") !== despues.join(",")) {
+				cambios.push(detalleDependencias(despues));
+			}
+		}
+		const detalle = cambios.filter((cambio) => cambio !== "").join("; ");
 		// Guardar sin tocar nada no es una acción: no deja rastro.
 		if (detalle !== "") {
 			registrarActividad(conexion, {

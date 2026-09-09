@@ -9,7 +9,7 @@ import { crearTerminalConToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { preguntasDeTarea, responder } from "../src/db/hilo.ts";
-import { crearTareaHumana, moverTareaHumano } from "../src/db/tareas.ts";
+import { aprobarEjecucion, crearTareaHumana, moverTareaHumano } from "../src/db/tareas.ts";
 import { CONFIG_PRUEBA } from "./comun.ts";
 
 const BASE_URL = "http://localhost:3000";
@@ -275,6 +275,111 @@ test("una tarea entera de principio a fin solo con las herramientas del MCP", as
 		});
 		assert.match(cerradaSuelta.texto, /^- T-0003 · done · /m);
 		assert.match((await llamar(a, "leer_tarea", { id: "T-0003" })).texto, /^### resultado · opus@portatil-a · /m);
+	} finally {
+		await a.close();
+		await b.close();
+		await montaje.cerrar();
+	}
+});
+
+test("una funcionalidad se descompone en partes por el MCP y solo la primera llega al bucle", async () => {
+	const montaje = montar();
+	const a = await conectar(montaje, montaje.tokenA);
+	const b = await conectar(montaje, montaje.tokenB);
+	try {
+		// El humano deja la funcionalidad lista para descomponer, con su rama.
+		const evolutivo = crearTareaHumana(montaje.db, {
+			titulo: "Que los comerciales se bajen sus listados",
+			descripcion: "Hoy copian los datos a mano y se equivocan.",
+			usuarioId: montaje.usuarioId,
+			tipo: "funcionalidad",
+			rama: "evolutivo/csv",
+			analisisModelo: "sonnet",
+			analisisTerminalId: 1,
+			ejecucionModelo: "opus",
+			ejecucionTerminalId: 1,
+		});
+		moverTareaHumano(montaje.db, { tareaId: evolutivo.id, usuarioId: montaje.usuarioId, estado: "prepared" });
+
+		// Llega al bucle como funcionalidad, con su progreso y sin ejecución.
+		const primeras = await llamar(a, "novedades", { revision: 0 });
+		assert.match(primeras.texto, /^- T-0002 · prepared · funcionalidad 0\/0 · .+ · analisis: sonnet@portatil-a$/m);
+
+		// No se ejecuta: se ejecutan sus partes.
+		assert.equal(
+			codigoDe(await llamar(a, "tomar_tarea", { id: "T-0002", fase: "ejecucion" })),
+			"funcionalidad_sin_ejecucion",
+		);
+		await llamar(a, "tomar_tarea", { id: "T-0002", fase: "analisis" });
+
+		// Las partes las crea el terminal que analiza, y nadie más.
+		assert.equal(
+			codigoDe(await llamar(b, "crear_tarea", { titulo: "Ajena", descripcion: "d", clase: "parte", padre: "T-0002" })),
+			"solo_desde_descomposicion",
+		);
+		assert.equal(
+			codigoDe(await llamar(a, "crear_tarea", { titulo: "Sin padre", descripcion: "d", clase: "parte" })),
+			"padre_obligatorio",
+		);
+
+		const datos = await llamar(a, "crear_tarea", {
+			titulo: "Sacar los datos del listado",
+			descripcion: "Con los filtros puestos.",
+			clase: "parte",
+			padre: "T-0002",
+		});
+		assert.match(datos.texto, /^creada: T-0003$/m);
+		assert.match(datos.texto, /^- T-0003 · backlog · Sacar los datos del listado · .+ · padre: T-0002$/m);
+
+		const boton = await llamar(a, "crear_tarea", {
+			titulo: "Poner el botón de descarga",
+			descripcion: "En la pantalla de clientes.",
+			clase: "parte",
+			padre: "T-0002",
+			dependeDe: ["T-0003"],
+		});
+		assert.match(boton.texto, /^creada: T-0004$/m);
+
+		// Y una propuesta puede ser a su vez una funcionalidad.
+		const propuesta = await llamar(a, "crear_tarea", {
+			titulo: "Rehacer el informe mensual",
+			descripcion: "Se descubrió por el camino.",
+			clase: "propuesta",
+			tipo: "funcionalidad",
+		});
+		assert.match(propuesta.texto, /^- T-0005 · backlog · funcionalidad 0\/0 · Rehacer el informe mensual · /m);
+
+		// El comentario de análisis cierra la descomposición.
+		const analizada = await llamar(a, "comentar_tarea", {
+			id: "T-0002",
+			tipo: "analisis",
+			texto: "Dos partes: los datos y el botón.",
+		});
+		assert.match(analizada.texto, /^- T-0002 · prepared · funcionalidad 0\/2 · análisis listo · /m);
+
+		const documento = await llamar(a, "leer_tarea", { id: "T-0002" });
+		assert.match(documento.texto, /^rama: evolutivo\/csv$/m);
+		assert.match(documento.texto, /^partes: 2\npartesCerradas: 0$/m);
+		assert.match(documento.texto, /^- T-0004 · backlog · Poner el botón de descarga · depende de: T-0003$/m);
+
+		// El humano aprueba desde la web: las partes salen del backlog y aparece
+		// la de integrar la rama.
+		aprobarEjecucion(montaje.db, { tareaId: evolutivo.id, usuarioId: montaje.usuarioId });
+		const integrada = await llamar(a, "leer_tarea", { id: "T-0002" });
+		assert.match(
+			integrada.texto,
+			/^- T-0006 · prepared · Integrar la rama `evolutivo\/csv` en la principal · depende de: T-0003, T-0004$/m,
+		);
+
+		// El bucle solo ve la primera parte: la funcionalidad ya no es trabajo
+		// suyo y las demás partes esperan.
+		const despues = await llamar(a, "novedades", { revision: 0 });
+		const ids = despues.texto
+			.split("\n")
+			.filter((linea) => linea.startsWith("- T-"))
+			.map((linea) => linea.slice(2, 8));
+		assert.deepEqual(ids, ["T-0001", "T-0003"]);
+		assert.equal(codigoDe(await llamar(a, "tomar_tarea", { id: "T-0004", fase: "analisis" })), "esperando_dependencias");
 	} finally {
 		await a.close();
 		await b.close();

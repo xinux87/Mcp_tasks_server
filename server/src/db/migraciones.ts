@@ -36,34 +36,74 @@ export function versionEsquema(db: DatabaseSync): number {
 	return typeof valor === "number" ? valor : 0;
 }
 
+/** Si la conexión tiene las claves foráneas activas ahora mismo. */
+function clavesForaneasActivas(db: DatabaseSync): boolean {
+	const fila = db.prepare("PRAGMA foreign_keys").get();
+	const valor = fila?.foreign_keys;
+	return valor === 1 || valor === 1n;
+}
+
+/**
+ * Comprueba que nada quedó apuntando a una fila que no existe. Es el paso que
+ * sustituye a la comprobación que SQLite no hace mientras las claves foráneas
+ * están apagadas.
+ */
+function exigirClavesForaneasIntactas(db: DatabaseSync): void {
+	const rotas = db.prepare("PRAGMA foreign_key_check").all();
+	if (rotas.length > 0) {
+		throw new Error(`las migraciones dejaron ${rotas.length} referencias rotas`);
+	}
+}
+
 /**
  * Aplica las migraciones pendientes, cada una dentro de su propia transacción
  * junto con el `PRAGMA user_version`. Volver a arrancar no reaplica nada.
  * Devuelve la versión final del esquema.
+ *
+ * Las claves foráneas se apagan mientras corren y se comprueban al terminar
+ * con `PRAGMA foreign_key_check`. Es el procedimiento que documenta SQLite
+ * para los cambios de esquema que obligan a reconstruir una tabla a la que
+ * apuntan otras: al soltar la tabla vieja, sus hijas se quedan un momento
+ * apuntando a nada. Se apaga aquí y no en el archivo `.sql` porque
+ * `PRAGMA foreign_keys` no hace nada dentro de una transacción.
  */
 export function aplicarMigraciones(db: DatabaseSync, carpeta: string = CARPETA_MIGRACIONES): number {
 	const migraciones = leerMigraciones(carpeta);
 	let aplicada = versionEsquema(db);
+	const pendientes = migraciones.filter((migracion) => migracion.version > aplicada);
+	if (pendientes.length === 0) {
+		return aplicada;
+	}
 
-	for (const migracion of migraciones) {
-		if (migracion.version <= aplicada) {
-			continue;
+	const conClavesForaneas = clavesForaneasActivas(db);
+	if (conClavesForaneas) {
+		db.exec("PRAGMA foreign_keys = OFF");
+	}
+	try {
+		for (const migracion of pendientes) {
+			if (migracion.version !== aplicada + 1) {
+				throw new Error(`hueco en las migraciones: se esperaba la ${aplicada + 1} y llegó ${migracion.nombre}`);
+			}
+			db.exec("BEGIN");
+			try {
+				db.exec(migracion.sql);
+				// `user_version` solo admite un literal, no un parámetro; el valor
+				// viene del nombre del archivo y ya está validado como entero.
+				db.exec(`PRAGMA user_version = ${migracion.version}`);
+				db.exec("COMMIT");
+			} catch (error) {
+				db.exec("ROLLBACK");
+				throw new Error(`falló la migración ${migracion.nombre}`, { cause: error });
+			}
+			aplicada = migracion.version;
 		}
-		if (migracion.version !== aplicada + 1) {
-			throw new Error(`hueco en las migraciones: se esperaba la ${aplicada + 1} y llegó ${migracion.nombre}`);
+		if (conClavesForaneas) {
+			exigirClavesForaneasIntactas(db);
 		}
-		db.exec("BEGIN");
-		try {
-			db.exec(migracion.sql);
-			// `user_version` solo admite un literal, no un parámetro; el valor
-			// viene del nombre del archivo y ya está validado como entero.
-			db.exec(`PRAGMA user_version = ${migracion.version}`);
-			db.exec("COMMIT");
-		} catch (error) {
-			db.exec("ROLLBACK");
-			throw new Error(`falló la migración ${migracion.nombre}`, { cause: error });
+	} finally {
+		if (conClavesForaneas) {
+			db.exec("PRAGMA foreign_keys = ON");
 		}
-		aplicada = migracion.version;
 	}
 
 	return aplicada;

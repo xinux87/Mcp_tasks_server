@@ -45,6 +45,7 @@ export const COLOR_MARCA: Record<Marca, Color> = {
 	"sin terminal": "naranja",
 	"en marcha": "morado",
 	"análisis listo": "rosa",
+	esperando: "naranja",
 };
 
 /** Color de cada tipo de comentario del hilo. */
@@ -59,11 +60,12 @@ export const COLOR_TIPO: Record<TipoComentario, Color> = {
 
 /**
  * Color del tipo de tarea. Una tarea normal no lleva etiqueta de tipo; la
- * pregunta sí, y va en rosa.
+ * pregunta sí, en rosa, y la funcionalidad en azul.
  */
 export const COLOR_TIPO_TAREA: Record<TipoTarea, Color> = {
 	tarea: "gris",
 	pregunta: "rosa",
+	funcionalidad: "azul",
 };
 
 /**

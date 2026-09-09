@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { registrarConsumo } from "../src/db/consumo.ts";
+import { crearParte } from "../src/db/funcionalidades.ts";
 import { comentarAnalisis, comentarAvance, comentarResultado, preguntar, responder } from "../src/db/hilo.ts";
 import {
+	aprobarEjecucion,
 	crearHija,
 	crearTareaHumana,
 	itemIndiceDe,
@@ -339,8 +341,8 @@ test("la línea de índice pone las marcas entre el estado y el título", () => 
 		const lineas = listarTareas(banco.db, {}).map(lineaIndice);
 		assert.deepEqual(lineas, [
 			"- T-0004 · backlog · Migrar el envío de correos a la cola · analisis: sin asignar · ejecucion: sin asignar",
-			"- T-0002 · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-xinux",
-			"- T-0003 · done · Tests de la exportación · analisis: sonnet · ejecucion: opus@portatil-xinux",
+			"- T-0002 · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-xinux · padre: T-0001",
+			"- T-0003 · done · Tests de la exportación · analisis: sonnet · ejecucion: opus@portatil-xinux · padre: T-0001",
 			"- T-0001 · done · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-xinux · ejecucion: opus@portatil-xinux",
 		]);
 	} finally {
@@ -363,7 +365,7 @@ test("novedades lista lo cambiado y las preguntas contestadas, y sin nada solo l
 
 ## Tareas nuevas o cambiadas
 
-- T-0002 · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-xinux
+- T-0002 · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-xinux · padre: T-0001
 
 ## Preguntas contestadas
 
@@ -371,6 +373,100 @@ test("novedades lista lo cambiado y las preguntas contestadas, y sin nada solo l
 		);
 
 		assert.equal(salidaNovedades({ revision: 190, tareas: [], preguntas: [] }), "revision: 190");
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("una funcionalidad enseña su rama, su progreso y sus partes; una parte, su padre y sus dependencias", () => {
+	const banco = montar();
+	try {
+		const evolutivo = crearTareaHumana(banco.db, {
+			titulo: "Que los comerciales se bajen sus listados",
+			descripcion: "Hoy copian los datos a mano y se equivocan.",
+			usuarioId: banco.xinux,
+			tipo: "funcionalidad",
+			rama: "evolutivo/csv",
+			analisisModelo: "sonnet",
+			analisisTerminalId: banco.portatil,
+			ejecucionModelo: "opus",
+			ejecucionTerminalId: banco.portatil,
+		});
+		moverTareaHumano(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux, estado: "prepared" });
+		tomarTarea(banco.db, { tareaId: evolutivo.id, fase: "analisis", terminalId: banco.portatil });
+		const datos = crearParte(banco.db, {
+			titulo: "Sacar los datos del listado",
+			descripcion: "Con los filtros puestos.",
+			padreId: evolutivo.id,
+			terminalId: banco.portatil,
+		});
+		const boton = crearParte(banco.db, {
+			titulo: "Poner el botón de descarga",
+			descripcion: "En la pantalla de clientes.",
+			padreId: evolutivo.id,
+			terminalId: banco.portatil,
+			dependeDe: [datos.id],
+		});
+		comentarAnalisis(banco.db, {
+			tareaId: evolutivo.id,
+			terminalId: banco.portatil,
+			texto: "Dos partes: los datos y el botón.",
+		});
+		aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux });
+
+		// La funcionalidad: rama, progreso, sin bloque de ejecución y con sus
+		// partes en el bloque de hijas, cada una con lo que la precede.
+		assert.equal(
+			sinFechas(documentoTarea(leerTarea(banco.db, evolutivo.id) ?? assert.fail("sin funcionalidad"))),
+			`---
+id: T-0001
+titulo: "Que los comerciales se bajen sus listados"
+tipo: funcionalidad
+estado: doing
+orden: 1
+autoejecucion: true
+rama: evolutivo/csv
+marcas: []
+partes: 3
+partesCerradas: 0
+analisis:
+  modelo: sonnet
+  terminal: portatil-xinux
+creada: <fecha>
+revision: 10
+---
+
+## Descripción
+
+Hoy copian los datos a mano y se equivocan.
+
+## Hijas
+
+- T-0002 · prepared · Sacar los datos del listado
+- T-0003 · prepared · Poner el botón de descarga · depende de: T-0002
+- T-0004 · prepared · Integrar la rama \`evolutivo/csv\` en la principal · depende de: T-0002, T-0003
+
+## Hilo
+
+### analisis · sonnet@portatil-xinux · <fecha>
+
+Dos partes: los datos y el botón.`,
+		);
+
+		// La parte: su padre, la rama heredada, de qué depende y la marca de que espera.
+		const documentoParte = sinFechas(documentoTarea(leerTarea(banco.db, boton.id) ?? assert.fail("sin parte")));
+		assert.match(documentoParte, /^padre: T-0001\nautoejecucion: true\nrama: evolutivo\/csv\ndependeDe: \[T-0002\]$/m);
+		assert.match(documentoParte, /^marcas: \[esperando\]$/m);
+		assert.match(documentoParte, /^ejecucion:\n {2}modelo: opus$/m);
+
+		assert.equal(
+			lineaIndice(itemIndiceDe(banco.db, evolutivo.id)),
+			"- T-0001 · doing · funcionalidad 0/3 · Que los comerciales se bajen sus listados · analisis: sonnet@portatil-xinux",
+		);
+		assert.equal(
+			lineaIndice(itemIndiceDe(banco.db, boton.id)),
+			"- T-0003 · prepared · esperando · Poner el botón de descarga · analisis: sonnet@portatil-xinux · ejecucion: opus@portatil-xinux · padre: T-0001",
+		);
 	} finally {
 		banco.cerrar();
 	}

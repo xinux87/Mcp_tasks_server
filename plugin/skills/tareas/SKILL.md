@@ -133,10 +133,17 @@ en `prepared` y **no** tiene ningún comentario `analisis` en el hilo; es
 | Marca `bloqueada` | **Nada.** Hay una pregunta sin contestar. Pasa a la siguiente. |
 | `prepared`, sin comentario `analisis`, y `analisis.terminal` está vacío (marca `sin terminal`) o es este terminal | Candidata a **análisis**. |
 | `prepared`, `tipo: pregunta`, sin comentario `analisis`, y `analisis.terminal` está vacío o es este terminal | Candidata a **análisis**. Es lo único que tiene esa tarea. |
+| `prepared`, `tipo: funcionalidad`, sin comentario `analisis`, y `analisis.terminal` está vacío o es este terminal | Candidata a **descomposición**. |
 | `prepared`, con comentario `analisis`, sin marca `bloqueada` ni `análisis listo`, y `ejecucion.terminal` está vacío o es este terminal | Candidata a **ejecución**. |
 | `prepared` con marca `análisis listo` | **Nada.** `autoejecucion` está desactivada y el humano todavía no ha aprobado el análisis. |
 | `doing`, `ejecucion.terminal` es este terminal, y en el hilo hay un comentario `respuesta` posterior a la última `pregunta` | Candidata a **ejecución (retomar)**, con la respuesta en contexto. |
+| Marca `esperando` | **Nada.** Delante hay otra tarea que todavía no está hecha. Cuando se cierre, esta llegará sola por `novedades`. |
 | `doing` sin respuesta nueva, o `done`, o `finished` | **Nada.** |
+
+Una **funcionalidad en `doing`** no es trabajo de ningún agente: lo que se
+ejecuta son sus partes, que llegan solas por `novedades` como tareas normales.
+Y una funcionalidad con la marca `análisis listo` está esperando a que el humano
+apruebe su descomposición: tampoco se toca.
 
 Una tarea con `tipo: pregunta` **solo tiene fase de análisis**: su frontmatter
 no lleva bloque `ejecucion:` y su línea de índice tampoco. Al escribir el
@@ -169,7 +176,7 @@ así el humano ve avance de una en una y el consumo queda bien atribuido.
      `opus` → `opus`, `sonnet` → `sonnet`, `haiku` → `haiku`, `fable` → `fable`.
      Si el campo viene vacío o con un valor que no reconoces, usa `sonnet` para
      análisis y `opus` para ejecución, y dilo en tu línea de cierre.
-   - `prompt`: la plantilla que corresponda, de las dos de más abajo, con los
+   - `prompt`: la plantilla que corresponda, de las tres de más abajo, con los
      huecos rellenos.
 3. Espera a que termine. No lances dos subagentes en la misma vuelta.
 
@@ -195,7 +202,7 @@ qué modelo y cómo acabó.
 
 ## Reglas que van dentro del prompt del subagente
 
-Estas cinco reglas van copiadas en los dos prompts. No las resumas.
+Estas cinco reglas van copiadas en los tres prompts. No las resumas.
 
 1. **Una pregunta se entiende sin abrir el repositorio.** Sin rutas de archivo,
    sin nombres de función, sin códigos internos, sin referencias a secciones de
@@ -276,6 +283,67 @@ va en la respuesta: va como `crear_tarea` con clase `propuesta`.
 Cuando termines, resume en tres líneas qué análisis dejaste o qué preguntaste.
 ```
 
+## Plantilla del prompt de descomposición
+
+Es la de una funcionalidad. Una descomposición es la fase `analisis` de esa
+funcionalidad: se toma con `tomar_tarea` igual que cualquier análisis y se lanza
+con el modelo de análisis. Copia esto, rellena los huecos entre `<< >>` y
+bórralos.
+
+```text
+Eres el agente de DESCOMPOSICIÓN de la funcionalidad << ID >> en el servidor de
+tareas. Tu trabajo es partirla en partes que otros agentes puedan ejecutar. NO
+escribes código de producción ni tocas archivos del repositorio.
+
+## La funcionalidad
+
+Título: << TÍTULO >>
+
+Documento completo tal como lo devolvió leer_tarea, hilo incluido:
+
+<< PEGA AQUÍ LA SALIDA ENTERA DE leer_tarea >>
+
+## Qué tienes que hacer
+
+1. Lee el repositorio en << RUTA DEL REPOSITORIO >> lo que necesites para saber
+   qué existe ya y qué hay que construir de verdad.
+2. Si para partirla hace falta una decisión de negocio, llama a
+   `mcp__plugin_mcp-tareas_tareas__preguntar` con id = << ID >>, `pregunta`,
+   `porQueImporta`, `opciones[]` (con la de no hacer nada) y `recomendacion`, y
+   termina ahí. La funcionalidad queda bloqueada hasta que contesten.
+3. Si no hace falta, crea cada parte con
+   `mcp__plugin_mcp-tareas_tareas__crear_tarea`, clase = `parte`,
+   padre = << ID >>:
+     - `titulo` en llano, desde el punto de vista de quien pidió la
+       funcionalidad.
+     - `descripcion` con qué hay que construir y cómo se sabe que está hecho.
+     - `dependeDe` con los identificadores de las partes que tienen que ir
+       antes, cuando el orden importa. Solo valen partes de esta misma
+       funcionalidad.
+   Entre tres y diez partes. Cada una tiene que poder ejecutarla un agente en
+   una sesión: si una no cabe, pártela; si dos no se entienden por separado,
+   júntalas.
+4. Cierra con `mcp__plugin_mcp-tareas_tareas__comentar_tarea` con id = << ID >>,
+   tipo = `analisis` y un texto que resuma la descomposición: qué hace cada
+   parte, en qué orden van y qué riesgos ves.
+
+Las partes nacen en backlog: las revisa el humano y las aprueba él. No las
+muevas de columna ni las ejecutes. Si la funcionalidad tiene `rama`, el
+servidor añade al aprobar la parte que integra esa rama en la principal: esa no
+la crees tú.
+
+5. Si de paso descubres trabajo que NO es de esta funcionalidad, créalo con
+   `mcp__plugin_mcp-tareas_tareas__crear_tarea` con clase `propuesta`, y con
+   `tipo` = `funcionalidad` si lo que descubres es grande.
+
+## Reglas
+
+<< COPIA AQUÍ LAS CINCO REGLAS DE ARRIBA, ENTERAS >>
+
+Cuando termines, resume en tres líneas en cuántas partes la dejaste o qué
+preguntaste.
+```
+
 ## Plantilla del prompt de ejecución
 
 Copia esto, rellena los huecos entre `<< >>` y bórralos. El bloque «Respuesta
@@ -301,6 +369,16 @@ Opción elegida: << TEXTO DE LA OPCIÓN, NO SU POSICIÓN >>
 Nota del humano: << NOTA, O «ninguna» >>
 
 Esa decisión ya está tomada. Constrúyela así y no vuelvas a preguntar por ella.
+
+## Si la tarea tiene `rama`  << SOLO SI EL FRONTMATTER TRAE `rama`; SI NO, BORRA ESTE BLOQUE >>
+
+Todo tu trabajo va en la rama << RAMA >>: si no existe, créala desde la
+principal; y haz ahí todos tus commits. No fusiones nada con la principal.
+
+Si esta tarea es la de «Integrar la rama << RAMA >> en la principal», entonces
+es justo lo contrario y es todo lo que tienes que hacer: fusiona esa rama en la
+principal sin fast-forward (`--no-ff`), pasa la verificación del repositorio
+sobre el resultado y cita el commit de la fusión en el `resultado`.
 
 ## Qué tienes que hacer
 

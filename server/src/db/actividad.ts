@@ -22,6 +22,7 @@ const OBJETOS: readonly ObjetoActividad[] = ["tarea", "usuario", "terminal"];
 export type AccionActividad =
 	| "crear_tarea"
 	| "editar_tarea"
+	| "borrar_tarea"
 	| "mover_tarea"
 	| "aprobar_ejecucion"
 	| "responder_pregunta"

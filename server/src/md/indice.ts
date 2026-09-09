@@ -18,23 +18,31 @@ function fase(modelo: string | null, terminal: string | null): string {
 	return "sin asignar";
 }
 
+/** `funcionalidad 3/7`: partes cerradas sobre partes totales. */
+function progreso(item: ItemIndice): string {
+	return `funcionalidad ${item.partesCerradas ?? 0}/${item.partes ?? 0}`;
+}
+
 /**
  * Una tarea en una línea, sin cuerpo: es lo que devuelven `listar_tareas` y
  * `novedades`. Las marcas van entre el estado y el título; si no hay ninguna,
  * no aparece nada en esa posición. Una pregunta lleva `pregunta` justo después
- * del estado, antes de las marcas, y no lleva segmento `ejecucion:`: no tiene
- * esa fase.
+ * del estado y una funcionalidad lleva ahí su progreso; ninguna de las dos
+ * lleva segmento `ejecucion:`, porque no tienen esa fase. Una tarea que cuelga
+ * de otra cierra la línea con su padre.
  */
 export function lineaIndice(item: ItemIndice): string {
-	const esPregunta = item.tipo === "pregunta";
+	const esTarea = item.tipo === "tarea";
 	const partes = [
 		formatearId(item.id),
 		item.estado,
-		...(esPregunta ? ["pregunta"] : []),
+		...(item.tipo === "pregunta" ? ["pregunta"] : []),
+		...(item.tipo === "funcionalidad" ? [progreso(item)] : []),
 		...item.marcas,
 		item.titulo,
 		`analisis: ${fase(item.analisisModelo, item.analisisTerminal)}`,
-		...(esPregunta ? [] : [`ejecucion: ${fase(item.ejecucionModelo, item.ejecucionTerminal)}`]),
+		...(esTarea ? [`ejecucion: ${fase(item.ejecucionModelo, item.ejecucionTerminal)}`] : []),
+		...(item.padreId === null ? [] : [`padre: ${formatearId(item.padreId)}`]),
 	];
 	return `- ${partes.join(" · ")}`;
 }

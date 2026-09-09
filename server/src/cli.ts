@@ -8,11 +8,13 @@ import { buscarTerminalPorNombre, buscarUsuarioPorNombre, crearUsuario, type Usu
 import { preguntasDeTarea, responder } from "./db/hilo.ts";
 import {
 	aprobarEjecucion,
+	borrarTareaBacklog,
 	crearTareaHumana,
 	esEstado,
 	leerTarea,
 	listarTareas,
 	moverTareaHumano,
+	type TipoTarea,
 } from "./db/tareas.ts";
 import { esErrorDeRegla } from "./errores.ts";
 import { documentoTarea } from "./md/documento.ts";
@@ -30,10 +32,18 @@ const AYUDA = `Uso: node src/cli.ts <comando>
 
   crear-tarea <usuario> <titulo> <descripcion>
               [--analisis <modelo>[@<terminal>]] [--ejecucion <modelo>[@<terminal>]]
-              [--sin-autoejecucion] [--pregunta]
+              [--sin-autoejecucion] [--pregunta] [--funcionalidad]
+              [--rama <rama>] [--padre <T-0042>] [--depende-de <T-0041,T-0043>]
       Crea una tarea en backlog a nombre del usuario, con sus asignaciones.
       Con --pregunta la tarea solo tiene fase de análisis: ese comentario es la
       respuesta y cierra la tarea. La asignación de ejecución se ignora.
+      Con --funcionalidad la tarea es un evolutivo: su análisis la descompone en
+      partes y el humano las aprueba. --rama es la rama de git en la que se
+      trabaja, que sus partes heredan. --padre solo admite una funcionalidad.
+
+  borrar-tarea <usuario> <id>
+      Borra una tarea que esté en backlog, con su hilo. Fuera de backlog no se
+      borra nada.
 
   mover-tarea <usuario> <id> <estado> [nota]
       Mueve la tarea de columna. Las vueltas atrás exigen nota.
@@ -88,13 +98,31 @@ type Argumentos = {
 	posicionales: string[];
 	analisis?: string;
 	ejecucion?: string;
+	rama?: string;
+	padre?: string;
+	dependeDe?: string;
 	sinAutoejecucion: boolean;
 	pregunta: boolean;
+	funcionalidad: boolean;
+};
+
+/** Las opciones que llevan un valor detrás, y dónde se guarda cada una. */
+const CON_VALOR: Record<string, keyof Pick<Argumentos, "analisis" | "ejecucion" | "rama" | "padre" | "dependeDe">> = {
+	"--analisis": "analisis",
+	"--ejecucion": "ejecucion",
+	"--rama": "rama",
+	"--padre": "padre",
+	"--depende-de": "dependeDe",
 };
 
 /** Separa las opciones con guiones de los argumentos posicionales. */
 function partir(argumentos: string[]): Argumentos {
-	const partido: Argumentos = { posicionales: [], sinAutoejecucion: false, pregunta: false };
+	const partido: Argumentos = {
+		posicionales: [],
+		sinAutoejecucion: false,
+		pregunta: false,
+		funcionalidad: false,
+	};
 	for (let indice = 0; indice < argumentos.length; indice += 1) {
 		const argumento = argumentos[indice];
 		if (argumento === undefined) {
@@ -108,16 +136,17 @@ function partir(argumentos: string[]): Argumentos {
 			partido.pregunta = true;
 			continue;
 		}
-		if (argumento === "--analisis" || argumento === "--ejecucion") {
+		if (argumento === "--funcionalidad") {
+			partido.funcionalidad = true;
+			continue;
+		}
+		const clave = CON_VALOR[argumento];
+		if (clave !== undefined) {
 			const valor = argumentos[indice + 1];
 			if (valor === undefined) {
-				fallar(`${argumento} necesita un valor con la forma <modelo>[@<terminal>]`);
+				fallar(`${argumento} necesita un valor`);
 			}
-			if (argumento === "--analisis") {
-				partido.analisis = valor;
-			} else {
-				partido.ejecucion = valor;
-			}
+			partido[clave] = valor;
 			indice += 1;
 			continue;
 		}
@@ -130,6 +159,33 @@ function partir(argumentos: string[]): Argumentos {
 }
 
 type Asignacion = { modelo: string | null; terminalId: number | null };
+
+/**
+ * La fase que no se asigna. En una pregunta la ejecución no existe: lo que
+ * venga en `--ejecucion` se ignora en vez de guardarse para no usarse nunca.
+ * En una funcionalidad sí se guarda, porque sus partes la heredan.
+ */
+const EJECUCION_VACIA: Asignacion = { modelo: null, terminalId: null };
+
+/** El tipo que sale de las opciones. Sin ninguna, la tarea de siempre. */
+function tipoElegido(partido: Argumentos): TipoTarea {
+	if (partido.pregunta) {
+		return "pregunta";
+	}
+	return partido.funcionalidad ? "funcionalidad" : "tarea";
+}
+
+/** Lee `T-0041,T-0043` y devuelve los números de fila. Vacío si no se pasó nada. */
+function listaDeIds(valor: string | undefined): number[] {
+	if (valor === undefined) {
+		return [];
+	}
+	return valor
+		.split(",")
+		.map((trozo) => trozo.trim())
+		.filter((trozo) => trozo !== "")
+		.map(parsearId);
+}
 
 /** Lee `<modelo>[@<terminal>]`. El terminal se busca por nombre y tiene que existir. */
 function asignacion(db: DatabaseSync, valor: string | undefined): Asignacion {
@@ -198,18 +254,22 @@ function comandoCrearTarea(argumentos: string[]): void {
 	if (usuario === undefined || titulo === undefined || descripcion === undefined) {
 		fallar("uso: crear-tarea <usuario> <titulo> <descripcion> [--analisis m[@t]] [--ejecucion m[@t]] [--pregunta]");
 	}
+	if (partido.pregunta && partido.funcionalidad) {
+		fallar("--pregunta y --funcionalidad son excluyentes: una tarea es de un tipo o de otro");
+	}
 
 	conBaseDeDatos((db) => {
 		const dueno = exigirUsuario(db, usuario);
 		const analisis = asignacion(db, partido.analisis);
-		// Una pregunta no tiene fase de ejecución: lo que venga en --ejecucion
-		// se ignora en vez de guardarse para no usarse nunca.
-		const ejecucion = partido.pregunta ? { modelo: null, terminalId: null } : asignacion(db, partido.ejecucion);
+		const ejecucion = partido.pregunta ? EJECUCION_VACIA : asignacion(db, partido.ejecucion);
 		const tarea = crearTareaHumana(db, {
 			titulo,
 			descripcion,
 			usuarioId: dueno.id,
-			tipo: partido.pregunta ? "pregunta" : "tarea",
+			tipo: tipoElegido(partido),
+			rama: partido.rama ?? null,
+			padreId: partido.padre === undefined ? null : parsearId(partido.padre),
+			dependeDe: listaDeIds(partido.dependeDe),
 			autoejecucion: !partido.sinAutoejecucion,
 			analisisModelo: analisis.modelo,
 			analisisTerminalId: analisis.terminalId,
@@ -233,6 +293,19 @@ function comandoMoverTarea(argumentos: string[]): void {
 		const dueno = exigirUsuario(db, usuario);
 		const tarea = moverTareaHumano(db, { tareaId: parsearId(id), usuarioId: dueno.id, estado, nota });
 		console.log(`movida: ${formatearId(tarea.id)} · ${tarea.estado}`);
+	});
+}
+
+function comandoBorrarTarea(argumentos: string[]): void {
+	const [usuario, id] = argumentos;
+	if (usuario === undefined || id === undefined) {
+		fallar("uso: borrar-tarea <usuario> <id>");
+	}
+
+	conBaseDeDatos((db) => {
+		const dueno = exigirUsuario(db, usuario);
+		const tarea = borrarTareaBacklog(db, { tareaId: parsearId(id), actor: { usuarioId: dueno.id } });
+		console.log(`borrada: ${formatearId(tarea.id)} · ${tarea.titulo}`);
 	});
 }
 
@@ -319,6 +392,9 @@ function principal(argv: string[]): void {
 			break;
 		case "mover-tarea":
 			comandoMoverTarea(argumentos);
+			break;
+		case "borrar-tarea":
+			comandoBorrarTarea(argumentos);
 			break;
 		case "aprobar":
 			comandoAprobar(argumentos);

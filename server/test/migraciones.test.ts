@@ -111,3 +111,93 @@ test("la migración del tipo entra en una tabla STRICT con datos y deja las tare
 		rmSync(carpeta, { recursive: true, force: true });
 	}
 });
+
+/** Fecha cualquiera: en estos datos de prueba solo tiene que ser texto. */
+const FECHA = "2026-09-04T00:00:00.000Z";
+
+test("la migración de dependencias reconstruye tareas sin perder ids ni referencias", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		db.exec("PRAGMA foreign_keys = ON");
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-dependencias-funcionalidades.sql"));
+		assert.ok(cual > 0, "no está la migración de dependencias y funcionalidades");
+
+		// El esquema anterior con datos de todas las tablas que apuntan a
+		// `tareas`: es lo que hay en una base en marcha cuando llega el cambio.
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('xinux', 'h', 'azul', ?)").run(FECHA);
+		db
+			.prepare(
+				"INSERT INTO terminales (usuario_id, nombre, cuenta, token_hash, creado) VALUES (1, 'portatil-a', 'c', 'hash', ?)",
+			)
+			.run(FECHA);
+		db
+			.prepare(
+				`INSERT INTO tareas (id, titulo, descripcion, tipo, estado, orden, analisis_modelo, analisis_terminal_id, creada, actualizada, revision)
+				VALUES (7, 'De antes', 'd', 'pregunta', 'doing', 1, 'sonnet', 1, ?, ?, 3)`,
+			)
+			.run(FECHA, FECHA);
+		db
+			.prepare(
+				`INSERT INTO preguntas (id, tarea_id, numero, pregunta, por_que_importa, opciones_json, recomendacion, creada, revision)
+				VALUES (4, 7, 1, 'p', 'pq', '[]', 'r', ?, 3)`,
+			)
+			.run(FECHA);
+		db
+			.prepare(
+				`INSERT INTO comentarios (tarea_id, tipo, autor, texto, pregunta_id, creado, revision)
+				VALUES (7, 'pregunta', 'sonnet@portatil-a', 'texto', 4, ?, 3)`,
+			)
+			.run(FECHA);
+		db
+			.prepare(
+				`INSERT INTO consumo (tarea_id, fase, modelo, terminal_id, tokens, herramientas, duracion_ms, creado)
+				VALUES (7, 'analisis', 'sonnet', 1, 100, 2, 30, ?)`,
+			)
+			.run(FECHA);
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		// La fila sigue siendo la misma, con su id, y estrena la columna `rama`.
+		const tarea = db.prepare("SELECT id, titulo, tipo, rama, estado, revision FROM tareas").all();
+		assert.equal(tarea.length, 1);
+		assert.equal(tarea[0]?.id, 7);
+		assert.equal(tarea[0]?.titulo, "De antes");
+		assert.equal(tarea[0]?.tipo, "pregunta");
+		assert.equal(tarea[0]?.rama, null);
+		assert.equal(tarea[0]?.revision, 3);
+		assert.equal(db.prepare("SELECT COUNT(*) AS t FROM comentarios WHERE tarea_id = 7").get()?.t, 1);
+
+		// Y lo que cuelga de ella sigue apuntando a `tareas`, no a la tabla
+		// intermedia con la que se reconstruyó.
+		assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+		for (const tabla of ["preguntas", "comentarios", "consumo", "dependencias"]) {
+			const fila = db.prepare("SELECT sql FROM sqlite_master WHERE name = ?").get(tabla);
+			assert.match(String(fila?.sql), /REFERENCES tareas/, `${tabla} ya no apunta a tareas`);
+		}
+		assert.deepEqual(
+			db
+				.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'tareas' ORDER BY name")
+				.all()
+				.map((fila) => String(fila.name)),
+			["tareas_por_columna", "tareas_por_padre", "tareas_por_revision"],
+		);
+
+		// El CHECK nuevo admite `funcionalidad` y sigue sin admitir cualquier cosa.
+		db.prepare("UPDATE tareas SET tipo = 'funcionalidad', rama = 'evolutivo/csv' WHERE id = 7").run();
+		assert.throws(() => {
+			db.prepare("UPDATE tareas SET tipo = 'otra cosa' WHERE id = 7").run();
+		});
+		// Y las dependencias exigen que las dos tareas existan.
+		assert.throws(() => {
+			db.prepare("INSERT INTO dependencias (tarea_id, depende_de_id) VALUES (7, 99)").run();
+		});
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});
