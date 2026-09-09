@@ -13,6 +13,7 @@ import {
 	type Marca,
 	moverTareaHumano,
 	reordenar,
+	type Tarea,
 } from "../../db/tareas.ts";
 import { ErrorDeRegla, esErrorDeRegla } from "../../errores.ts";
 import { formatearId, idONull, parsearId } from "../../md/ids.ts";
@@ -288,7 +289,9 @@ export function tablero(db: DatabaseSync, filtros: Filtros): Html {
 	// Dentro del tablero de una funcionalidad, cada tarjeta es una parte suya:
 	// repetir su título en todas no diría nada que no diga la propia página.
 	const vecindad = vecindadDe(db, items, filtros.padre === "");
-	return html`<section id="tablero" class="tablero" data-fuente="${fuenteDe(filtros)}" data-revision="${revisionActual(db)}">
+	// `data-padre` es el ámbito del tablero: con él, la posición que manda el
+	// cliente al soltar es entre las partes de esa funcionalidad.
+	return html`<section id="tablero" class="tablero" data-fuente="${fuenteDe(filtros)}" data-padre="${filtros.padre}" data-revision="${revisionActual(db)}">
 			<p class="aviso aviso-tablero" id="aviso-tablero" role="alert" hidden></p>
 			<div class="columnas">
 				${COLUMNAS.map((cual) => {
@@ -328,6 +331,8 @@ type Orden = {
 	estado: string;
 	orden: number;
 	nota: string;
+	/** Funcionalidad del tablero del que salió, si venía acotado. Vacío en el kanban global. */
+	padre: string;
 };
 
 function esObjeto(valor: unknown): valor is Record<string, unknown> {
@@ -349,6 +354,7 @@ async function leerOrden(c: Context): Promise<Orden> {
 			estado: textoDe(objeto, "estado"),
 			orden: typeof orden === "number" ? orden : Number.parseInt(textoDe(objeto, "orden"), 10),
 			nota: textoDe(objeto, "nota"),
+			padre: textoDe(objeto, "padre"),
 		};
 	}
 	const formulario = await leerFormulario(c);
@@ -356,7 +362,26 @@ async function leerOrden(c: Context): Promise<Orden> {
 		estado: campo(formulario, "estado"),
 		orden: Number.parseInt(campo(formulario, "orden"), 10),
 		nota: campo(formulario, "nota"),
+		padre: campo(formulario, "padre"),
 	};
+}
+
+/**
+ * El ámbito de la reordenación. En el tablero de una funcionalidad la posición
+ * es entre sus partes, así que la tarjeta tiene que ser una de ellas.
+ */
+function ambitoDe(tarea: Tarea, padre: string): { padreId: number } | undefined {
+	if (padre === "") {
+		return undefined;
+	}
+	const padreId = idONull(padre);
+	if (padreId === null || tarea.padreId !== padreId) {
+		throw new ErrorDeRegla(
+			"padre_no_coincide",
+			`La tarea ${formatearId(tarea.id)} no es parte de ${padre}: ese tablero no puede colocarla.`,
+		);
+	}
+	return { padreId };
 }
 
 /**
@@ -375,10 +400,11 @@ function aplicarOrden(deps: DependenciasWeb, tareaId: number, usuarioId: number,
 	if (!Number.isSafeInteger(datos.orden) || datos.orden < 1) {
 		throw new ErrorDeRegla("orden_invalido", "La posición de destino tiene que ser un número a partir de 1.");
 	}
+	const entre = ambitoDe(tarea, datos.padre);
 	if (datos.estado !== tarea.estado) {
 		moverTareaHumano(deps.db, { tareaId, usuarioId, estado: datos.estado, nota: datos.nota });
 	}
-	reordenar(deps.db, { tareaId, orden: datos.orden });
+	reordenar(deps.db, { tareaId, orden: datos.orden, entre });
 }
 
 // --- rutas -------------------------------------------------------------------

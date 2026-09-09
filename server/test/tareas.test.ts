@@ -607,6 +607,84 @@ test("reordenar desplaza al resto de la columna y sube la revisión de lo que mu
 	}
 });
 
+/** Las partes de la funcionalidad de `columnaIntercalada`, con la propia funcionalidad. */
+type Intercalada = { evolutivo: number; parte1: number; parte2: number; parte3: number };
+
+/**
+ * Una columna `prepared` con tres partes de una funcionalidad y dos tareas
+ * sueltas por medio: suelta A, parte 1, suelta B, parte 2, parte 3. Es el caso
+ * en el que la posición del tablero de la funcionalidad no es la de la columna.
+ */
+function columnaIntercalada(banco: ReturnType<typeof montar>): Intercalada {
+	const evolutivo = crearTareaHumana(banco.db, {
+		titulo: "Que los comerciales se bajen sus listados",
+		descripcion: "Hoy copian los datos a mano.",
+		usuarioId: banco.xinux,
+		tipo: "funcionalidad",
+	});
+	const crear = (titulo: string, padreId?: number): number =>
+		crearTareaHumana(banco.db, { titulo, descripcion: "d", usuarioId: banco.xinux, padreId }).id;
+	const orden = [
+		crear("Suelta A"),
+		crear("Parte 1", evolutivo.id),
+		crear("Suelta B"),
+		crear("Parte 2", evolutivo.id),
+		crear("Parte 3", evolutivo.id),
+	];
+	// El orden de la columna es el orden en que entran en ella.
+	for (const tareaId of orden) {
+		moverTareaHumano(banco.db, { tareaId, usuarioId: banco.xinux, estado: "prepared" });
+	}
+	const [, parte1, , parte2, parte3] = orden;
+	assert.ok(parte1 !== undefined && parte2 !== undefined && parte3 !== undefined);
+	return { evolutivo: evolutivo.id, parte1, parte2, parte3 };
+}
+
+/** Los títulos de la columna `prepared`, en su orden. */
+function preparadas(banco: ReturnType<typeof montar>): string[] {
+	return listarTareas(banco.db, { estado: "prepared" }).map((item) => item.titulo);
+}
+
+test("reordenar entre hermanas sube la parte delante de la primera sin adelantar a las sueltas", () => {
+	const banco = montar();
+	try {
+		const { evolutivo, parte3 } = columnaIntercalada(banco);
+		assert.deepEqual(preparadas(banco), ["Suelta A", "Parte 1", "Suelta B", "Parte 2", "Parte 3"]);
+
+		// Soltar arriba del tablero de la funcionalidad es ponerse delante de la
+		// primera hermana, no la primera de toda la columna.
+		reordenar(banco.db, { tareaId: parte3, orden: 1, entre: { padreId: evolutivo } });
+		assert.deepEqual(preparadas(banco), ["Suelta A", "Parte 3", "Parte 1", "Suelta B", "Parte 2"]);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("reordenar entre hermanas baja la parte detrás de la que la precede, y la posición que no existe rompe", () => {
+	const banco = montar();
+	try {
+		const { evolutivo, parte1 } = columnaIntercalada(banco);
+
+		// La tercera posición entre hermanas es detrás de la parte 3, que es la
+		// segunda de las que quedan al sacar la que se mueve.
+		reordenar(banco.db, { tareaId: parte1, orden: 3, entre: { padreId: evolutivo } });
+		assert.deepEqual(preparadas(banco), ["Suelta A", "Suelta B", "Parte 2", "Parte 3", "Parte 1"]);
+
+		// Con dos hermanas hay tres sitios donde soltar: la cuarta no existe.
+		assert.equal(
+			codigoDe(() => reordenar(banco.db, { tareaId: parte1, orden: 4, entre: { padreId: evolutivo } })),
+			"orden_invalido",
+		);
+		assert.deepEqual(preparadas(banco), ["Suelta A", "Suelta B", "Parte 2", "Parte 3", "Parte 1"]);
+
+		// Sin ámbito la posición es la de la columna entera, como siempre.
+		reordenar(banco.db, { tareaId: parte1, orden: 1 });
+		assert.deepEqual(preparadas(banco), ["Parte 1", "Suelta A", "Suelta B", "Parte 2", "Parte 3"]);
+	} finally {
+		banco.cerrar();
+	}
+});
+
 test("el índice sale ordenado por columna y por orden, y se puede filtrar por terminal", () => {
 	const banco = montar();
 	try {

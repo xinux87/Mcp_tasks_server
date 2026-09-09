@@ -187,6 +187,13 @@ async function enviarOrden(id, estado, orden, nota) {
 	datos.set("estado", estado);
 	datos.set("orden", String(orden));
 	datos.set("nota", nota);
+	// El tablero de una funcionalidad solo enseña sus partes: la posición que
+	// se ve es entre hermanas, y el servidor la traduce a la de la columna.
+	const tablero = elTablero();
+	const padre = tablero === null ? "" : tablero.dataset.padre || "";
+	if (padre !== "") {
+		datos.set("padre", padre);
+	}
 	let respuesta;
 	try {
 		respuesta = await fetch("/tareas/" + encodeURIComponent(id) + "/orden", {

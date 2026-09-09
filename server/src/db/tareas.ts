@@ -837,7 +837,47 @@ function aprobarTareaNormal(conexion: DatabaseSync, revision: number, tarea: Tar
 export type Reordenacion = {
 	tareaId: number;
 	orden: number;
+	/**
+	 * Ámbito del tablero de una funcionalidad: la posición es entre sus partes
+	 * de esa columna, no en la columna entera. Sin él, la posición es global.
+	 */
+	entre?: { padreId: number };
 };
+
+/** Una fila de la columna que se reordena: lo justo para colocarla. */
+type FilaDeColumna = { id: number; orden: number; padreId: number | null };
+
+/**
+ * Traduce una posición entre hermanas a la posición global de la columna: la
+ * tarea va justo delante de la primera hermana si se soltó arriba, y justo
+ * detrás de la hermana que ocupa la posición anterior en cualquier otro caso.
+ * Así las tareas que no son hermanas conservan su orden relativo. Devuelve
+ * `null` cuando no hay ninguna hermana en la columna: ahí soltar no mueve nada.
+ */
+function posicionEntreHermanas(resto: FilaDeColumna[], padreId: number, orden: number): number | null {
+	// Posición global (desde 1) de cada hermana dentro de la columna sin la propia.
+	const hermanas: number[] = [];
+	for (let indice = 0; indice < resto.length; indice += 1) {
+		if (resto[indice]?.padreId === padreId) {
+			hermanas.push(indice + 1);
+		}
+	}
+	if (orden < 1 || orden > hermanas.length + 1) {
+		throw new ErrorDeRegla(
+			"orden_invalido",
+			`La posición ${orden} no existe: esta funcionalidad tiene ${hermanas.length + 1} sitios donde soltar en esa columna.`,
+		);
+	}
+	const primera = hermanas[0];
+	if (primera === undefined) {
+		return null;
+	}
+	if (orden === 1) {
+		return primera;
+	}
+	const anterior = hermanas[orden - 2];
+	return anterior === undefined ? null : anterior + 1;
+}
 
 /**
  * Cambia la posición de la tarea dentro de su columna y desplaza a las demás.
@@ -846,12 +886,24 @@ export type Reordenacion = {
 export function reordenar(db: DatabaseSync, datos: Reordenacion): Tarea {
 	return escribirContenido(db, (conexion, revision) => {
 		const tarea = exigirTarea(conexion, datos.tareaId);
-		const columna = sentencia(conexion, "SELECT id, orden FROM tareas WHERE estado = ? ORDER BY orden, id")
+		const columna = sentencia(conexion, "SELECT id, orden, padre_id FROM tareas WHERE estado = ? ORDER BY orden, id")
 			.all(tarea.estado)
-			.map((fila) => ({ id: entero(fila, "id"), orden: entero(fila, "orden") }));
+			.map((fila) => ({
+				id: entero(fila, "id"),
+				orden: entero(fila, "orden"),
+				padreId: enteroOpcional(fila, "padre_id"),
+			}));
 		const resto = columna.filter((fila) => fila.id !== tarea.id);
-		const destino = Math.min(Math.max(Math.trunc(datos.orden), 1), resto.length + 1);
-		resto.splice(destino - 1, 0, { id: tarea.id, orden: tarea.orden });
+		const pedida =
+			datos.entre === undefined
+				? Math.trunc(datos.orden)
+				: posicionEntreHermanas(resto, datos.entre.padreId, Math.trunc(datos.orden));
+		// Única parte de su funcionalidad en la columna: no hay entre qué ponerla.
+		if (pedida === null) {
+			return exigirTarea(conexion, tarea.id);
+		}
+		const destino = Math.min(Math.max(pedida, 1), resto.length + 1);
+		resto.splice(destino - 1, 0, { id: tarea.id, orden: tarea.orden, padreId: tarea.padreId });
 
 		const marca = ahora();
 		for (let indice = 0; indice < resto.length; indice += 1) {

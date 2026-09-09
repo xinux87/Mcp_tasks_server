@@ -262,6 +262,52 @@ test("arrastrar dentro de la misma columna reordena las tareas", async () => {
 	}
 });
 
+test("arrastrar dentro del tablero de una funcionalidad coloca la parte entre sus hermanas", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const evolutivo = crearTareaHumana(montaje.db, {
+			titulo: "Listados para comerciales",
+			descripcion: "Hoy los copian a mano.",
+			usuarioId: 1,
+			tipo: "funcionalidad",
+		});
+		const nueva = (titulo: string, padreId?: number): number =>
+			crearTareaHumana(montaje.db, { titulo, descripcion: "d", usuarioId: 1, padreId }).id;
+		// La columna queda: suelta (T-0002), parte 1 (T-0003), parte 2 (T-0004).
+		for (const tareaId of [nueva("Suelta"), nueva("Parte 1", evolutivo.id), nueva("Parte 2", evolutivo.id)]) {
+			moverTareaHumano(montaje.db, { tareaId, usuarioId: 1, estado: "prepared" });
+		}
+
+		// El fragmento dice de qué funcionalidad es el tablero: es lo que el
+		// cliente manda al soltar para que la posición sea entre hermanas.
+		const fragmento = await (await pedir(montaje, "/tareas/kanban/tablero?padre=T-0001", { cookie })).text();
+		assert.match(fragmento, /data-padre="T-0001"/);
+
+		// Soltar la parte 2 arriba de ese tablero la pone delante de la parte 1,
+		// y la tarea suelta se queda donde estaba.
+		const respuesta = await pedir(montaje, "/tareas/T-0004/orden", {
+			cookie,
+			formulario: { estado: "prepared", orden: "1", padre: "T-0001" },
+		});
+		assert.equal(respuesta.status, 204);
+		assert.equal(buscarTarea(montaje.db, 2)?.orden, 1);
+		assert.equal(buscarTarea(montaje.db, 4)?.orden, 2);
+		assert.equal(buscarTarea(montaje.db, 3)?.orden, 3);
+
+		// Una tarjeta que no es parte de esa funcionalidad no se coloca en su tablero.
+		const ajena = await pedir(montaje, "/tareas/T-0002/orden", {
+			cookie,
+			formulario: { estado: "prepared", orden: "1", padre: "T-0001" },
+		});
+		assert.equal(ajena.status, 422);
+		assert.equal((await fallo(ajena)).codigo, "padre_no_coincide");
+		assert.equal(buscarTarea(montaje.db, 2)?.orden, 1);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
 test("arrastrar a otra columna mueve la tarea y la coloca donde se soltó", async () => {
 	const montaje = montar();
 	try {
@@ -382,6 +428,8 @@ test("el JavaScript del cliente y SortableJS se sirven como estáticos", async (
 		const cuerpoPropio = await propio.text();
 		assert.match(cuerpoPropio, /EventSource\("\/eventos"\)/);
 		assert.match(cuerpoPropio, /\/tareas\/kanban\/tablero/);
+		// El ámbito del tablero viaja con la posición al soltar.
+		assert.match(cuerpoPropio, /dataset\.padre/);
 		// Nada de evaluar cadenas en el navegador.
 		assert.ok(!/\beval\(/.test(cuerpoPropio), "el cliente no debe usar eval");
 		assert.ok(!/new Function\(/.test(cuerpoPropio), "el cliente no debe usar Function");
