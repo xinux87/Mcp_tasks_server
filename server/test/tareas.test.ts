@@ -4,6 +4,7 @@ import { revisionActual } from "../src/db/consultas.ts";
 import { comentarAnalisis, comentarResultado, preguntar } from "../src/db/hilo.ts";
 import {
 	aprobarEjecucion,
+	borrarTareaBacklog,
 	crearHija,
 	crearPropuesta,
 	crearTareaHumana,
@@ -623,6 +624,25 @@ test("el índice sale ordenado por columna y por orden, y se puede filtrar por t
 			[enCurso.id],
 		);
 		assert.deepEqual(listarTareas(banco.db, { terminalId: banco.sobremesa }), []);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("un id de tarea no se reutiliza nunca, ni después de borrar la última", () => {
+	const banco = montar();
+	try {
+		const primera = crearTareaHumana(banco.db, { titulo: "La que se queda", descripcion: "d", usuarioId: banco.xinux });
+		const segunda = crearTareaHumana(banco.db, { titulo: "La que sobra", descripcion: "d", usuarioId: banco.xinux });
+		assert.equal(segunda.id, primera.id + 1);
+
+		borrarTareaBacklog(banco.db, { tareaId: segunda.id, actor: { usuarioId: banco.xinux } });
+		assert.equal(leerTarea(banco.db, segunda.id), undefined);
+
+		// El id borrado queda quemado: el hilo, la actividad y los commits ya lo
+		// citan, y otra tarea con ese número cambiaría de dueño lo ya escrito.
+		const tercera = crearTareaHumana(banco.db, { titulo: "La siguiente", descripcion: "d", usuarioId: banco.xinux });
+		assert.ok(tercera.id > segunda.id, `el id ${tercera.id} reutiliza el de la tarea borrada`);
 	} finally {
 		banco.cerrar();
 	}

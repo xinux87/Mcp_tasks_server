@@ -57,7 +57,7 @@ Cada encargo que se pasa a un subagente lleva, en este orden:
 
 ### Campos
 
-- `id` con la forma `T-0042` (cuatro cifras como mínimo, correlativo), `titulo`, `descripcion`, `estado`, `orden` (posición dentro de su columna), `padre` (opcional, para tareas hijas).
+- `id` con la forma `T-0042` (cuatro cifras como mínimo, correlativo), `titulo`, `descripcion`, `estado`, `orden` (posición dentro de su columna), `padre` (opcional, para tareas hijas). **Un id nunca se reutiliza**, ni aunque se borre la tarea con el id más alto: ya puede estar citado en un hilo, en la actividad o en un commit. La tabla lleva `AUTOINCREMENT` por eso.
 - `tipo`: `tarea` (por defecto), `pregunta` o `funcionalidad`. Ver «Tareas que son preguntas» y «Funcionalidades».
 - `dependeDe[]`: tareas que tienen que estar `done` o `finished` antes de que esta se pueda tomar. Ver «Dependencias».
 - `rama`: rama de git en la que se trabaja la tarea, opcional. Una funcionalidad la fija y sus partes la heredan.

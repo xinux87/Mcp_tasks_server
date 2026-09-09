@@ -278,10 +278,11 @@ test("el CLI crea una funcionalidad con rama y dependencias, la aprueba y borra 
 		assert.match(bien(dataDir, "aprobar", "xinux", "T-0001"), /^aprobada: T-0001$/m);
 		const tras = bien(dataDir, "listar");
 		// La parte sale del backlog, y con ella la de integrar la rama, que ya
-		// cuenta en el progreso de la funcionalidad.
+		// cuenta en el progreso de la funcionalidad. Los identificadores empiezan
+		// en T-0005: el T-0004 se borró y ese número no se vuelve a repartir.
 		assert.match(tras, /^- T-0001 · doing · funcionalidad 0\/2 · /m);
-		assert.match(tras, /^- T-0004 · prepared · Sacar los datos · .+ · padre: T-0001$/m);
-		assert.match(tras, /^- T-0005 · prepared · esperando · Integrar la rama `evolutivo\/csv` en la principal · /m);
+		assert.match(tras, /^- T-0005 · prepared · Sacar los datos · .+ · padre: T-0001$/m);
+		assert.match(tras, /^- T-0006 · prepared · esperando · Integrar la rama `evolutivo\/csv` en la principal · /m);
 	} finally {
 		rmSync(dataDir, { recursive: true, force: true });
 	}

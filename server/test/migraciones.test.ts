@@ -35,6 +35,19 @@ test("abrir en memoria deja el esquema en la última versión con sus siete tabl
 	}
 });
 
+test("la tabla de tareas lleva AUTOINCREMENT, así que sus ids no se reutilizan", () => {
+	const db = abrirBaseDeDatos(":memory:");
+	try {
+		const fila = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tareas'").get();
+		assert.match(String(fila?.sql), /id INTEGER PRIMARY KEY AUTOINCREMENT/);
+		// La cuenta de ids la lleva SQLite en su propia tabla, que solo existe
+		// cuando alguna tabla es AUTOINCREMENT.
+		assert.ok(tablas(db).includes("sqlite_sequence"), "falta sqlite_sequence");
+	} finally {
+		db.close();
+	}
+});
+
 test("aplicar las migraciones dos veces no falla ni reaplica nada", () => {
 	const db = abrirBaseDeDatos(":memory:");
 	try {
@@ -186,6 +199,17 @@ test("la migración de dependencias reconstruye tareas sin perder ids ni referen
 				.map((fila) => String(fila.name)),
 			["tareas_por_columna", "tareas_por_padre", "tareas_por_revision"],
 		);
+
+		// La cuenta de ids arranca en el mayor que ya había: la tarea siguiente
+		// es la 8, y ningún id de antes se vuelve a repartir.
+		db
+			.prepare(
+				`INSERT INTO tareas (titulo, descripcion, tipo, estado, orden, creada, actualizada, revision)
+				VALUES ('La siguiente', 'd', 'tarea', 'backlog', 2, ?, ?, 4)`,
+			)
+			.run(FECHA, FECHA);
+		assert.equal(db.prepare("SELECT MAX(id) AS id FROM tareas").get()?.id, 8);
+		db.prepare("DELETE FROM tareas WHERE id = 8").run();
 
 		// El CHECK nuevo admite `funcionalidad` y sigue sin admitir cualquier cosa.
 		db.prepare("UPDATE tareas SET tipo = 'funcionalidad', rama = 'evolutivo/csv' WHERE id = 7").run();

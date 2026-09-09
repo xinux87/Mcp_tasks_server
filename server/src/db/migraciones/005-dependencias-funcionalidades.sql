@@ -1,9 +1,10 @@
 -- Dependencias entre tareas y funcionalidades como evolutivos.
 --
--- Dos cambios sobre `tareas`: la columna `rama` (la rama de git en la que se
--- trabaja, que una funcionalidad fija y sus partes heredan) y un `tipo` nuevo,
--- `funcionalidad`. Lo primero es un `ADD COLUMN`; lo segundo no, porque SQLite
--- no sabe cambiar un CHECK: hay que reconstruir la tabla entera.
+-- Tres cambios sobre `tareas`: la columna `rama` (la rama de git en la que se
+-- trabaja, que una funcionalidad fija y sus partes heredan), un `tipo` nuevo,
+-- `funcionalidad`, e ids que no se reutilizan. Lo primero es un `ADD COLUMN`;
+-- lo demás no, porque SQLite no sabe cambiar ni un CHECK ni la clave primaria:
+-- hay que reconstruir la tabla entera.
 --
 -- La reconstrucción es la de la documentación de SQLite: tabla nueva con otro
 -- nombre, copia de las filas conservando los ids, `DROP` de la vieja y
@@ -21,7 +22,10 @@
 ALTER TABLE tareas ADD COLUMN rama TEXT;
 
 CREATE TABLE tareas_nueva (
-  id INTEGER PRIMARY KEY,
+  -- AUTOINCREMENT: un id nunca se reutiliza. Sin él, borrar la última tarea de
+  -- backlog libera su número y la siguiente lo hereda, y un id ya citado en un
+  -- hilo, en la actividad o en un commit cambiaría de dueño en silencio.
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   titulo TEXT NOT NULL,
   descripcion TEXT NOT NULL,
   tipo TEXT NOT NULL DEFAULT 'tarea' CHECK (tipo IN ('tarea', 'pregunta', 'funcionalidad')),
