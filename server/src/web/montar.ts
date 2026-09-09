@@ -4,6 +4,7 @@ import { registrarEstaticos } from "./estaticos.ts";
 import { NOMBRE_PROYECTO, pagina } from "./plantilla.ts";
 import { registrarRutasActividad } from "./rutas/actividad.ts";
 import { registrarRutasEventos } from "./rutas/eventos.ts";
+import { registrarRutasFuncionalidades } from "./rutas/funcionalidades.ts";
 import { registrarRutasKanban } from "./rutas/kanban.ts";
 import { registrarRutasSesion } from "./rutas/sesion.ts";
 import { registrarRutasTareas } from "./rutas/tareas.ts";
@@ -21,6 +22,7 @@ export type { DependenciasWeb } from "./sesion.ts";
 const PRIVADAS = [
 	"/tareas",
 	"/tareas/*",
+	"/funcionalidades",
 	"/terminales",
 	"/terminales/*",
 	"/usuarios",
@@ -57,6 +59,7 @@ export function montarWeb(app: Hono, deps: DependenciasWeb): void {
 	// leería como la ficha de una tarea llamada «kanban».
 	registrarRutasKanban(app, deps);
 	registrarRutasTareas(app, deps);
+	registrarRutasFuncionalidades(app, deps);
 	registrarRutasTerminales(app, deps);
 	registrarRutasUsuarios(app, deps);
 	registrarRutasActividad(app, deps);

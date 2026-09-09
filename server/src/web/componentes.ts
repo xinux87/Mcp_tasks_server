@@ -4,6 +4,8 @@ import { listarTerminales, listarUsuarios } from "../db/admin.ts";
 import { COLORES_USUARIO } from "../db/colores.ts";
 import type { TipoComentario } from "../db/hilo.ts";
 import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
+import { formatearId } from "../md/ids.ts";
+import { abreviar } from "./formatos.ts";
 import type { Html } from "./plantilla.ts";
 
 /**
@@ -143,6 +145,7 @@ export function buscadorDeColor(db: DatabaseSync): (nombre: string) => Color | n
 const FRASE_ACCION: Record<string, string | undefined> = {
 	crear_tarea: "creó la tarea",
 	editar_tarea: "editó la tarea",
+	borrar_tarea: "borró la tarea",
 	mover_tarea: "movió la tarea",
 	aprobar_ejecucion: "aprobó la ejecución",
 	responder_pregunta: "respondió",
@@ -267,6 +270,34 @@ export function rotuloColumna(insignia: Html, titulo: string, total: number): Ht
 /** El alta de tarea: la acción principal de la lista y del kanban. */
 export function accionNuevaTarea(): Html {
 	return html`<a class="boton principal" href="/tareas/nueva">Nueva tarea</a>`;
+}
+
+/**
+ * Lo que ha avanzado una funcionalidad: barra fina y `3/7` al lado, partes
+ * cerradas sobre partes totales.
+ *
+ * La barra es la misma idea que la del uso de un terminal, pero con su propia
+ * clase: allí quedarse corto es una alarma y la barra se pinta en rojo, y aquí
+ * empezar por cero es lo normal. El ancho sale de la decena, en un atributo,
+ * porque en las plantillas no hay estilos en línea.
+ */
+export function barraProgreso(cerradas: number, total: number): Html {
+	const nivel = total === 0 ? 0 : Math.round((cerradas / total) * 10);
+	return html`<span class="progreso">
+			<span class="barra"><span class="relleno" data-nivel="${nivel}"></span></span>
+			<span class="cifra">${cerradas}/${total}</span>
+		</span>`;
+}
+
+/** Cuánto título de la funcionalidad cabe en una fila o en una tarjeta. */
+const TITULO_ABREVIADO = 40;
+
+/**
+ * De qué funcionalidad es parte una tarea: enlace a su ficha con el título
+ * abreviado. Lo enseñan igual la fila de la lista y la tarjeta del kanban.
+ */
+export function enlaceFuncionalidad(padreId: number, titulo: string): Html {
+	return html`<a class="parte-de" href="/tareas/${formatearId(padreId)}">${abreviar(titulo, TITULO_ABREVIADO)}</a>`;
 }
 
 /** Una opción de un desplegable de filtro: el valor que viaja y lo que se lee. */

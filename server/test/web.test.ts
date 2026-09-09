@@ -210,7 +210,7 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 	}
 });
 
-test("una pregunta se crea con su casilla, sale con badge y sin nada de ejecución", async () => {
+test("una pregunta se crea con su tipo, sale con badge y sin nada de ejecución", async () => {
 	const montaje = montar();
 	try {
 		const cookie = await entrar(montaje);
@@ -219,7 +219,7 @@ test("una pregunta se crea con su casilla, sale con badge y sin nada de ejecuci�
 			formulario: {
 				titulo: "¿Cuánto se tarda hoy en cerrar el mes?",
 				descripcion: "Quiero saberlo antes de pedir nada.",
-				pregunta: "on",
+				tipo: "pregunta",
 				analisisModelo: "sonnet",
 				analisisTerminal: "",
 				// Lo de ejecución llega del formulario anterior y se ignora.
@@ -242,7 +242,8 @@ test("una pregunta se crea con su casilla, sale con badge y sin nada de ejecuci�
 		assert.doesNotMatch(cuerpo, /<dt>Autoejecución<\/dt>/);
 		// Al editarla, el formulario tampoco enseña la ejecución.
 		assert.doesNotMatch(cuerpo, /name="ejecucionModelo"/);
-		assert.match(cuerpo, /name="pregunta" checked/);
+		// El desplegable de tipo vuelve con la pregunta elegida.
+		assert.match(cuerpo, /<option value="pregunta" selected>Pregunta<\/option>/);
 		// Y en la lista, su columna de ejecución queda vacía.
 		const lista = await (await pedir(montaje, "/tareas", { cookie })).text();
 		assert.match(lista, /<th>Creada por<\/th>/);

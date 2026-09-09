@@ -523,6 +523,18 @@ label > span {
 	font-size: 0.85rem;
 }
 
+/* La ayuda de un campo va debajo de su control, no encima como el rótulo. */
+label > span.ayuda {
+	margin: 0.3rem 0 0;
+	font-size: 0.8rem;
+}
+
+/* Un desplegable de varias opciones se lee como una lista: sitio a los lados
+   de cada opción y el alto que pida el atributo «size». */
+select[multiple] {
+	padding: 0.3rem;
+}
+
 /* Los controles no llevan borde propio: un fondo suave y ya. El borde
    transparente reserva el sitio para que el foco no mueva el diseño. */
 input[type="text"], input[type="password"], textarea, select {
@@ -1309,5 +1321,107 @@ details.caja > summary {
 
 details.caja[open] > summary {
 	margin-bottom: 0.9rem;
+}
+
+/* --- funcionalidades, partes y dependencias ------------------------------ */
+
+/* El progreso de una funcionalidad: barra fina y las partes cerradas sobre el
+   total al lado. Es la misma idea que el uso de un terminal, pero con su
+   propia clase: allí quedarse corto es una alarma y la barra se pinta en rojo,
+   y aquí empezar por cero es lo normal. */
+.progreso {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.progreso .barra {
+	display: block;
+	width: 4.5rem;
+	height: 4px;
+	border-radius: 999px;
+	background: var(--fondo-hover);
+	overflow: hidden;
+}
+
+/* El ancho sale de la decena que calcula el servidor: una regla por valor, y
+   así ninguna plantilla lleva estilos en línea. */
+.progreso .relleno {
+	display: block;
+	height: 100%;
+	border-radius: 999px;
+	background: var(--acento);
+}
+
+.progreso .relleno[data-nivel="0"] { width: 0; }
+.progreso .relleno[data-nivel="1"] { width: 10%; }
+.progreso .relleno[data-nivel="2"] { width: 20%; }
+.progreso .relleno[data-nivel="3"] { width: 30%; }
+.progreso .relleno[data-nivel="4"] { width: 40%; }
+.progreso .relleno[data-nivel="5"] { width: 50%; }
+.progreso .relleno[data-nivel="6"] { width: 60%; }
+.progreso .relleno[data-nivel="7"] { width: 70%; }
+.progreso .relleno[data-nivel="8"] { width: 80%; }
+.progreso .relleno[data-nivel="9"] { width: 90%; }
+.progreso .relleno[data-nivel="10"] { width: 100%; }
+
+.progreso .cifra {
+	color: var(--texto-suave);
+	font-size: 0.85rem;
+	font-variant-numeric: tabular-nums;
+}
+
+/* De qué funcionalidad es parte una tarea: debajo de su título en la lista y
+   en la tarjeta, en texto suave para que no compita con él. */
+.parte-de {
+	color: var(--texto-suave);
+	text-decoration: none;
+}
+
+.parte-de::before {
+	content: "↳ ";
+}
+
+.parte-de:hover {
+	color: var(--texto);
+	text-decoration: underline;
+}
+
+/* Las dependencias de la ficha: una detrás de otra, y ninguna partida por
+   dentro, que separaría la etiqueta de su identificador. */
+.dependencias {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 0.2rem 0.8rem;
+}
+
+.dependencia {
+	white-space: nowrap;
+}
+
+/* El alta de una parte va encima del tablero de su funcionalidad. */
+.acciones-partes {
+	margin-bottom: 0.9rem;
+}
+
+/* Borrar es excepcional y no compite con «Guardar cambios»: enlace rojo
+   discreto al final del bloque de editar. */
+.accion-peligro {
+	color: var(--peligro);
+	text-decoration: none;
+}
+
+.accion-peligro:hover {
+	text-decoration: underline;
+}
+
+/* En la tabla de funcionalidades manda el título, como en la lista de tareas. */
+.tabla-funcionalidades td:first-child a:not(.id-tarea) {
+	color: var(--texto);
+	text-decoration: none;
+}
+
+.tabla-funcionalidades td:first-child a:not(.id-tarea):hover {
+	text-decoration: underline;
 }
 `;

@@ -46,6 +46,15 @@ export function numeroLegible(valor: number): string {
 	return String(Math.trunc(valor)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
+/**
+ * Título recortado para donde no cabe entero, con puntos suspensivos al final.
+ * Se cuenta por caracteres y no por unidades UTF-16, para no partir un emoji.
+ */
+export function abreviar(valor: string, maximo: number): string {
+	const letras = [...valor.trim()];
+	return letras.length <= maximo ? letras.join("") : `${letras.slice(0, maximo - 1).join("")}…`;
+}
+
 /** Una fase como `modelo@terminal`, con «sin asignar» cuando no hay ninguno de los dos. */
 export function faseLegible(modelo: string | null, terminal: string | null): string {
 	if (modelo !== null && terminal !== null) {

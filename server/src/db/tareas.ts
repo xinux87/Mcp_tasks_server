@@ -572,14 +572,15 @@ export function exigirPadreFuncionalidad(conexion: DatabaseSync, padreId: number
 export function crearTareaHumana(db: DatabaseSync, datos: NuevaTareaHumana): Tarea {
 	return escribirContenido(db, (conexion, revision) => {
 		const padreId = datos.padreId ?? null;
-		if (padreId !== null) {
-			exigirPadreFuncionalidad(conexion, padreId);
-		}
+		const padre = padreId === null ? null : exigirPadreFuncionalidad(conexion, padreId);
 		const tarea = insertarTarea(conexion, revision, {
 			titulo: datos.titulo,
 			descripcion: datos.descripcion,
 			tipo: datos.tipo ?? "tarea",
-			rama: datos.rama ?? null,
+			// Una parte que crea el humano hereda la rama de su funcionalidad,
+			// igual que las que crea el análisis: se trabaja donde se trabaja el
+			// evolutivo, salvo que él escriba otra rama.
+			rama: datos.rama ?? padre?.rama ?? null,
 			estado: "backlog",
 			padreId,
 			autoejecucion: datos.autoejecucion ?? true,

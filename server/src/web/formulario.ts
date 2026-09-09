@@ -8,7 +8,10 @@ import { esErrorDeRegla } from "../errores.ts";
 export type Formulario = Record<string, unknown>;
 
 export async function leerFormulario(c: Context): Promise<Formulario> {
-	return await c.req.parseBody();
+	// `all: true` para que un desplegable de varias opciones (las dependencias)
+	// llegue entero y no solo con la última marcada. Los campos de un solo
+	// valor siguen llegando como texto.
+	return await c.req.parseBody({ all: true });
 }
 
 /** Valor de texto de un campo. Un campo ausente es cadena vacía, no `undefined`. */
@@ -21,6 +24,21 @@ export function campo(formulario: Formulario, nombre: string): string {
 export function campoOpcional(formulario: Formulario, nombre: string): string | null {
 	const valor = campo(formulario, nombre).trim();
 	return valor === "" ? null : valor;
+}
+
+/**
+ * Lo elegido en un campo que admite varias opciones. Con una sola marcada el
+ * valor llega como texto y con varias como lista; sin ninguna, no llega nada.
+ */
+export function campoLista(formulario: Formulario, nombre: string): string[] {
+	const valor = formulario[nombre];
+	if (typeof valor === "string") {
+		return valor === "" ? [] : [valor];
+	}
+	if (!Array.isArray(valor)) {
+		return [];
+	}
+	return valor.filter((uno) => typeof uno === "string" && uno !== "");
 }
 
 /** Una casilla marcada llega en el cuerpo; una sin marcar no llega. */

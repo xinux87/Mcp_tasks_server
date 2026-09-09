@@ -5,13 +5,16 @@ import { type Actividad, actividadDe } from "../../db/actividad.ts";
 import { type TerminalListado, terminalesActivos } from "../../db/admin.ts";
 import { revisionActual } from "../../db/consultas.ts";
 import type { ConsumoDeTarea } from "../../db/consumo.ts";
+import { dependenciasPendientes } from "../../db/dependencias.ts";
 import { editarTareaBacklog, exigirTitulo } from "../../db/edicion.ts";
 import { type Comentario, notaHumana, type Pregunta, responder } from "../../db/hilo.ts";
 import {
 	aprobarEjecucion,
+	borrarTareaBacklog,
 	buscarTarea,
 	crearTareaHumana,
 	type Estado,
+	esTipoTarea,
 	type ItemIndice,
 	leerTarea,
 	listarTareas,
@@ -22,14 +25,18 @@ import {
 	type TipoTarea,
 } from "../../db/tareas.ts";
 import { ErrorDeRegla, esErrorDeRegla } from "../../errores.ts";
-import { formatearId, parsearId } from "../../md/ids.ts";
+import { formatearId, idONull, parsearId } from "../../md/ids.ts";
 import {
 	accionNuevaTarea,
+	barraProgreso,
 	buscadorDeColor,
 	buscadorDeCreador,
+	COLOR_ESTADO,
 	type Color,
 	chipAutor,
 	chipUsuario,
+	enlaceFuncionalidad,
+	etiqueta,
 	filtroSelect,
 	fraseDeAccion,
 	type Propiedad,
@@ -40,6 +47,7 @@ import {
 import { duracionLegible, faseLegible, fechaLegible, numeroLegible, SIN_DATO } from "../formatos.ts";
 import {
 	campo,
+	campoLista,
 	campoOpcional,
 	ESTADO_AVISO,
 	type Formulario,
@@ -54,15 +62,23 @@ import {
 	insigniaEstado,
 	insigniasMarcas,
 	insigniaTipo,
+	insigniaTipoDeItem,
 	insigniaTipoTarea,
 	MODELOS_SUGERIDOS,
 	pagina,
 	type RespuestaHtml,
 } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
+import { MARCAS, opcionesFuncionalidad, tablero } from "./kanban.ts";
 
 const ESTADOS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
-const MARCAS: readonly Marca[] = ["bloqueada", "sin terminal", "en marcha", "análisis listo"];
+
+/** Las tres clases de encargo, con el nombre que se lee en el desplegable. */
+const TIPOS: readonly { valor: TipoTarea; texto: string }[] = [
+	{ valor: "tarea", texto: "Tarea" },
+	{ valor: "pregunta", texto: "Pregunta" },
+	{ valor: "funcionalidad", texto: "Funcionalidad" },
+];
 
 /** Cómo se resuelve quién creó una tarea. Se construye una vez por página. */
 type Creador = (quien: QuienCreo) => Html | null;
@@ -70,11 +86,26 @@ type Creador = (quien: QuienCreo) => Html | null;
 /** Cómo se resuelve el color de un usuario al pintar. Una vez por página. */
 type ColorDe = (nombre: string) => Color | null;
 
+/** Lo que se puede filtrar en la lista. Vacío es no filtrar por ese campo. */
+type FiltrosLista = {
+	estado: string;
+	terminal: string;
+	marca: string;
+	/** Identificador visible de la funcionalidad de la que se enseñan las partes. */
+	padre: string;
+};
+
 /** Los valores de los campos de una tarea, para pintar el formulario relleno. */
 type ValoresTarea = {
 	titulo: string;
 	descripcion: string;
 	tipo: TipoTarea;
+	/** Rama de git en la que se trabaja. Una parte hereda la de su funcionalidad. */
+	rama: string | null;
+	/** La funcionalidad de la que esta tarea es parte, si cuelga de alguna. */
+	padreId: number | null;
+	/** Tareas que tienen que estar hechas antes que esta. */
+	dependeDe: number[];
 	autoejecucion: boolean;
 	analisisModelo: string | null;
 	analisisTerminalId: number | null;
@@ -86,12 +117,37 @@ const TAREA_VACIA: ValoresTarea = {
 	titulo: "",
 	descripcion: "",
 	tipo: "tarea",
+	rama: null,
+	padreId: null,
+	dependeDe: [],
 	autoejecucion: true,
 	analisisModelo: null,
 	analisisTerminalId: null,
 	ejecucionModelo: null,
 	ejecucionTerminalId: null,
 };
+
+/**
+ * Lo que el formulario de tarea necesita de la base: los terminales que se
+ * pueden asignar, las funcionalidades que pueden ser su padre y las tareas de
+ * las que puede depender. Ni una funcionalidad cerrada ni la propia tarea
+ * entran en las listas: la primera ya no admite partes y la segunda no puede
+ * depender de sí misma.
+ */
+type OpcionesTarea = {
+	activos: TerminalListado[];
+	padres: ItemIndice[];
+	candidatas: ItemIndice[];
+};
+
+function opcionesDeTarea(db: DatabaseSync, tareaId: number | null): OpcionesTarea {
+	const items = listarTareas(db);
+	return {
+		activos: terminalesActivos(db),
+		padres: items.filter((item) => item.tipo === "funcionalidad" && item.estado !== "finished" && item.id !== tareaId),
+		candidatas: items.filter((item) => item.estado !== "finished" && item.id !== tareaId),
+	};
+}
 
 // --- lectura de parámetros ---------------------------------------------------
 
@@ -138,20 +194,43 @@ function numeroONull(valor: string): number | null {
 	return Number.isSafeInteger(numero) ? numero : null;
 }
 
+/** El tipo elegido en el desplegable. Cualquier otra cosa es una tarea normal. */
+function tipoDeFormulario(formulario: Formulario): TipoTarea {
+	const valor = campo(formulario, "tipo");
+	return esTipoTarea(valor) ? valor : "tarea";
+}
+
+/** Los identificadores de un desplegable, saltándose los que no tienen la forma buena. */
+function idsDeFormulario(formulario: Formulario, nombre: string): number[] {
+	const ids: number[] = [];
+	for (const valor of campoLista(formulario, nombre)) {
+		const id = idONull(valor);
+		if (id !== null) {
+			ids.push(id);
+		}
+	}
+	return ids;
+}
+
 /**
  * Lo que el humano escribió, sin comprobar nada. Es lo que se le devuelve
  * cuando algo falla, para que no pierda lo que llevaba escrito.
  */
 function valoresCrudos(formulario: Formulario): ValoresTarea {
-	// En una pregunta no hay ejecución que asignar ni autoejecución que
-	// decidir: el formulario no enseña esos campos, así que lo que llegue en
-	// ellos se ignora en vez de guardarse a medias.
-	const esPregunta = marcado(formulario, "pregunta");
+	const tipo = tipoDeFormulario(formulario);
+	// En una pregunta no hay ejecución que asignar: el formulario no enseña esos
+	// campos, así que lo que llegue en ellos se ignora en vez de guardarse a
+	// medias. Una funcionalidad sí los lleva, porque sus partes los heredan;
+	// lo que no tiene es autoejecución, que en ella siempre aprueba el humano.
+	const esPregunta = tipo === "pregunta";
 	return {
 		titulo: campo(formulario, "titulo"),
 		descripcion: campo(formulario, "descripcion"),
-		tipo: esPregunta ? "pregunta" : "tarea",
-		autoejecucion: esPregunta || marcado(formulario, "autoejecucion"),
+		tipo,
+		rama: campoOpcional(formulario, "rama"),
+		padreId: idONull(campo(formulario, "padre")),
+		dependeDe: idsDeFormulario(formulario, "dependeDe"),
+		autoejecucion: tipo !== "tarea" || marcado(formulario, "autoejecucion"),
 		analisisModelo: campoOpcional(formulario, "analisisModelo"),
 		analisisTerminalId: numeroONull(campo(formulario, "analisisTerminal")),
 		ejecucionModelo: esPregunta ? null : campoOpcional(formulario, "ejecucionModelo"),
@@ -225,24 +304,84 @@ function fase(
 		</fieldset>`;
 }
 
+/** El desplegable del tipo: qué clase de encargo es esta tarea. */
+function selectTipo(elegido: TipoTarea): Html {
+	return html`<label>
+			<span>Tipo</span>
+			<select name="tipo">
+				${TIPOS.map(
+					(cual) =>
+						html`<option value="${cual.valor}"${cual.valor === elegido ? raw(" selected") : ""}>${cual.texto}</option>`,
+				)}
+			</select>
+			<span class="ayuda">Una pregunta se cierra con su respuesta; una funcionalidad se descompone en partes.</span>
+		</label>`;
+}
+
+/** El desplegable de la funcionalidad de la que esta tarea es una parte. */
+function selectPadre(padres: ItemIndice[], elegido: number | null): Html {
+	return html`<label>
+			<span>Parte de la funcionalidad</span>
+			<select name="padre">
+				<option value=""${elegido === null ? raw(" selected") : ""}>ninguna</option>
+				${padres.map(
+					(padre) =>
+						html`<option value="${formatearId(padre.id)}"${padre.id === elegido ? raw(" selected") : ""}>${formatearId(padre.id)} · ${padre.titulo}</option>`,
+				)}
+			</select>
+			<span class="ayuda">Si la eliges, esta tarea es una de sus partes y hereda su rama.</span>
+		</label>`;
+}
+
+/**
+ * Las dependencias, como desplegable de varias opciones. Se guardan por el
+ * identificador de cada tarea, que es lo que el humano ve en el tablero.
+ */
+function selectDependencias(candidatas: ItemIndice[], elegidas: number[]): Html {
+	if (candidatas.length === 0) {
+		return html`<p class="nombre-campo">Dependencias</p>
+			<p class="silencio">No hay ninguna otra tarea abierta de la que depender.</p>`;
+	}
+	return html`<label>
+			<span>Depende de</span>
+			<select name="dependeDe" multiple size="6">
+				${candidatas.map(
+					(otra) =>
+						html`<option value="${formatearId(otra.id)}"${elegidas.includes(otra.id) ? raw(" selected") : ""}>${formatearId(otra.id)} · ${otra.estado} · ${otra.titulo}</option>`,
+				)}
+			</select>
+			<span class="ayuda">Esta tarea espera a que las elegidas estén hechas. Se marcan varias con la tecla de control.</span>
+		</label>`;
+}
+
 /**
  * El formulario de una tarea, compartido por «Nueva tarea» y «Editar». En una
  * pregunta no se pintan ni la autoejecución ni la ejecución: esa tarea solo
- * tiene fase de análisis y el comentario de análisis la cierra.
+ * tiene fase de análisis y el comentario de análisis la cierra. Una
+ * funcionalidad no tiene autoejecución (su descomposición la aprueba siempre
+ * el humano), pero sí asignaciones: son las que heredan sus partes.
  */
-function camposTarea(valores: ValoresTarea, activos: TerminalListado[]): Html {
+function camposTarea(valores: ValoresTarea, opciones: OpcionesTarea): Html {
 	const esPregunta = valores.tipo === "pregunta";
-	const autoejecucion = esPregunta
-		? html``
-		: casilla(
-				"autoejecucion",
-				valores.autoejecucion,
-				"Autoejecución",
-				"La ejecución arranca sola cuando el análisis termina sin preguntas abiertas.",
-			);
+	const esFuncionalidad = valores.tipo === "funcionalidad";
+	const autoejecucion =
+		valores.tipo === "tarea"
+			? casilla(
+					"autoejecucion",
+					valores.autoejecucion,
+					"Autoejecución",
+					"La ejecución arranca sola cuando el análisis termina sin preguntas abiertas.",
+				)
+			: html``;
 	const ejecucion = esPregunta
 		? html``
-		: fase("Ejecución", "ejecucion", valores.ejecucionModelo, valores.ejecucionTerminalId, activos);
+		: fase(
+				esFuncionalidad ? "Ejecución de las partes (por defecto)" : "Ejecución",
+				"ejecucion",
+				valores.ejecucionModelo,
+				valores.ejecucionTerminalId,
+				opciones.activos,
+			);
 	return html`<label>
 			<span>Título</span>
 			<input type="text" name="titulo" value="${valores.titulo}" required>
@@ -251,31 +390,47 @@ function camposTarea(valores: ValoresTarea, activos: TerminalListado[]): Html {
 			<span>Descripción (Markdown)</span>
 			<textarea name="descripcion" rows="10">${valores.descripcion}</textarea>
 		</label>
-		${casilla(
-			"pregunta",
-			esPregunta,
-			"Es una pregunta",
-			"La respuesta es el comentario de análisis y la tarea se cierra con él.",
-		)}
+		${selectTipo(valores.tipo)}
+		<label>
+			<span>Rama</span>
+			<input type="text" name="rama" value="${valores.rama ?? ""}" placeholder="evolutivo/csv">
+			<span class="ayuda">Los agentes trabajarán en esta rama.</span>
+		</label>
+		${esFuncionalidad ? html`` : selectPadre(opciones.padres, valores.padreId)}
+		${selectDependencias(opciones.candidatas, valores.dependeDe)}
 		${autoejecucion}
 		<datalist id="modelos">${MODELOS_SUGERIDOS.map((modelo) => html`<option value="${modelo}"></option>`)}</datalist>
 		<div class="fases">
-			${fase("Análisis", "analisis", valores.analisisModelo, valores.analisisTerminalId, activos)}
+			${fase(
+				esFuncionalidad ? "Análisis de la funcionalidad" : "Análisis",
+				"analisis",
+				valores.analisisModelo,
+				valores.analisisTerminalId,
+				opciones.activos,
+			)}
 			${ejecucion}
 		</div>`;
 }
 
 // --- la lista ----------------------------------------------------------------
 
-function filaTarea(db: DatabaseSync, item: ItemIndice, creadorDe: Creador): Html {
+function filaTarea(db: DatabaseSync, item: ItemIndice, creadorDe: Creador, deQuien: Funcionalidades): Html {
 	const tarea = buscarTarea(db, item.id);
 	const creador =
 		tarea === undefined
 			? null
 			: creadorDe({ usuarioId: tarea.creadaPorUsuarioId, terminalId: tarea.creadaPorTerminalId });
+	const funcionalidad = item.padreId === null ? undefined : deQuien.get(item.padreId);
 	return html`<tr>
 			<td>${enlaceTarea(item.id)}</td>
-			<td>${insigniaTipoTarea(item.tipo)}${insigniasMarcas(item.marcas)}${item.titulo}</td>
+			<td>
+				${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas)}${item.titulo}
+				${
+					funcionalidad === undefined || item.padreId === null
+						? html``
+						: html`<span class="pequeno">${enlaceFuncionalidad(item.padreId, funcionalidad)}</span>`
+				}
+			</td>
 			<td class="pequeno">${faseLegible(item.analisisModelo, item.analisisTerminal)}</td>
 			<td class="pequeno">${ejecucionLegible(item.tipo, item.ejecucionModelo, item.ejecucionTerminal)}</td>
 			<td>${creador ?? SIN_DATO}</td>
@@ -283,7 +438,7 @@ function filaTarea(db: DatabaseSync, item: ItemIndice, creadorDe: Creador): Html
 		</tr>`;
 }
 
-function tablaLista(db: DatabaseSync, items: ItemIndice[], creadorDe: Creador): Html {
+function tablaLista(db: DatabaseSync, items: ItemIndice[], creadorDe: Creador, deQuien: Funcionalidades): Html {
 	if (items.length === 0) {
 		return html`<p class="silencio">Ninguna.</p>`;
 	}
@@ -294,7 +449,7 @@ function tablaLista(db: DatabaseSync, items: ItemIndice[], creadorDe: Creador): 
 						<th>Id</th><th>Título</th><th>Análisis</th><th>Ejecución</th><th>Creada por</th><th>Actualizada</th>
 					</tr>
 				</thead>
-				<tbody>${items.map((item) => filaTarea(db, item, creadorDe))}</tbody>
+				<tbody>${items.map((item) => filaTarea(db, item, creadorDe, deQuien))}</tbody>
 			</table>
 		</div>`;
 }
@@ -304,8 +459,9 @@ function grupoColumna(
 	columna: { estado: Estado; titulo: string },
 	items: ItemIndice[],
 	creadorDe: Creador,
+	deQuien: Funcionalidades,
 ): Html {
-	const tabla = tablaLista(db, items, creadorDe);
+	const tabla = tablaLista(db, items, creadorDe, deQuien);
 	const rotulo = rotuloColumna(insigniaEstado(columna.estado), columna.titulo, items.length);
 	// Las cerradas están archivadas: se ven si se piden, no estorban por defecto.
 	if (columna.estado === "finished") {
@@ -322,12 +478,35 @@ function grupoColumna(
 		</section>`;
 }
 
+/** El título de cada funcionalidad, por su identificador. Una lectura por página. */
+type Funcionalidades = Map<number, string>;
+
+/**
+ * Los títulos de las funcionalidades que aparecen como padres en esa lista de
+ * tareas. Una hija de trabajo cuelga de una tarea normal: eso no es ser parte
+ * de una funcionalidad y no se enseña.
+ */
+function funcionalidadesDe(db: DatabaseSync, items: ItemIndice[]): Funcionalidades {
+	const titulos: Funcionalidades = new Map();
+	for (const item of items) {
+		if (item.padreId === null || titulos.has(item.padreId)) {
+			continue;
+		}
+		const padre = buscarTarea(db, item.padreId);
+		if (padre !== undefined && padre.tipo === "funcionalidad") {
+			titulos.set(item.padreId, padre.titulo);
+		}
+	}
+	return titulos;
+}
+
 /**
  * La fila de filtros: desplegables compactos y nada más. «Quitar filtros» solo
  * aparece cuando hay algo que quitar; si no, sería un enlace que no hace nada.
  */
-function formularioFiltros(activos: TerminalListado[], estado: string, terminal: string, marca: string): Html {
-	const hayFiltro = estado !== "" || terminal !== "" || marca !== "";
+function formularioFiltros(db: DatabaseSync, activos: TerminalListado[], filtros: FiltrosLista): Html {
+	const { estado, terminal, marca, padre } = filtros;
+	const hayFiltro = estado !== "" || terminal !== "" || marca !== "" || padre !== "";
 	return html`<form class="filtros" method="get" action="/tareas">
 			${filtroSelect({
 				nombre: "estado",
@@ -350,6 +529,7 @@ function formularioFiltros(activos: TerminalListado[], estado: string, terminal:
 				valores: MARCAS.map((valor) => ({ valor, texto: valor })),
 				seleccionado: marca,
 			})}
+			${filtroSelect(opcionesFuncionalidad(db, padre))}
 			<button type="submit" class="pequeno">Filtrar</button>
 			${hayFiltro ? html`<a class="quitar" href="/tareas">Quitar filtros</a>` : html``}
 		</form>`;
@@ -364,27 +544,91 @@ function creadaLegible(tarea: Tarea, creadorDe: Creador): Html {
 	return quien === null ? cuando : html`${quien} ${cuando}`;
 }
 
+/** La rama en la que se trabaja la tarea, o que no hay ninguna. */
+function ramaLegible(rama: string | null): Html {
+	return rama === null ? html`<span class="silencio">ninguna</span>` : html`<code>${rama}</code>`;
+}
+
+/** La funcionalidad de la que la tarea es parte: su estado, su enlace y su título. */
+function padreLegible(db: DatabaseSync, padreId: number | null): Html {
+	if (padreId === null) {
+		return html`<span class="silencio">ninguno</span>`;
+	}
+	const padre = buscarTarea(db, padreId);
+	if (padre === undefined) {
+		return enlaceTarea(padreId);
+	}
+	return html`${insigniaEstado(padre.estado)} ${enlaceTarea(padreId)} ${padre.titulo}`;
+}
+
+/**
+ * De qué depende la tarea: el estado de cada una y su enlace. Las que todavía
+ * no están hechas van en naranja, que es el color de lo que frena: son las
+ * que mantienen la marca `esperando`.
+ */
+function dependenciasLegibles(db: DatabaseSync, tareaId: number, dependeDe: readonly number[]): Html {
+	if (dependeDe.length === 0) {
+		return html`<span class="silencio">ninguna</span>`;
+	}
+	const pendientes = new Set(dependenciasPendientes(db, tareaId));
+	return html`<span class="dependencias">
+			${dependeDe.map((otraId) => {
+				const otra = buscarTarea(db, otraId);
+				const insignia =
+					otra === undefined
+						? html``
+						: etiqueta(otra.estado, pendientes.has(otraId) ? "naranja" : COLOR_ESTADO[otra.estado], `estado-${otra.estado}`);
+				return html`<span class="dependencia">${insignia} ${enlaceTarea(otraId)}</span>`;
+			})}
+		</span>`;
+}
+
 /**
  * Las propiedades de la tarea, en filas de dos columnas. Una pregunta no
  * enseña ejecución ni autoejecución: enseñarlas haría creer que después del
  * análisis viene otra fase.
  */
-function propiedadesDeTarea(completa: TareaCompleta, creadorDe: Creador): Html {
+function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe: Creador): Html {
 	const { tarea } = completa;
+	if (tarea.tipo === "funcionalidad") {
+		return propiedadesDeFuncionalidad(db, completa, creadorDe);
+	}
 	const filas: Propiedad[] = [{ nombre: "Estado", valor: insigniaEstado(tarea.estado) }];
 	if (tarea.tipo === "pregunta") {
 		filas.push({ nombre: "Tipo", valor: insigniaTipoTarea(tarea.tipo) });
 	}
+	filas.push({ nombre: "Rama", valor: ramaLegible(tarea.rama) });
 	filas.push({ nombre: "Análisis", valor: faseLegible(tarea.analisisModelo, completa.analisisTerminal) });
 	if (tarea.tipo !== "pregunta") {
 		filas.push({ nombre: "Ejecución", valor: faseLegible(tarea.ejecucionModelo, completa.ejecucionTerminal) });
 		filas.push({ nombre: "Autoejecución", valor: tarea.autoejecucion ? "activada" : "desactivada" });
 	}
-	filas.push({
-		nombre: "Padre",
-		valor: tarea.padreId === null ? html`<span class="silencio">ninguno</span>` : enlaceTarea(tarea.padreId),
-	});
+	filas.push({ nombre: "Padre", valor: padreLegible(db, tarea.padreId) });
+	filas.push({ nombre: "Dependencias", valor: dependenciasLegibles(db, tarea.id, completa.dependeDe) });
 	filas.push({ nombre: "Orden", valor: String(tarea.orden) });
+	filas.push({ nombre: "Creada", valor: creadaLegible(tarea, creadorDe) });
+	filas.push({ nombre: "Revisión", valor: String(tarea.revision) });
+	return propiedades(filas);
+}
+
+/**
+ * Las de una funcionalidad. No tiene ejecución propia ni autoejecución: lo que
+ * se ejecuta son sus partes, y lo que cuesta es lo que cuestan ellas.
+ */
+function propiedadesDeFuncionalidad(db: DatabaseSync, completa: TareaCompleta, creadorDe: Creador): Html {
+	const { tarea } = completa;
+	const filas: Propiedad[] = [
+		{ nombre: "Estado", valor: insigniaEstado(tarea.estado) },
+		{ nombre: "Tipo", valor: insigniaTipoTarea(tarea.tipo) },
+		{ nombre: "Rama", valor: ramaLegible(tarea.rama) },
+		{ nombre: "Partes", valor: barraProgreso(completa.partesCerradas ?? 0, completa.partes ?? 0) },
+		{ nombre: "Análisis", valor: faseLegible(tarea.analisisModelo, completa.analisisTerminal) },
+		{ nombre: "Ejecución de las partes", valor: faseLegible(tarea.ejecucionModelo, completa.ejecucionTerminal) },
+	];
+	if (completa.dependeDe.length > 0) {
+		filas.push({ nombre: "Dependencias", valor: dependenciasLegibles(db, tarea.id, completa.dependeDe) });
+	}
+	filas.push({ nombre: "Consumo de las partes", valor: `${numeroLegible(completa.consumo.totalConHijas)} tokens` });
 	filas.push({ nombre: "Creada", valor: creadaLegible(tarea, creadorDe) });
 	filas.push({ nombre: "Revisión", valor: String(tarea.revision) });
 	return propiedades(filas);
@@ -523,9 +767,11 @@ function accionesFicha(completa: TareaCompleta): Html | undefined {
 		return botonMover(id, "prepared", "Pasar a preparadas");
 	}
 	// La marca «análisis listo» ya excluye las preguntas: no tienen ejecución.
+	// En una funcionalidad, lo que se aprueba es su descomposición en partes.
 	if (completa.tarea.estado === "prepared" && completa.marcas.includes("análisis listo")) {
+		const texto = completa.tarea.tipo === "funcionalidad" ? "Aprobar descomposición" : "Aprobar ejecución";
 		return html`<form method="post" action="/tareas/${id}/aprobar">
-				<button type="submit" class="principal">Aprobar ejecución</button>
+				<button type="submit" class="principal">${texto}</button>
 			</form>`;
 	}
 	if (completa.tarea.estado === "done") {
@@ -560,31 +806,41 @@ function vueltasAtras(completa: TareaCompleta): Html {
 	return html``;
 }
 
-/** Editar solo en `backlog`: al salir, la descripción y las asignaciones se congelan. */
-function detallesEditar(tarea: Tarea, activos: TerminalListado[]): Html {
+/**
+ * Editar solo en `backlog`: al salir, la descripción y las asignaciones se
+ * congelan. Borrar vive aquí dentro, con el mismo motivo: fuera de `backlog`
+ * una tarea se archiva y no se borra, y dentro es lo que permite podar la
+ * descomposición de una funcionalidad antes de aprobarla.
+ */
+function detallesEditar(db: DatabaseSync, tarea: Tarea, dependeDe: number[]): Html {
 	if (tarea.estado !== "backlog") {
 		return html``;
 	}
+	const id = formatearId(tarea.id);
 	return html`<details class="caja">
 			<summary><strong>Editar</strong></summary>
-			<form method="post" action="/tareas/${formatearId(tarea.id)}/editar">
+			<form method="post" action="/tareas/${id}/editar">
 				${camposTarea(
 					{
 						titulo: tarea.titulo,
 						descripcion: tarea.descripcion,
 						tipo: tarea.tipo,
+						rama: tarea.rama,
+						padreId: tarea.padreId,
+						dependeDe,
 						autoejecucion: tarea.autoejecucion,
 						analisisModelo: tarea.analisisModelo,
 						analisisTerminalId: tarea.analisisTerminalId,
 						ejecucionModelo: tarea.ejecucionModelo,
 						ejecucionTerminalId: tarea.ejecucionTerminalId,
 					},
-					activos,
+					opcionesDeTarea(db, tarea.id),
 				)}
 				<div class="acciones">
 					<button type="submit" class="principal">Guardar cambios</button>
 				</div>
 			</form>
+			<p><a class="accion-peligro" href="/tareas/${id}/borrar">Borrar esta tarea</a></p>
 		</details>`;
 }
 
@@ -606,31 +862,39 @@ function paginaNoEncontrada(c: Context, mensaje: string): RespuestaHtml {
 function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	const { db } = deps;
 	const activos = terminalesActivos(db);
-	const estado = c.req.query("estado") ?? "";
-	const terminal = c.req.query("terminal") ?? "";
-	const marca = c.req.query("marca") ?? "";
+	const filtros: FiltrosLista = {
+		estado: c.req.query("estado") ?? "",
+		terminal: c.req.query("terminal") ?? "",
+		marca: c.req.query("marca") ?? "",
+		padre: c.req.query("padre") ?? "",
+	};
+	const padreId = idONull(filtros.padre);
 
-	const terminalId = Number.parseInt(terminal, 10);
+	const terminalId = Number.parseInt(filtros.terminal, 10);
 	const items = listarTareas(db, Number.isSafeInteger(terminalId) ? { terminalId } : {}).filter((item) => {
-		if (esEstado(estado) && item.estado !== estado) {
+		if (esEstado(filtros.estado) && item.estado !== filtros.estado) {
 			return false;
 		}
-		if (esMarca(marca) && !item.marcas.includes(marca)) {
+		if (esMarca(filtros.marca) && !item.marcas.includes(filtros.marca)) {
 			return false;
 		}
-		return true;
+		// Un identificador que no encaja no es un error del que avisar: no
+		// selecciona ninguna tarea y la lista sale vacía.
+		return filtros.padre === "" || item.padreId === padreId;
 	});
 
 	// Un solo buscador para toda la tabla: la lista pinta una fila por tarea y
 	// no puede consultar usuarios y terminales en cada una.
 	const creadorDe = buscadorDeCreador(db);
-	const cuerpo = html`${formularioFiltros(activos, estado, terminal, marca)}
+	const deQuien = funcionalidadesDe(db, items);
+	const cuerpo = html`${formularioFiltros(db, activos, filtros)}
 		${COLUMNAS.map((columna) =>
 			grupoColumna(
 				db,
 				columna,
 				items.filter((item) => item.estado === columna.estado),
 				creadorDe,
+				deQuien,
 			),
 		)}`;
 	// `vista` y `revision` son lo que el cliente necesita para refrescarse: la
@@ -647,21 +911,37 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	);
 }
 
+/**
+ * Lo que trae puesto el formulario de alta según de dónde se venga: «Nueva
+ * funcionalidad» abre con el tipo elegido y «Nueva parte», con su
+ * funcionalidad como padre.
+ */
+function valoresIniciales(c: Context): ValoresTarea {
+	const tipo = c.req.query("tipo") ?? "";
+	const padre = c.req.query("padre") ?? "";
+	return {
+		...TAREA_VACIA,
+		tipo: esTipoTarea(tipo) ? tipo : "tarea",
+		padreId: idONull(padre),
+	};
+}
+
 function paginaNueva(c: Context, deps: DependenciasWeb, valores: ValoresTarea, aviso: string | null): RespuestaHtml {
-	const activos = terminalesActivos(deps.db);
+	const esFuncionalidad = valores.tipo === "funcionalidad";
 	const cuerpo = html`<form method="post" action="/tareas">
-			${camposTarea(valores, activos)}
+			${camposTarea(valores, opcionesDeTarea(deps.db, null))}
 			<div class="acciones">
-				<button type="submit" class="principal">Crear tarea</button>
-				<a class="boton" href="/tareas">Cancelar</a>
+				<button type="submit" class="principal">${esFuncionalidad ? "Crear funcionalidad" : "Crear tarea"}</button>
+				<a class="boton" href="${valores.padreId === null ? "/tareas" : `/tareas/${formatearId(valores.padreId)}`}">Cancelar</a>
 			</div>
 		</form>`;
+	const titulo = esFuncionalidad ? "Nueva funcionalidad" : "Nueva tarea";
 	return c.html(
 		pagina({
-			titulo: "Nueva tarea",
+			titulo,
 			usuario: usuarioActual(c),
 			vista: "tarea-nueva",
-			migas: [{ texto: "Tareas", href: "/tareas" }, { texto: "Nueva tarea" }],
+			migas: [{ texto: "Tareas", href: "/tareas" }, { texto: titulo }],
 			aviso,
 			cuerpo,
 		}),
@@ -680,26 +960,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 	// lectura de la tabla de usuarios para toda la página.
 	const colorDe = buscadorDeColor(deps.db);
 
-	const cuerpo = html`${propiedadesDeTarea(completa, buscadorDeCreador(deps.db))}
-
-		<h2>Descripción</h2>
-		<div class="cuerpo">${raw(renderMarkdown(tarea.descripcion))}</div>
-
-		<h2>Hijas</h2>
-		${
-			completa.hijas.length === 0
-				? html`<p class="silencio">Ninguna.</p>`
-				: html`<ul class="hijas">
-					${completa.hijas.map(
-						(hija) => html`<li>${insigniaEstado(hija.estado)} ${enlaceTarea(hija.id)} ${hija.titulo}</li>`,
-					)}
-				</ul>`
-		}
-
-		<h2>Consumo</h2>
-		${tablaConsumo(completa.consumo)}
-
-		<h2>Hilo</h2>
+	const comun = html`<h2>Hilo</h2>
 		${hilo(completa, colorDe)}
 
 		<h2>Nota</h2>
@@ -711,16 +972,56 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 			<div class="acciones">
 				<button type="submit">Añadir nota</button>
 			</div>
-		</form>
+		</form>`;
 
-		<h2>Actividad</h2>
+	const cierre = html`<h2>Actividad</h2>
 		${actividadDeTarea(deps.db, tarea.id, colorDe)}
 
 		${vueltasAtras(completa)}
-		${detallesEditar(tarea, terminalesActivos(deps.db))}`;
+		${detallesEditar(deps.db, tarea, completa.dependeDe)}`;
+
+	const propias = html`${propiedadesDeTarea(deps.db, completa, buscadorDeCreador(deps.db))}
+
+		<h2>Descripción</h2>
+		<div class="cuerpo">${raw(renderMarkdown(tarea.descripcion))}</div>`;
+
+	// La ficha de una funcionalidad es su propio tablero: encima lo que se
+	// decidió, debajo las partes en las que se descompuso.
+	const cuerpo =
+		tarea.tipo === "funcionalidad"
+			? html`${propias}
+				${comun}
+
+				<h2>Partes</h2>
+				<div class="acciones acciones-partes">
+					<a class="boton" href="/tareas/nueva?padre=${id}">Nueva parte</a>
+				</div>
+				${tablero(deps.db, { terminal: "", marca: "", padre: id })}
+
+				${cierre}`
+			: html`${propias}
+
+				<h2>Hijas</h2>
+				${
+					completa.hijas.length === 0
+						? html`<p class="silencio">Ninguna.</p>`
+						: html`<ul class="hijas">
+							${completa.hijas.map(
+								(hija) => html`<li>${insigniaEstado(hija.estado)} ${enlaceTarea(hija.id)} ${hija.titulo}</li>`,
+							)}
+						</ul>`
+				}
+
+				<h2>Consumo</h2>
+				${tablaConsumo(completa.consumo)}
+
+				${comun}
+				${cierre}`;
 
 	return c.html(
-		// La ficha no se recarga sola: tiene formularios. El cliente solo avisa.
+		// La ficha no se recarga sola: tiene formularios y el humano puede estar
+		// escribiendo una nota. El cliente solo avisa; en una funcionalidad,
+		// además, repinta el tablero de sus partes, que no tiene nada que perder.
 		pagina({
 			titulo: tarea.titulo,
 			usuario: usuarioActual(c),
@@ -728,11 +1029,46 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 			revision: completa.revisionServidor,
 			migas: [{ texto: "Tareas", href: "/tareas" }, { texto: id }],
 			etiquetas: html`${insigniaEstado(tarea.estado)}${insigniaTipoTarea(tarea.tipo)}${insigniasMarcas(completa.marcas)}`,
+			// El tablero de las partes necesita las cinco columnas: en 60 rem se
+			// desplazaría en horizontal cada vez que se mira.
+			ancho: tarea.tipo === "funcionalidad" ? "completo" : undefined,
 			acciones: accionesFicha(completa),
 			aviso,
 			cuerpo,
 		}),
 		aviso === null ? 200 : ESTADO_AVISO,
+	);
+}
+
+/**
+ * La confirmación de un borrado, en su propia página: sin JavaScript, el
+ * enlace de la ficha lleva aquí y aquí está el POST, como el borrado de un
+ * usuario o la revocación de un terminal.
+ */
+function paginaBorrar(c: Context, deps: DependenciasWeb, tareaId: number): RespuestaHtml {
+	const tarea = buscarTarea(deps.db, tareaId);
+	if (tarea === undefined) {
+		return paginaNoEncontrada(c, `No existe la tarea ${formatearId(tareaId)}.`);
+	}
+	const id = formatearId(tarea.id);
+	const cuerpo = html`<section class="caja caja-estrecha">
+		<p>Se borra la tarea ${enlaceTarea(tarea.id)} <strong>${tarea.titulo}</strong>, con su hilo entero.</p>
+		<p class="silencio">No se puede deshacer. Fuera de backlog una tarea se archiva y no se borra.</p>
+		<div class="acciones">
+			<form method="post" action="/tareas/${id}/borrar">
+				<button type="submit" class="peligro">Sí, borrar</button>
+			</form>
+			<a class="boton" href="/tareas/${id}">Cancelar</a>
+		</div>
+	</section>`;
+	return c.html(
+		pagina({
+			titulo: "Borrar tarea",
+			usuario: usuarioActual(c),
+			vista: "tarea",
+			migas: [{ texto: "Tareas", href: "/tareas" }, { texto: id, href: `/tareas/${id}` }, { texto: "Borrar" }],
+			cuerpo,
+		}),
 	);
 }
 
@@ -743,7 +1079,7 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 	app.get("/tareas", (c) => paginaLista(c, deps));
 
 	// Antes de `/tareas/:id` para que «nueva» no se lea como identificador.
-	app.get("/tareas/nueva", (c) => paginaNueva(c, deps, TAREA_VACIA, null));
+	app.get("/tareas/nueva", (c) => paginaNueva(c, deps, valoresIniciales(c), null));
 
 	app.post("/tareas", async (c) => {
 		const formulario = await leerFormulario(c);
@@ -775,6 +1111,30 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 			const valores = valoresDeFormulario(formulario, terminalesActivos(deps.db));
 			editarTareaBacklog(deps.db, { ...valores, tareaId, usuarioId: usuarioActual(c).id });
 			return c.redirect(`/tareas/${formatearId(tareaId)}`, 302);
+		} catch (error) {
+			return paginaFicha(c, deps, tareaId, mensajeDeRegla(error));
+		}
+	});
+
+	app.get("/tareas/:id/borrar", (c) => {
+		const tareaId = idDeRuta(c);
+		if (tareaId === null) {
+			return paginaNoEncontrada(c, "Eso no es un identificador de tarea; tiene la forma T-0042.");
+		}
+		return paginaBorrar(c, deps, tareaId);
+	});
+
+	app.post("/tareas/:id/borrar", (c) => {
+		const tareaId = idDeRuta(c);
+		if (tareaId === null) {
+			return paginaNoEncontrada(c, "Eso no es un identificador de tarea; tiene la forma T-0042.");
+		}
+		try {
+			const borrada = borrarTareaBacklog(deps.db, { tareaId, actor: { usuarioId: usuarioActual(c).id } });
+			// Una parte vuelve al tablero de su funcionalidad, que es de donde se
+			// estaba podando; una tarea suelta, a la lista.
+			const destino = borrada.padreId === null ? "/tareas" : `/tareas/${formatearId(borrada.padreId)}`;
+			return c.redirect(destino, 302);
 		} catch (error) {
 			return paginaFicha(c, deps, tareaId, mensajeDeRegla(error));
 		}

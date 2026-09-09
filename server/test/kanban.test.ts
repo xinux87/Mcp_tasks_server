@@ -8,7 +8,7 @@ import { crearTerminalConToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
 import { comentarAnalisis, comentarResultado } from "../src/db/hilo.ts";
-import { buscarTarea, leerTarea, moverTareaHumano, tomarTarea } from "../src/db/tareas.ts";
+import { buscarTarea, crearTareaHumana, leerTarea, moverTareaHumano, tomarTarea } from "../src/db/tareas.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 type Montaje = {
@@ -135,6 +135,48 @@ test("el kanban pinta las cinco columnas con sus tarjetas", async () => {
 		assert.doesNotMatch(cuerpo, /Quitar filtros/);
 		const filtrado = await pedir(montaje, "/tareas/kanban?marca=bloqueada", { cookie });
 		assert.match(await filtrado.text(), /<a class="quitar" href="\/tareas\/kanban">Quitar filtros<\/a>/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el tablero filtrado por funcionalidad solo trae sus partes", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const evolutivo = crearTareaHumana(montaje.db, {
+			titulo: "Listados para comerciales",
+			descripcion: "Hoy los copian a mano.",
+			usuarioId: 1,
+			tipo: "funcionalidad",
+			rama: "evolutivo/csv",
+		});
+		crearTareaHumana(montaje.db, {
+			titulo: "Sacar los datos del listado",
+			descripcion: "Con sus filtros.",
+			usuarioId: 1,
+			padreId: evolutivo.id,
+		});
+		await crearTarea(montaje, cookie, "Nada que ver con el evolutivo");
+
+		// En el tablero global están las tres, y la funcionalidad lleva su progreso.
+		const todo = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
+		assert.match(todo, /data-id="T-0003"/);
+		assert.match(todo, /<span class="insignia tipo-funcionalidad color-azul">funcionalidad · 0\/1<\/span>/);
+		assert.match(todo, /<a class="parte-de" href="\/tareas\/T-0001">Listados para comerciales<\/a>/);
+
+		// Filtrado por la funcionalidad, solo sus partes: ni ella misma ni las sueltas.
+		const partes = await (await pedir(montaje, "/tareas/kanban?padre=T-0001", { cookie })).text();
+		assert.match(partes, /data-id="T-0002"/);
+		assert.ok(!partes.includes('data-id="T-0001"'), "la funcionalidad no es parte de sí misma");
+		assert.ok(!partes.includes('data-id="T-0003"'), "una tarea suelta no es parte de la funcionalidad");
+		assert.match(partes, /data-fuente="\/tareas\/kanban\/tablero\?padre=T-0001"/);
+		assert.match(partes, /<a class="quitar" href="\/tareas\/kanban">Quitar filtros<\/a>/);
+
+		// Y el fragmento suelto se sirve con el mismo filtro.
+		const fragmento = await (await pedir(montaje, "/tareas/kanban/tablero?padre=T-0001", { cookie })).text();
+		assert.match(fragmento, /data-id="T-0002"/);
+		assert.ok(!fragmento.includes('data-id="T-0003"'));
 	} finally {
 		await montaje.cerrar();
 	}

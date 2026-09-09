@@ -1,6 +1,6 @@
 import { html, raw } from "hono/html";
 import type { Usuario } from "../db/consultas.ts";
-import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
+import type { Estado, ItemIndice, Marca, TipoTarea } from "../db/tareas.ts";
 import {
 	COLOR_ESTADO,
 	COLOR_MARCA,
@@ -74,11 +74,27 @@ export function insigniaTipo(tipo: string): Html {
 }
 
 /**
- * Etiqueta del tipo de la tarea. Solo se pinta en las preguntas: `tarea` es lo
- * normal y decirlo en cada tarjeta no aportaría nada.
+ * Etiqueta del tipo de la tarea. No se pinta en una tarea normal: `tarea` es lo
+ * corriente y decirlo en cada tarjeta no aportaría nada. Una funcionalidad
+ * lleva su progreso al lado cuando se sabe: `funcionalidad · 3/7`.
  */
-export function insigniaTipoTarea(tipo: TipoTarea): Html {
-	return tipo === "pregunta" ? etiqueta("pregunta", COLOR_TIPO_TAREA.pregunta, "tipo-pregunta") : html``;
+export function insigniaTipoTarea(tipo: TipoTarea, progreso?: string | null): Html {
+	if (tipo === "pregunta") {
+		return etiqueta("pregunta", COLOR_TIPO_TAREA.pregunta, "tipo-pregunta");
+	}
+	if (tipo === "funcionalidad") {
+		const texto = progreso === undefined || progreso === null ? "funcionalidad" : `funcionalidad · ${progreso}`;
+		return etiqueta(texto, COLOR_TIPO_TAREA.funcionalidad, "tipo-funcionalidad");
+	}
+	return html``;
+}
+
+/**
+ * La etiqueta de tipo de una tarea del índice, que es donde se conoce el
+ * progreso: la lista y el kanban la pintan así.
+ */
+export function insigniaTipoDeItem(item: ItemIndice): Html {
+	return insigniaTipoTarea(item.tipo, item.partes === null ? null : `${item.partesCerradas ?? 0}/${item.partes}`);
 }
 
 /** Una entrada de la navegación y las vistas que la dejan marcada como activa. */
@@ -98,6 +114,7 @@ const BLOQUES: readonly { titulo: string; entradas: readonly EntradaNav[] }[] = 
 		entradas: [
 			{ href: "/tareas", texto: "Lista", vistas: ["lista", "ficha", "tarea", "tarea-nueva"] },
 			{ href: "/tareas/kanban", texto: "Kanban", vistas: ["kanban"] },
+			{ href: "/funcionalidades", texto: "Funcionalidades", vistas: ["funcionalidades"] },
 		],
 	},
 	{
@@ -118,7 +135,7 @@ export type OpcionesPagina = {
 	aviso?: string | null;
 	/**
 	 * Qué vista es, para el cliente y para la navegación: `lista`, `kanban`,
-	 * `ficha`, `terminales`, `usuarios`, `actividad`. Cada una se refresca de
+	 * `ficha`, `funcionalidades`, `terminales`, `usuarios`, `actividad`. Cada una se refresca de
 	 * una manera y marca su entrada en la barra lateral.
 	 */
 	vista?: string;

@@ -21,3 +21,14 @@ export function parsearId(id: string): number {
 	}
 	return Number.parseInt(cifras, 10);
 }
+
+/**
+ * El mismo número de fila, pero `null` cuando no tiene la forma buena. Es lo
+ * que necesitan los filtros y los desplegables de la web: un valor que no
+ * encaja no es un error del que avisar, simplemente no selecciona nada.
+ */
+export function idONull(id: string): number | null {
+	const encaje = FORMA_ID.exec(id);
+	const cifras = encaje?.[1];
+	return cifras === undefined ? null : Number.parseInt(cifras, 10);
+}

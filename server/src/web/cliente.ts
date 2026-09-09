@@ -102,12 +102,16 @@ function avisarRecarga() {
  * innerHTML, y se hace sobre un <template> que no ejecuta nada.
  */
 async function recargarTablero() {
-	if (elTablero() === null) {
+	const actual = elTablero();
+	if (actual === null) {
 		return;
 	}
+	// El propio fragmento dice de dónde salió: el tablero de la ficha de una
+	// funcionalidad solo trae sus partes, y su dirección no es la de la página.
+	const fuente = actual.dataset.fuente || "/tareas/kanban/tablero" + consultaActual();
 	let respuesta;
 	try {
-		respuesta = await fetch("/tareas/kanban/tablero" + consultaActual(), {
+		respuesta = await fetch(fuente, {
 			headers: { accept: "text/html" },
 			credentials: "same-origin",
 		});
@@ -314,9 +318,15 @@ function alSubirLaRevision() {
 			return;
 		}
 		void recargarTablero();
-		return;
+		// La ficha de una funcionalidad tiene tablero y además hilo: el tablero
+		// se repinta solo y de lo demás avisa, como cualquier otra ficha.
+		if (vista !== "ficha") {
+			return;
+		}
 	}
-	if (vista === "lista") {
+	// La lista y las funcionalidades se vuelven a pedir enteras: no tienen
+	// ningún formulario a medio escribir que se pueda perder.
+	if (vista === "lista" || vista === "funcionalidades") {
 		recargarPagina();
 		return;
 	}
