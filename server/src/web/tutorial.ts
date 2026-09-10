@@ -78,6 +78,16 @@ function recomendada(filas: readonly Fila[]): string {
 }
 
 /**
+ * El enlace que abre este tutorial en la máquina del terminal con el token ya
+ * puesto. Es un secreto: quien lo tiene, tiene el terminal, y deja de valer en
+ * cuanto el token se revoca o se rota.
+ */
+export function enlaceDeConexion({ direcciones, direccionActual, token }: OpcionesTutorial): string {
+	const recomendacion = recomendada(filasDe(direcciones, direccionActual));
+	return `${recomendacion}/terminales/conectar?token=${encodeURIComponent(token)}`;
+}
+
+/**
  * Un bloque de comandos copiable. El botón lo activa `cliente.ts`, que lo
  * esconde si el navegador no tiene portapapeles; el texto se puede seleccionar
  * a mano de todas formas.
@@ -144,7 +154,9 @@ function pasoValores(recomendacion: string, token: string): Html {
 				</table>
 			</div>
 			<p class="pequeno silencio">
-				El token se guarda en la configuración local de Claude Code, nunca en el repositorio.
+				El token se guarda en la configuración local de Claude Code, nunca en el repositorio. Si lo has
+				rotado, vuelve a instalar el plugin: al activarse pide otra vez los dos valores y se queda con
+				el nuevo.
 			</p>
 		</li>`;
 }
@@ -160,7 +172,8 @@ function pasoSinPlugin(recomendacion: string, token: string): Html {
 			<p class="pequeno silencio">
 				Añade <code>--scope user</code> para tenerlo en todos los proyectos, o <code>--scope project</code>
 				para compartirlo en este. Así solo tienes las herramientas: sin plugin no hay bucle del agente ni
-				línea de estado con el uso disponible.
+				línea de estado con el uso disponible. Si has rotado el token, repite el mismo comando con el
+				nuevo.
 			</p>
 		</li>`;
 }

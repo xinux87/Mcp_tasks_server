@@ -8,7 +8,7 @@ import { registrarRutasFuncionalidades } from "./rutas/funcionalidades.ts";
 import { registrarRutasKanban } from "./rutas/kanban.ts";
 import { registrarRutasSesion } from "./rutas/sesion.ts";
 import { registrarRutasTareas } from "./rutas/tareas.ts";
-import { registrarRutasTerminales } from "./rutas/terminales.ts";
+import { registrarEnlaceDeConexion, registrarRutasTerminales } from "./rutas/terminales.ts";
 import { registrarRutasUsuarios } from "./rutas/usuarios.ts";
 import { type DependenciasWeb, requiereSesion, sinCrossSite } from "./sesion.ts";
 
@@ -39,6 +39,11 @@ const CON_POST = ["/login", "/logout", ...PRIVADAS];
  * rutas, la sesión y los estilos se registran desde aquí.
  */
 export function montarWeb(app: Hono, deps: DependenciasWeb): void {
+	// El enlace de conexión se abre en la máquina del terminal, donde no hay
+	// sesión: se registra antes que el guardián para poder responder sin cookie
+	// cuando el token vale, y dejar pasar al login cuando no.
+	registrarEnlaceDeConexion(app, deps);
+
 	// Va antes que la sesión: una petición de otro sitio se rechaza aunque no
 	// haya cookie, y así el 403 no se convierte en una redirección al login.
 	for (const ruta of CON_POST) {

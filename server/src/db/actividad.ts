@@ -32,7 +32,9 @@ export type AccionActividad =
 	| "cambiar_password"
 	| "cambiar_color"
 	| "alta_terminal"
-	| "revocar_terminal";
+	| "rotar_terminal"
+	| "revocar_terminal"
+	| "baja_terminal";
 
 /**
  * Quién hace la acción: un usuario de la web, o un nombre suelto para lo que
@@ -137,9 +139,26 @@ export function registrarActividad(conexion: DatabaseSync, entrada: NuevaActivid
 // --- lectura -----------------------------------------------------------------
 
 /** El rastro de un objeto, de lo más antiguo a lo más nuevo. Es una línea de tiempo. */
+/** El alta de un objeto: la fila que empieza su vida. */
+const ES_UN_ALTA = "(accion LIKE 'alta_%' OR accion LIKE 'crear_%')";
+
+/**
+ * Solo `tareas` lleva `AUTOINCREMENT`: los ids de usuario y de terminal se
+ * reciclan en cuanto se borra el más alto, así que un `objeto_id` puede haber
+ * sido de dos objetos distintos. El rastro de uno empieza en su última alta;
+ * lo anterior era de otro y solo se lee en `GET /actividad`, donde cada fila
+ * lleva su propio `objeto_nombre`.
+ */
+const DESDE_EL_ALTA = `(SELECT COALESCE(MAX(id), 0) FROM actividad WHERE objeto = ? AND objeto_id = ? AND ${ES_UN_ALTA})`;
+
 export function actividadDe(db: DatabaseSync, objeto: ObjetoActividad, objetoId: number): Actividad[] {
-	return sentencia(db, `SELECT ${COLUMNAS} FROM actividad WHERE objeto = ? AND objeto_id = ? ORDER BY id`)
-		.all(objeto, objetoId)
+	return sentencia(
+		db,
+		`SELECT ${COLUMNAS} FROM actividad
+			WHERE objeto = ? AND objeto_id = ? AND id >= ${DESDE_EL_ALTA}
+			ORDER BY id`,
+	)
+		.all(objeto, objetoId, objeto, objetoId)
 		.map(comoActividad);
 }
 
@@ -159,8 +178,8 @@ export function altaPor(db: DatabaseSync, objeto: ObjetoActividad, objetoId: num
 	const fila = sentencia(
 		db,
 		`SELECT usuario_nombre FROM actividad
-			WHERE objeto = ? AND objeto_id = ? AND (accion LIKE 'alta_%' OR accion LIKE 'crear_%')
-			ORDER BY id LIMIT 1`,
+			WHERE objeto = ? AND objeto_id = ? AND ${ES_UN_ALTA}
+			ORDER BY id DESC LIMIT 1`,
 	).get(objeto, objetoId);
 	return fila === undefined ? null : texto(fila, "usuario_nombre");
 }

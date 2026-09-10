@@ -225,3 +225,75 @@ test("la migración de dependencias reconstruye tareas sin perder ids ni referen
 		rmSync(carpeta, { recursive: true, force: true });
 	}
 });
+
+test("la migración del borrado de terminales deja anulable el terminal del consumo sin perder lo gastado", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		db.exec("PRAGMA foreign_keys = ON");
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-borrar-terminal.sql"));
+		assert.ok(cual > 0, "no está la migración del borrado de terminales");
+
+		// El esquema anterior con consumo ya registrado: son tokens gastados de
+		// verdad y el borrado no puede llevárselos por delante.
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('xinux', 'h', 'azul', ?)").run(FECHA);
+		db
+			.prepare(
+				"INSERT INTO terminales (usuario_id, nombre, cuenta, token_hash, creado) VALUES (1, 'portatil-a', 'c', 'hash', ?)",
+			)
+			.run(FECHA);
+		db
+			.prepare(
+				`INSERT INTO tareas (id, titulo, descripcion, tipo, estado, orden, creada, actualizada, revision)
+				VALUES (7, 'De antes', 'd', 'tarea', 'doing', 1, ?, ?, 3)`,
+			)
+			.run(FECHA, FECHA);
+		db
+			.prepare(
+				`INSERT INTO consumo (id, tarea_id, fase, modelo, terminal_id, tokens, herramientas, duracion_ms, creado)
+				VALUES (5, 7, 'analisis', 'sonnet', 1, 31500, 6, 87000, ?)`,
+			)
+			.run(FECHA);
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		// La fila es la misma, con su id y sus tokens.
+		const consumo = db.prepare("SELECT id, tarea_id, modelo, terminal_id, tokens, herramientas FROM consumo").all();
+		assert.equal(consumo.length, 1);
+		assert.equal(consumo[0]?.id, 5);
+		assert.equal(consumo[0]?.tarea_id, 7);
+		assert.equal(consumo[0]?.terminal_id, 1);
+		assert.equal(consumo[0]?.tokens, 31500);
+		assert.equal(consumo[0]?.herramientas, 6);
+
+		// Y ahora el terminal puede quedar a nulo, que es lo que impedía borrarlo.
+		db.prepare("UPDATE consumo SET terminal_id = NULL WHERE id = 5").run();
+		assert.equal(db.prepare("SELECT terminal_id FROM consumo WHERE id = 5").get()?.terminal_id, null);
+		assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+
+		// El resto del esquema no se mueve: sigue siendo STRICT, sigue apuntando
+		// a las dos tablas y conserva su índice.
+		const sql = String(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'consumo'").get()?.sql);
+		assert.match(sql, /REFERENCES tareas/);
+		assert.match(sql, /REFERENCES terminales/);
+		assert.match(sql, /STRICT/);
+		assert.deepEqual(
+			db
+				.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'consumo' ORDER BY name")
+				.all()
+				.map((fila) => String(fila.name)),
+			["consumo_por_tarea"],
+		);
+		// El CHECK de la fase sigue en pie, y el tipo de la tarea también.
+		assert.throws(() => {
+			db.prepare("UPDATE consumo SET fase = 'otra cosa' WHERE id = 5").run();
+		});
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});

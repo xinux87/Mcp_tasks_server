@@ -8,6 +8,7 @@ import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { actividadDe, actividadReciente, altaPor } from "../src/db/actividad.ts";
 import {
 	altaTerminal,
+	borrarTerminal,
 	borrarUsuario,
 	cambiarColor,
 	cambiarPassword,
@@ -372,5 +373,43 @@ test("la actividad de una tarea se enlaza a su ficha desde la lista global", asy
 		assert.match(cuerpo, /<span class="objeto">Exportar clientes<\/span>/);
 	} finally {
 		await montaje.cerrar();
+	}
+});
+
+test("el rastro de un terminal empieza en su alta aunque otro haya usado antes ese id", () => {
+	const banco = montar();
+	try {
+		const viejo = altaTerminal(banco.db, {
+			usuarioId: banco.xinux,
+			nombre: "el-de-antes",
+			cuenta: "antes@ejemplo.com",
+		}).terminal.id;
+		revocarTerminal(banco.db, viejo, banco.xinux);
+		borrarTerminal(banco.db, viejo, banco.xinux);
+
+		// Solo `tareas` lleva AUTOINCREMENT: el id del borrado se vuelve a dar.
+		const { valor: otro } = crearUsuario(banco.db, "otro", hashPassword("clave"), {
+			actor: { usuarioId: banco.xinux },
+		});
+		const nuevo = altaTerminal(banco.db, {
+			usuarioId: otro.id,
+			nombre: "el-de-ahora",
+			cuenta: "ahora@ejemplo.com",
+		}).terminal.id;
+		assert.equal(nuevo, viejo);
+
+		// El rastro del nuevo es solo suyo, y quien lo dio de alta es «otro».
+		assert.deepEqual(acciones(banco.db, nuevo, "terminal"), ["alta_terminal"]);
+		assert.equal(altaPor(banco.db, "terminal", nuevo), "otro");
+
+		// Lo del anterior sigue en la tabla, con su nombre, para `GET /actividad`.
+		assert.deepEqual(
+			actividadReciente(banco.db, 10)
+				.filter((fila) => fila.objetoNombre === "el-de-antes")
+				.map((fila) => fila.accion),
+			["baja_terminal", "revocar_terminal", "alta_terminal"],
+		);
+	} finally {
+		banco.cerrar();
 	}
 });

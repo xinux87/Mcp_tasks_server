@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { hashPassword, verificarPassword } from "../auth/passwords.ts";
-import { crearTerminalConToken, type TerminalConToken } from "../auth/tokens.ts";
+import { crearTerminalConToken, generarToken, hashToken, type TerminalConToken } from "../auth/tokens.ts";
 import { ErrorDeRegla } from "../errores.ts";
 import { registrarActividad } from "./actividad.ts";
 import {
@@ -251,6 +251,43 @@ export function terminalesActivos(db: DatabaseSync): TerminalListado[] {
 	return listarTerminales(db).filter((terminal) => terminal.revocadoEn === null);
 }
 
+export type TerminalRotado = {
+	terminal: TerminalListado;
+	/** El token nuevo en claro. Como en el alta, solo se puede ver aquí. */
+	token: string;
+};
+
+/**
+ * Rotar el token da uno nuevo al mismo terminal y deja el anterior sin valor.
+ * No revoca: `revocado_en` sigue a nulo y el terminal conserva su id, su
+ * nombre, su historial y su consumo. No sube la revisión, porque es
+ * configuración del terminal y no contenido que ningún agente tenga que ver.
+ */
+export function rotarTerminal(db: DatabaseSync, terminalId: number, actorId: number): TerminalRotado {
+	return enTransaccion(db, (conexion) => {
+		const terminal = listarTerminales(conexion).find((candidato) => candidato.id === terminalId);
+		if (terminal === undefined) {
+			throw new ErrorDeRegla("terminal_inexistente", `No existe el terminal ${terminalId}.`);
+		}
+		if (terminal.revocadoEn !== null) {
+			throw new ErrorDeRegla(
+				"terminal_revocado",
+				`El terminal «${terminal.nombre}» está revocado: no se le puede dar un token nuevo.`,
+			);
+		}
+		const token = generarToken();
+		sentencia(conexion, "UPDATE terminales SET token_hash = ? WHERE id = ?").run(hashToken(token), terminalId);
+		registrarActividad(conexion, {
+			actor: { usuarioId: actorId },
+			accion: "rotar_terminal",
+			objeto: "terminal",
+			objetoId: terminal.id,
+			objetoNombre: terminal.nombre,
+		});
+		return { terminal, token };
+	});
+}
+
 /**
  * Revocar el token desconecta ese terminal y solo ese. Es contenido: sube la
  * revisión global, como el alta.
@@ -274,5 +311,54 @@ export function revocarTerminal(db: DatabaseSync, terminalId: number, actorId: n
 			objetoNombre: terminal.nombre,
 		});
 		return { ...terminal, revocadoEn: marca };
+	}).valor;
+}
+
+/**
+ * Las cuatro columnas de `tareas` que nombran a un terminal. Al borrarlo pasan
+ * a nulo: la tarea sigue, sin terminal, y cualquiera puede tomarla.
+ */
+const COLUMNAS_TERMINAL_EN_TAREAS = [
+	"analisis_terminal_id",
+	"ejecucion_terminal_id",
+	"en_marcha_terminal_id",
+	"creada_por_terminal_id",
+] as const;
+
+/**
+ * Borrar un terminal lo quita de la lista del todo, esté revocado o no.
+ * Revocar deja la fila para siempre, que es lo correcto para un token
+ * comprometido pero convierte la lista en un cementerio.
+ *
+ * Sus tareas quedan sin terminal: las cuatro referencias pasan a nulo, como al
+ * borrar un usuario, y las que estén en `prepared` o `doing` recuperan la marca
+ * `sin terminal`. El consumo se conserva, porque son tokens gastados de verdad
+ * y están sumados en la ficha; solo pierde el terminal. El rastro también, con
+ * el nombre en texto: `actividad` no tiene clave foránea hacia el objeto.
+ *
+ * Es contenido y sube la revisión, como el alta y la revocación: cambia quién
+ * puede tomar tareas.
+ */
+export function borrarTerminal(db: DatabaseSync, terminalId: number, actorId: number): TerminalListado {
+	return enTransaccionConRevision(db, (conexion) => {
+		const terminal = listarTerminales(conexion).find((candidato) => candidato.id === terminalId);
+		if (terminal === undefined) {
+			throw new ErrorDeRegla("terminal_inexistente", `No existe el terminal ${terminalId}.`);
+		}
+		// El rastro se firma antes de borrar, como en la baja de usuario: después
+		// ya no habría de qué copiar el nombre.
+		registrarActividad(conexion, {
+			actor: { usuarioId: actorId },
+			accion: "baja_terminal",
+			objeto: "terminal",
+			objetoId: terminal.id,
+			objetoNombre: terminal.nombre,
+		});
+		for (const columna of COLUMNAS_TERMINAL_EN_TAREAS) {
+			sentencia(conexion, `UPDATE tareas SET ${columna} = NULL WHERE ${columna} = ?`).run(terminalId);
+		}
+		sentencia(conexion, "UPDATE consumo SET terminal_id = NULL WHERE terminal_id = ?").run(terminalId);
+		sentencia(conexion, "DELETE FROM terminales WHERE id = ?").run(terminalId);
+		return terminal;
 	}).valor;
 }

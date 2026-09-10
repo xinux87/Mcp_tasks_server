@@ -7,11 +7,20 @@ import { hashPassword } from "../src/auth/passwords.ts";
 import { buscarTerminalPorToken, crearTerminalConToken } from "../src/auth/tokens.ts";
 import type { Config } from "../src/config.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
+import { actividadDe } from "../src/db/actividad.ts";
 import { listarTerminales, listarUsuarios } from "../src/db/admin.ts";
 import { COLORES_USUARIO } from "../src/db/colores.ts";
-import { crearUsuario } from "../src/db/consultas.ts";
+import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
+import { registrarConsumo } from "../src/db/consumo.ts";
 import { comentarAnalisis, preguntar } from "../src/db/hilo.ts";
-import { exigirTarea, leerTarea, tomarTarea } from "../src/db/tareas.ts";
+import {
+	crearPropuesta,
+	crearTareaHumana,
+	exigirTarea,
+	leerTarea,
+	moverTareaHumano,
+	tomarTarea,
+} from "../src/db/tareas.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 type Montaje = {
@@ -726,6 +735,250 @@ test("el tutorial sin token está siempre en /terminales/conectar", async () => 
 		// Ningún token de verdad se enseña aquí.
 		assert.ok(!cuerpo.includes(valor.token), "el tutorial sin token enseñó un token real");
 		assert.doesNotMatch(cuerpo, /<code class="token">/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+/** El token en claro que enseña una vez la página del alta o la de la rotación. */
+function tokenDe(cuerpo: string): string {
+	const token = /<code class="token">([A-Za-z0-9_-]+)<\/code>/.exec(cuerpo)?.[1] ?? "";
+	assert.equal(token.length, 43, "no se enseñó un token en claro");
+	return token;
+}
+
+/** Una llamada al MCP con bearer, que es lo único que comprueba si el token vale. */
+async function llamarMcp(montaje: Montaje, token: string): Promise<Response> {
+	const url = new URL("/mcp", BASE_URL_PRUEBA);
+	const peticion = new Request(url, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			accept: "application/json, text/event-stream",
+			authorization: `Bearer ${token}`,
+		},
+		body: JSON.stringify({
+			jsonrpc: "2.0",
+			id: 1,
+			method: "initialize",
+			params: { protocolVersion: "2026-07-28", capabilities: {}, clientInfo: { name: "test", version: "0" } },
+		}),
+	});
+	peticion.headers.set("host", url.host);
+	return await montaje.app.fetch(peticion);
+}
+
+test("el enlace de conexión sirve el tutorial con el token y sin sesión", async () => {
+	const montaje = montar(CONFIG_CON_DIRECCIONES);
+	try {
+		const { valor } = crearTerminalConToken(montaje.db, listarUsuarios(montaje.db)[0]?.id ?? 0, "sobremesa", "x@y.z");
+		const token = valor.token;
+
+		// Se abre en la máquina del terminal, donde no hay sesión ni usuario.
+		const respuesta = await pedir(montaje, `/terminales/conectar?token=${token}`);
+		assert.equal(respuesta.status, 200);
+		const cuerpo = await respuesta.text();
+		assert.match(cuerpo, new RegExp(`Bearer ${token}`));
+		assert.match(cuerpo, new RegExp(`TOKEN=${token}`));
+		// Sin sesión no hay barra lateral, como en el login, pero sí título.
+		assert.doesNotMatch(cuerpo, /class="lateral"/);
+		assert.match(cuerpo, /<h1>Cómo conectar un terminal<\/h1>/);
+		assert.doesNotMatch(cuerpo, /style="/);
+
+		// Un token que no es de nadie se comporta como el resto de la web.
+		const basura = await pedir(montaje, "/terminales/conectar?token=basura");
+		assert.equal(basura.status, 302);
+		assert.equal(basura.headers.get("location"), "/login?volver=%2Fterminales%2Fconectar%3Ftoken%3Dbasura");
+
+		// Y el de un terminal revocado deja de valer, sin nada que caducar aparte.
+		const cookie = await entrar(montaje);
+		const revocado = await pedir(montaje, `/terminales/${valor.terminal.id}/revocar`, { cookie, formulario: {} });
+		assert.equal(revocado.status, 302);
+		assert.equal((await pedir(montaje, `/terminales/conectar?token=${token}`)).status, 302);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("la página del terminal creado ofrece el enlace de conexión con el token dentro", async () => {
+	const montaje = montar(CONFIG_CON_DIRECCIONES);
+	try {
+		const cookie = await entrar(montaje);
+		const alta = await pedir(montaje, "/terminales", {
+			cookie,
+			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+		});
+		const cuerpo = await alta.text();
+		const token = tokenDe(cuerpo);
+		// La dirección recomendada, no localhost: el terminal está en otra máquina.
+		assert.match(
+			cuerpo,
+			new RegExp(`<code class="token">http://192\\.168\\.50\\.5:3000/terminales/conectar\\?token=${token}</code>`),
+		);
+		assert.match(cuerpo, /quien lo tenga, tiene el terminal/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("rotar el token da uno nuevo al mismo terminal, sin revocarlo ni subir la revisión", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const alta = await pedir(montaje, "/terminales", {
+			cookie,
+			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+		});
+		const viejo = tokenDe(await alta.text());
+		const id = listarTerminales(montaje.db)[0]?.id ?? 0;
+
+		// La fila ofrece rotar, junto a revocar.
+		const lista = await (await pedir(montaje, "/terminales", { cookie })).text();
+		assert.match(lista, new RegExp(`<a class="accion-fila neutra" href="/terminales/${id}/rotar">Rotar token</a>`));
+
+		const confirmacion = await pedir(montaje, `/terminales/${id}/rotar`, { cookie });
+		assert.equal(confirmacion.status, 200);
+		assert.match(await confirmacion.text(), /Sí, rotar el token/);
+
+		const antes = revisionActual(montaje.db);
+		const rotado = await pedir(montaje, `/terminales/${id}/rotar`, { cookie, formulario: {} });
+		assert.equal(rotado.status, 200);
+		const nuevo = tokenDe(await rotado.text());
+		assert.notEqual(nuevo, viejo);
+		// Rotar es configuración del terminal, no contenido: nadie tiene que verlo.
+		assert.equal(revisionActual(montaje.db), antes);
+
+		// El terminal es el mismo y sigue vivo: lo que cambia es el token.
+		assert.equal(buscarTerminalPorToken(montaje.db, viejo), undefined);
+		assert.equal(buscarTerminalPorToken(montaje.db, nuevo)?.id, id);
+		assert.equal(listarTerminales(montaje.db)[0]?.revocadoEn, null);
+
+		// Y es el token lo que abre el MCP: el viejo ya no autentica.
+		assert.equal((await llamarMcp(montaje, viejo)).status, 401);
+		assert.equal((await llamarMcp(montaje, nuevo)).status, 200);
+
+		// Con el usuario de la sesión, en el rastro del terminal.
+		const rastro = actividadDe(montaje.db, "terminal", id).filter((fila) => fila.accion === "rotar_terminal");
+		assert.equal(rastro.length, 1);
+		assert.equal(rastro[0]?.usuarioNombre, "xinux");
+
+		// Un terminal revocado no se rota: el token nuevo no serviría de nada.
+		assert.equal((await pedir(montaje, `/terminales/${id}/revocar`, { cookie, formulario: {} })).status, 302);
+		const tarde = await pedir(montaje, `/terminales/${id}/rotar`, { cookie, formulario: {} });
+		assert.equal(tarde.status, 422);
+		assert.match(await tarde.text(), /está revocado: no se le puede dar un token nuevo/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("borrar un terminal lo quita de la lista: sus tareas quedan sin terminal y el consumo se conserva", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const alta = await pedir(montaje, "/terminales", {
+			cookie,
+			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+		});
+		const token = tokenDe(await alta.text());
+		const id = listarTerminales(montaje.db)[0]?.id ?? 0;
+		const humano = listarUsuarios(montaje.db)[0]?.id ?? 0;
+
+		// Una tarea con las dos fases asignadas al terminal y tomada por él, y
+		// una propuesta que creó él mismo: las cuatro referencias que hay.
+		const suya = crearTareaHumana(montaje.db, {
+			titulo: "Exportar el listado",
+			descripcion: "d",
+			usuarioId: humano,
+			analisisModelo: "sonnet",
+			analisisTerminalId: id,
+			ejecucionModelo: "opus",
+			ejecucionTerminalId: id,
+		});
+		moverTareaHumano(montaje.db, { tareaId: suya.id, usuarioId: humano, estado: "prepared" });
+		tomarTarea(montaje.db, { tareaId: suya.id, fase: "analisis", terminalId: id });
+		const propuesta = crearPropuesta(montaje.db, { titulo: "De paso", descripcion: "d", terminalId: id });
+		registrarConsumo(montaje.db, {
+			tareaId: suya.id,
+			fase: "analisis",
+			modelo: "sonnet",
+			terminalId: id,
+			tokens: 31500,
+			herramientas: 6,
+			duracionMs: 87000,
+		});
+
+		// La confirmación va en página aparte y dice qué se lleva por delante.
+		const confirmacion = await pedir(montaje, `/terminales/${id}/borrar`, { cookie });
+		assert.equal(confirmacion.status, 200);
+		const textoConfirmacion = await confirmacion.text();
+		assert.match(textoConfirmacion, /Sí, borrar/);
+		assert.match(textoConfirmacion, /se quedan sin terminal/);
+		assert.match(textoConfirmacion, /consumo ya registrado se conserva/);
+		assert.doesNotMatch(textoConfirmacion, /style="/);
+
+		const antes = revisionActual(montaje.db);
+		const borrado = await pedir(montaje, `/terminales/${id}/borrar`, { cookie, formulario: {} });
+		assert.equal(borrado.status, 302);
+		assert.equal(borrado.headers.get("location"), "/terminales");
+		assert.deepEqual(listarTerminales(montaje.db), []);
+		// Cambia quién puede tomar tareas: eso los agentes lo ven.
+		assert.ok(revisionActual(montaje.db) > antes);
+
+		// La tarea sigue, sin terminal en ninguna de sus cuatro referencias, y
+		// vuelve a estar libre para quien la quiera tomar.
+		const leida = leerTarea(montaje.db, suya.id);
+		assert.equal(leida?.tarea.analisisTerminalId, null);
+		assert.equal(leida?.tarea.ejecucionTerminalId, null);
+		assert.equal(leida?.tarea.enMarchaTerminalId, null);
+		assert.ok(leida?.marcas.includes("sin terminal"), "la tarea tendría que quedar sin terminal");
+		assert.equal(exigirTarea(montaje.db, propuesta.id).creadaPorTerminalId, null);
+
+		// El consumo son tokens gastados de verdad: se queda tal cual estaba.
+		assert.equal(leida?.consumo.analisis?.tokens, 31500);
+		assert.equal(leida?.consumo.totalConHijas, 31500);
+		assert.equal(montaje.db.prepare("SELECT COUNT(*) AS total FROM consumo").get()?.total, 1);
+		assert.equal(montaje.db.prepare("SELECT terminal_id FROM consumo").get()?.terminal_id, null);
+
+		// El token deja de valer en el acto, como si se hubiera revocado.
+		assert.equal(buscarTerminalPorToken(montaje.db, token), undefined);
+		assert.equal((await llamarMcp(montaje, token)).status, 401);
+
+		// Y el rastro se queda, con el nombre del terminal y quien lo borró.
+		const baja = actividadDe(montaje.db, "terminal", id).find((fila) => fila.accion === "baja_terminal");
+		assert.equal(baja?.usuarioNombre, "xinux");
+		assert.equal(baja?.objetoNombre, "portatil-xinux");
+		assert.match(await (await pedir(montaje, "/actividad", { cookie })).text(), /borró el terminal/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("un terminal revocado se puede borrar, y borrar uno que no existe avisa sin romper", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		await pedir(montaje, "/terminales", {
+			cookie,
+			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+		});
+		const id = listarTerminales(montaje.db)[0]?.id ?? 0;
+		assert.equal((await pedir(montaje, `/terminales/${id}/revocar`, { cookie, formulario: {} })).status, 302);
+
+		// Un terminal revocado es justo el que se quiere quitar de la lista: su
+		// fila ofrece borrar, aunque ya no ofrezca rotar ni revocar.
+		const lista = await (await pedir(montaje, "/terminales", { cookie })).text();
+		assert.match(lista, new RegExp(`<a class="accion-fila" href="/terminales/${id}/borrar">Borrar</a>`));
+		assert.doesNotMatch(lista, new RegExp(`href="/terminales/${id}/rotar"`));
+
+		assert.equal((await pedir(montaje, `/terminales/${id}/borrar`, { cookie, formulario: {} })).status, 302);
+		assert.deepEqual(listarTerminales(montaje.db), []);
+
+		// Y el que ya no está no se puede volver a borrar.
+		assert.equal((await pedir(montaje, `/terminales/${id}/borrar`, { cookie })).status, 404);
+		const tarde = await pedir(montaje, `/terminales/${id}/borrar`, { cookie, formulario: {} });
+		assert.equal(tarde.status, 422);
+		assert.match(await tarde.text(), new RegExp(`No existe el terminal ${id}\\.`));
 	} finally {
 		await montaje.cerrar();
 	}

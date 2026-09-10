@@ -219,6 +219,19 @@ pre {
 	max-width: 100%;
 }
 
+/* El enlace de conexión también se sirve sin sesión, pero no es un formulario
+   de 22 rem: es un texto largo que se lee de arriba abajo. */
+body[data-vista="conectar"] .contenido-entrada {
+	display: block;
+	min-height: 0;
+	padding: 3rem 1rem;
+}
+
+body[data-vista="conectar"] .contenido-entrada .dentro {
+	max-width: 60rem;
+	margin: 0 auto;
+}
+
 .marca-entrada {
 	margin: 0 0 1.2rem;
 	color: var(--texto-suave);
@@ -1002,6 +1015,19 @@ button.pequeno, .boton.pequeno {
 
 .accion-fila:hover {
 	text-decoration: underline;
+}
+
+/* Rotar un token no destruye nada: no lleva el rojo de revocar. */
+.accion-fila.neutra {
+	color: var(--acento);
+}
+
+/* Las dos acciones de la fila de un terminal, una debajo de otra si no caben:
+   la última columna es estrecha y «Rotar token» no puede partirse. */
+.acciones-terminal {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.2rem 0.6rem;
 }
 
 /* --- selector de color --------------------------------------------------- */

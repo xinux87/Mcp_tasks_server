@@ -1,16 +1,25 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Context, Hono } from "hono";
 import { html } from "hono/html";
+import { buscarTerminalPorToken } from "../../auth/tokens.ts";
 import type { Config } from "../../config.ts";
 import { actividadDe, altaPor } from "../../db/actividad.ts";
-import { altaTerminal, listarTerminales, revocarTerminal, type TerminalListado } from "../../db/admin.ts";
+import {
+	altaTerminal,
+	borrarTerminal,
+	listarTerminales,
+	revocarTerminal,
+	rotarTerminal,
+	type TerminalListado,
+} from "../../db/admin.ts";
+import type { Usuario } from "../../db/consultas.ts";
 import { direccionesDelServidor } from "../../direcciones.ts";
 import { buscadorDeColor, type Color, chipUsuario, etiqueta, type Miga } from "../componentes.ts";
 import { fechaLegible, SIN_DATO } from "../formatos.ts";
 import { campo, ESTADO_AVISO, leerFormulario, mensajeDeRegla } from "../formulario.ts";
 import { type Html, pagina, type RespuestaHtml } from "../plantilla.ts";
-import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
-import { tutorialConexion } from "../tutorial.ts";
+import { type DependenciasWeb, leerSesion, usuarioActual } from "../sesion.ts";
+import { enlaceDeConexion, type OpcionesTutorial, tutorialConexion } from "../tutorial.ts";
 
 /** Cómo se busca el color de cada usuario que aparece en la página. */
 type ColorDe = (nombre: string) => Color | null;
@@ -176,11 +185,15 @@ function filaTerminal(db: DatabaseSync, terminal: TerminalListado, colorDe: Colo
 			<td>${quien(altaPor(db, "terminal", terminal.id), colorDe)}</td>
 			<td>${revocado ? quien(revocadoPor(db, terminal.id), colorDe) : html``}</td>
 			<td>
-				${
-					revocado
-						? html`<span class="silencio">${SIN_DATO}</span>`
-						: html`<a class="accion-fila" href="/terminales/${terminal.id}/revocar">Revocar</a>`
-				}
+				<span class="acciones-terminal">
+					${
+						revocado
+							? html``
+							: html`<a class="accion-fila neutra" href="/terminales/${terminal.id}/rotar">Rotar token</a>
+								<a class="accion-fila" href="/terminales/${terminal.id}/revocar">Revocar</a>`
+					}
+					<a class="accion-fila" href="/terminales/${terminal.id}/borrar">Borrar</a>
+				</span>
 			</td>
 		</tr>`;
 }
@@ -251,13 +264,18 @@ function direccionDelNavegador(c: Context, config: Config): string | null {
 	return `${new URL(config.BASE_URL).protocol}//${host}`;
 }
 
-/** El tutorial de conexión con las direcciones de este servidor y el token que toque. */
-function tutorialDe(c: Context, config: Config, token: string): Html {
-	return tutorialConexion({
+/** Lo que el tutorial necesita saber de este servidor, con el token que toque. */
+function opcionesTutorial(c: Context, config: Config, token: string): OpcionesTutorial {
+	return {
 		direcciones: direccionesDelServidor(config),
 		direccionActual: direccionDelNavegador(c, config),
 		token,
-	});
+	};
+}
+
+/** El tutorial de conexión con las direcciones de este servidor y el token que toque. */
+function tutorialDe(c: Context, config: Config, token: string): Html {
+	return tutorialConexion(opcionesTutorial(c, config, token));
 }
 
 /** Las migas de todo lo que cuelga de la lista de terminales. */
@@ -265,7 +283,157 @@ function migasDe(donde: string): Miga[] {
 	return [{ texto: "Terminales", href: "/terminales" }, { texto: donde }];
 }
 
-/** Rutas de terminales: lista con el uso, alta que enseña el token y revocación. */
+/**
+ * La página que solo se ve una vez: el token en claro, el enlace que lo lleva
+ * puesto y el tutorial entero. Es la misma en el alta y al rotar, porque lo
+ * que hay que hacer con el token nuevo es exactamente lo mismo.
+ *
+ * Sin `vista`: no se refresca sola, porque una recarga se llevaría por delante
+ * lo único que no se vuelve a enseñar.
+ */
+function paginaToken(
+	c: Context,
+	deps: DependenciasWeb,
+	datos: { terminal: { nombre: string; cuenta: string }; token: string },
+	titulo: string,
+): RespuestaHtml {
+	const enlace = enlaceDeConexion(opcionesTutorial(c, deps.config, datos.token));
+	const cuerpo = html`<section class="caja">
+			<p>
+				Terminal <strong>${datos.terminal.nombre}</strong> para la cuenta
+				<strong>${datos.terminal.cuenta}</strong>.
+			</p>
+			<p>Este es su token. <strong>No se vuelve a ver:</strong> la base de datos solo guarda su hash.</p>
+			<code class="token">${datos.token}</code>
+			<p class="pequeno silencio">Cópialo en la configuración del plugin, nunca en el repositorio.</p>
+			<p>O abre este enlace en la máquina del terminal: lleva a este mismo tutorial con el token puesto.</p>
+			<code class="token">${enlace}</code>
+			<p class="pequeno silencio">
+				El enlace es un secreto: quien lo tenga, tiene el terminal. Deja de valer en cuanto revoques o
+				rotes el token, y no se puede volver a componer desde aquí.
+			</p>
+			<p><a class="boton" href="/terminales">Volver a terminales</a></p>
+		</section>
+		${tutorialDe(c, deps.config, datos.token)}`;
+	return c.html(
+		pagina({
+			titulo,
+			usuario: usuarioActual(c),
+			migas: migasDe(titulo),
+			cuerpo,
+		}),
+	);
+}
+
+/**
+ * El tutorial de conexión. Con `?token=` lleva el token puesto y se abre en la
+ * máquina del terminal; sin él enseña `<token>` como marcador.
+ *
+ * `usuario` es nulo cuando se ha entrado con el enlace y sin sesión: entonces
+ * la página va sin barra lateral, como el login.
+ */
+function paginaConectar(
+	c: Context,
+	deps: DependenciasWeb,
+	usuario: Usuario | null,
+	token: string | null,
+): RespuestaHtml {
+	const entrada =
+		token === null
+			? html`<p>
+					Crea el terminal en <a href="/terminales">Terminales</a> y usa el token que te enseñe la
+					web una sola vez. Aquí va como <code>&lt;token&gt;</code>.
+				</p>`
+			: html`<p>
+					Este enlace trae el token del terminal ya puesto: sigue los pasos en esta máquina. No lo
+					compartas, que quien lo tenga tiene el terminal.
+				</p>`;
+	return c.html(
+		pagina({
+			titulo: "Cómo conectar un terminal",
+			usuario,
+			// Vista propia y no «terminales»: esta página no se refresca por
+			// intervalo, que perdería el sitio en un texto largo.
+			vista: "conectar",
+			// Sin sesión no hay lista de terminales a la que volver: queda el título.
+			migas: usuario === null ? [] : migasDe("Cómo conectar"),
+			cuerpo: html`${entrada}${tutorialDe(c, deps.config, token ?? "<token>")}`,
+		}),
+	);
+}
+
+/**
+ * El enlace de conexión, que se abre en la máquina del terminal y no en la del
+ * humano: con un token de un terminal vivo la página se sirve sin sesión.
+ *
+ * Se registra antes que el guardián de sesión, y por eso vive fuera de
+ * `registrarRutasTerminales`. Si el token no vale, sigue el camino normal y
+ * acaba en `/login` como el resto de la web. El enlace caduca solo: deja de
+ * valer en cuanto el token se revoca o se rota.
+ */
+export function registrarEnlaceDeConexion(app: Hono, deps: DependenciasWeb): void {
+	app.get("/terminales/conectar", async (c, next) => {
+		const token = c.req.query("token");
+		if (token === undefined || token === "" || buscarTerminalPorToken(deps.db, token) === undefined) {
+			await next();
+			return;
+		}
+		// Con sesión abierta se enseña la barra lateral; sin ella, la página sola.
+		return await paginaConectar(c, deps, (await leerSesion(c, deps)) ?? null, token);
+	});
+}
+
+/** El terminal de la ruta, o `undefined` si el id no es de ninguno. */
+function terminalDe(deps: DependenciasWeb, c: Context): TerminalListado | undefined {
+	const id = Number.parseInt(c.req.param("id") ?? "", 10);
+	return listarTerminales(deps.db).find((candidato) => candidato.id === id);
+}
+
+/** La página de un id que no es de ningún terminal. */
+function paginaSinTerminal(c: Context): RespuestaHtml {
+	return c.html(
+		pagina({
+			titulo: "Terminal no encontrado",
+			usuario: usuarioActual(c),
+			vista: "terminales",
+			migas: migasDe("No encontrado"),
+			cuerpo: html`<section class="caja caja-estrecha">
+				<p>No existe ese terminal.</p>
+				<p><a class="boton" href="/terminales">Volver a terminales</a></p>
+			</section>`,
+		}),
+		404,
+	);
+}
+
+/** Confirmación en página aparte: sin JavaScript, el POST está aquí. */
+function paginaConfirmacion(
+	c: Context,
+	titulo: string,
+	explicacion: Html,
+	accion: string,
+	boton: { texto: string; clase: string },
+): RespuestaHtml {
+	return c.html(
+		pagina({
+			titulo,
+			usuario: usuarioActual(c),
+			vista: "terminales",
+			migas: migasDe(titulo),
+			cuerpo: html`<section class="caja caja-estrecha">
+				${explicacion}
+				<div class="acciones">
+					<form method="post" action="${accion}">
+						<button type="submit" class="${boton.clase}">${boton.texto}</button>
+					</form>
+					<a class="boton" href="/terminales">Cancelar</a>
+				</div>
+			</section>`,
+		}),
+	);
+}
+
+/** Rutas de terminales: lista con el uso, alta que enseña el token, rotación, revocación y borrado. */
 export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void {
 	app.get("/terminales", (c) => paginaTerminales(c, deps, null));
 
@@ -277,92 +445,61 @@ export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void
 				nombre: campo(formulario, "nombre"),
 				cuenta: campo(formulario, "cuenta"),
 			});
-			const cuerpo = html`<section class="caja">
-				<p>
-					Terminal <strong>${creado.terminal.nombre}</strong> para la cuenta
-					<strong>${creado.terminal.cuenta}</strong>.
-				</p>
-				<p>Este es su token. <strong>No se vuelve a ver:</strong> la base de datos solo guarda su hash.</p>
-				<code class="token">${creado.token}</code>
-				<p class="pequeno silencio">Cópialo en la configuración del plugin, nunca en el repositorio.</p>
-				<p><a class="boton" href="/terminales">Volver a terminales</a></p>
-			</section>
-			${tutorialDe(c, deps.config, creado.token)}`;
-			// Sin `vista`: esta página no se refresca sola, porque una recarga se
-			// llevaría por delante lo único que no se vuelve a enseñar.
-			return c.html(
-				pagina({
-					titulo: "Terminal creado",
-					usuario: usuarioActual(c),
-					migas: migasDe("Terminal creado"),
-					cuerpo,
-				}),
-			);
+			return paginaToken(c, deps, creado, "Terminal creado");
 		} catch (error) {
 			return paginaTerminales(c, deps, mensajeDeRegla(error));
 		}
 	});
 
-	// El mismo tutorial sin token, siempre disponible. Va antes que
-	// `/terminales/:id/revocar` por claridad; no chocan, porque esa lleva un
+	// El mismo tutorial sin token, siempre disponible. Con `?token=` válido lo
+	// sirve `registrarEnlaceDeConexion`, que va delante de la sesión. Va antes
+	// que `/terminales/:id/...` por claridad; no chocan, porque esas llevan un
 	// segmento más.
-	app.get("/terminales/conectar", (c) =>
-		c.html(
-			pagina({
-				titulo: "Cómo conectar un terminal",
-				usuario: usuarioActual(c),
-				// Vista propia y no «terminales»: esta página no se refresca por
-				// intervalo, que perdería el sitio en un texto largo.
-				vista: "conectar",
-				migas: migasDe("Cómo conectar"),
-				cuerpo: html`<p>
-						Crea el terminal en <a href="/terminales">Terminales</a> y usa el token que te enseñe la
-						web una sola vez. Aquí va como <code>&lt;token&gt;</code>.
-					</p>
-					${tutorialDe(c, deps.config, "<token>")}`,
-			}),
-		),
-	);
+	app.get("/terminales/conectar", (c) => paginaConectar(c, deps, usuarioActual(c), null));
 
-	// Sin JavaScript: el botón de la tabla lleva a esta página y aquí está el POST.
-	app.get("/terminales/:id/revocar", (c) => {
-		const id = Number.parseInt(c.req.param("id") ?? "", 10);
-		const terminal = listarTerminales(deps.db).find((candidato) => candidato.id === id);
+	// Sin JavaScript: el enlace de la tabla lleva a esta página y aquí está el POST.
+	app.get("/terminales/:id/rotar", (c) => {
+		const terminal = terminalDe(deps, c);
 		if (terminal === undefined) {
-			return c.html(
-				pagina({
-					titulo: "Terminal no encontrado",
-					usuario: usuarioActual(c),
-					vista: "terminales",
-					migas: migasDe("No encontrado"),
-					cuerpo: html`<section class="caja caja-estrecha">
-						<p>No existe ese terminal.</p>
-						<p><a class="boton" href="/terminales">Volver a terminales</a></p>
-					</section>`,
-				}),
-				404,
-			);
+			return paginaSinTerminal(c);
 		}
-		const cuerpo = html`<section class="caja caja-estrecha">
-			<p>
-				Revocar el token desconecta <strong>${terminal.nombre}</strong> y solo ese. No se puede deshacer:
-				habrá que crear un terminal nuevo y volver a configurar el plugin.
-			</p>
-			<div class="acciones">
-				<form method="post" action="/terminales/${terminal.id}/revocar">
-					<button type="submit" class="peligro">Sí, revocar</button>
-				</form>
-				<a class="boton" href="/terminales">Cancelar</a>
-			</div>
-		</section>`;
-		return c.html(
-			pagina({
-				titulo: "Revocar terminal",
-				usuario: usuarioActual(c),
-				vista: "terminales",
-				migas: migasDe("Revocar terminal"),
-				cuerpo,
-			}),
+		return paginaConfirmacion(
+			c,
+			"Rotar el token",
+			html`<p>
+				Rotar el token da uno nuevo a <strong>${terminal.nombre}</strong> y deja el anterior sin valor.
+				El terminal sigue vivo con su nombre, su historial y su consumo: solo hay que poner el token
+				nuevo en esa máquina.
+			</p>`,
+			`/terminales/${terminal.id}/rotar`,
+			{ texto: "Sí, rotar el token", clase: "principal" },
+		);
+	});
+
+	app.post("/terminales/:id/rotar", (c) => {
+		const id = Number.parseInt(c.req.param("id") ?? "", 10);
+		try {
+			return paginaToken(c, deps, rotarTerminal(deps.db, id, usuarioActual(c).id), "Token rotado");
+		} catch (error) {
+			return paginaTerminales(c, deps, mensajeDeRegla(error));
+		}
+	});
+
+	app.get("/terminales/:id/revocar", (c) => {
+		const terminal = terminalDe(deps, c);
+		if (terminal === undefined) {
+			return paginaSinTerminal(c);
+		}
+		return paginaConfirmacion(
+			c,
+			"Revocar terminal",
+			html`<p>
+				Revocar el token desconecta <strong>${terminal.nombre}</strong> y solo ese. No se puede
+				deshacer: habrá que crear un terminal nuevo y volver a configurar el plugin. Si solo se ha
+				perdido el token, rótalo en vez de revocarlo.
+			</p>`,
+			`/terminales/${terminal.id}/revocar`,
+			{ texto: "Sí, revocar", clase: "peligro" },
 		);
 	});
 
@@ -370,6 +507,34 @@ export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void
 		const id = Number.parseInt(c.req.param("id") ?? "", 10);
 		try {
 			revocarTerminal(deps.db, id, usuarioActual(c).id);
+			return c.redirect("/terminales", 302);
+		} catch (error) {
+			return paginaTerminales(c, deps, mensajeDeRegla(error));
+		}
+	});
+
+	app.get("/terminales/:id/borrar", (c) => {
+		const terminal = terminalDe(deps, c);
+		if (terminal === undefined) {
+			return paginaSinTerminal(c);
+		}
+		return paginaConfirmacion(
+			c,
+			"Borrar terminal",
+			html`<p>
+				Borrar quita <strong>${terminal.nombre}</strong> de la lista del todo, no solo lo desconecta.
+				Las tareas que tuviera asignadas se quedan sin terminal y cualquier otro podrá tomarlas; el
+				consumo ya registrado se conserva, porque son tokens gastados de verdad. No se puede deshacer.
+			</p>`,
+			`/terminales/${terminal.id}/borrar`,
+			{ texto: "Sí, borrar", clase: "peligro" },
+		);
+	});
+
+	app.post("/terminales/:id/borrar", (c) => {
+		const id = Number.parseInt(c.req.param("id") ?? "", 10);
+		try {
+			borrarTerminal(deps.db, id, usuarioActual(c).id);
 			return c.redirect("/terminales", 302);
 		} catch (error) {
 			return paginaTerminales(c, deps, mensajeDeRegla(error));

@@ -155,7 +155,9 @@ const FRASE_ACCION: Record<string, string | undefined> = {
 	cambiar_password: "cambió su contraseña",
 	cambiar_color: "cambió el color de",
 	alta_terminal: "creó el terminal",
+	rotar_terminal: "rotó el token del terminal",
 	revocar_terminal: "revocó el terminal",
+	baja_terminal: "borró el terminal",
 };
 
 export function fraseDeAccion(accion: string): string {
