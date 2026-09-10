@@ -697,7 +697,7 @@ plugin/                    # el plugin de Claude Code, sin dependencias
 
 | Variable | Para qué | Por defecto |
 |---|---|---|
-| `PORT` | Puerto de escucha | `3000` |
+| `PORT` | Puerto de escucha. En `compose.yaml` es el puerto publicado en el anfitrión; dentro del contenedor el proceso escucha siempre en 3000, que es lo que comprueba el `HEALTHCHECK` | `3000`, `9917` en local |
 | `DATA_DIR` | Carpeta de la base de datos | `/data` |
 | `BASE_URL` | URL pública, para enlaces y validación de host | obligatoria |
 | `SESSION_SECRET` | Firma de la cookie de sesión | obligatoria |
@@ -721,7 +721,7 @@ Todos se ejecutan dentro de `server/`.
 | `npm run build` | Emite JavaScript a `dist/` para la imagen |
 | `npm run cli -- crear-usuario <nombre>` | Crea un usuario; la contraseña sale de `ADMIN_PASSWORD` |
 | `npm run cli -- crear-terminal <usuario> <nombre> <cuenta>` | Crea un terminal e imprime su token una sola vez |
-| `docker compose up --build` | Levanta el servidor con su volumen |
+| `docker compose up --build` | Levanta el servidor con su volumen. Lee `server/.env`, que no está en el repositorio: sin `SESSION_SECRET` ni `ADMIN_PASSWORD` falla al interpolar, antes de construir nada |
 
 `node --test` toma patrones glob, no directorios: `node --test test/` falla. Los tests viven fuera de `rootDir`, por eso tienen su propio `tsconfig.test.json`.
 

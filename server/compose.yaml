@@ -2,15 +2,20 @@ services:
   servidor:
     build: .
     image: mcp-tareas-server
+    # Dentro del contenedor siempre escucha en 3000, que es lo que comprueba el
+    # HEALTHCHECK de la imagen. Fuera se publica en PORT, que en local es 9917.
     ports:
-      - "3000:3000"
+      - "${PORT:-9917}:3000"
     environment:
-      # Valores de ejemplo; los secretos son obligatorios y no tienen defecto.
-      PORT: "3000"
-      DATA_DIR: /data
-      BASE_URL: "${BASE_URL:-http://localhost:3000}"
-      SESSION_SECRET: "${SESSION_SECRET:?falta SESSION_SECRET}"
-      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?falta ADMIN_PASSWORD, solo se usa en el primer arranque}"
+      - PORT=3000
+      - DATA_DIR=/data
+      - BASE_URL=${BASE_URL:-http://localhost:9917}
+      - SESSION_SECRET=${SESSION_SECRET:?falta SESSION_SECRET, está en server/.env}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?falta ADMIN_PASSWORD, solo se usa en el primer arranque}
+      # Sin valor: se pasa solo si está definida. Dentro de Docker las
+      # interfaces que detecta el proceso son las del contenedor, no las del
+      # anfitrión, así que las direcciones de red se declaran aquí.
+      - DIRECCIONES
     volumes:
       - datos:/data
     restart: unless-stopped
