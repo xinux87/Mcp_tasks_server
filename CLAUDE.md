@@ -361,8 +361,8 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 | `POST /tareas/T-0042/responder/P1` | Guarda la opción elegida por su texto y la nota |
 | `POST /tareas/T-0042/nota` | Nota del humano en el hilo |
 | `POST /tareas/T-0042/orden` | Reordena dentro de la columna, o cambia de columna cuando la transición es del humano |
-| `GET /terminales`, `POST /terminales`, `POST /terminales/:id/revocar` | Terminales: lista con uso disponible y conexión; alta que enseña el token una sola vez junto con el tutorial de conexión; revocación |
-| `GET /terminales/conectar` | El tutorial de conexión sin token, con las direcciones del servidor |
+| `GET /terminales`, `POST /terminales`, `POST /terminales/:id/revocar`, `POST /terminales/:id/rotar`, `POST /terminales/:id/borrar` | Terminales: lista con uso disponible y conexión; alta que enseña el token una sola vez junto con su enlace de conexión y el tutorial; revocación; rotación del token; borrado |
+| `GET /terminales/conectar` | El tutorial de conexión. Con `?token=` lleva ese token puesto y no exige sesión; sin él, `<token>` como marcador y sesión como el resto de la web |
 | `GET /usuarios`, `POST /usuarios`, `POST /usuarios/:id/borrar`, `POST /usuarios/contrasena` | Usuarios: alta con color, baja (nunca el último) y cambio de la propia contraseña |
 | `POST /usuarios/:id/color` | Cambia el color de un usuario |
 | `GET /actividad` | Las últimas cien acciones humanas, con quién hizo cada una |
@@ -496,6 +496,8 @@ CREATE INDEX actividad_por_objeto ON actividad (objeto, objeto_id, id);
 | `cambiar_color` | usuario | `verde → azul` |
 | `alta_terminal` | terminal | `cuenta xinux@ejemplo.com, de xinux` |
 | `revocar_terminal` | terminal | vacío |
+| `rotar_terminal` | terminal | vacío |
+| `baja_terminal` | terminal | vacío |
 
 - **Se escribe en la misma transacción que la acción**, desde las funciones de `src/db/` con `registrarActividad` de `src/db/actividad.ts`. Nunca sube la revisión por sí sola: la acción ya lo hace si es contenido, y las que no lo son (contraseña, color) tampoco lo hacen por dejar rastro.
 - **`usuario_nombre` se guarda como texto** para que sobreviva al borrado del usuario, igual que el autor del hilo; al borrar, `usuario_id` queda a nulo. `objeto_nombre` es el título de la tarea o el nombre del usuario o terminal en ese momento, para que la lista global se lea sin buscar.
@@ -503,6 +505,7 @@ CREATE INDEX actividad_por_objeto ON actividad (objeto, objeto_id, id);
 - **Reordenar no deja rastro**: el orden es prioridad, no configuración, y arrastrar produciría una fila por gesto.
 - **Los agentes no escriben actividad.** Lo que hacen ya está en el hilo con su autor.
 - **Lecturas**: `actividadDe(db, objeto, objetoId)` de la más antigua a la más nueva, `actividadReciente(db, limite)` de la más nueva a la más antigua, y `altaPor(db, objeto, objetoId)` con el nombre de quien dio de alta el objeto. Es lo que enseñan la ficha, las páginas de usuarios y terminales, y `GET /actividad`.
+- **El rastro de un objeto empieza en su última alta.** Solo `tareas` lleva `AUTOINCREMENT`: los ids de usuario y de terminal se reciclan en cuanto se borra el más alto, así que un `objeto_id` puede haber sido de dos objetos distintos. `actividadDe` devuelve desde la última alta de ese id, y `altaPor` mira la última, no la primera. Lo de antes sigue en la tabla y sale en `GET /actividad`, que es la línea de tiempo de todo: ahí cada fila lleva su `objeto_nombre` y no hay confusión posible.
 
 ## El servidor MCP
 
@@ -549,6 +552,29 @@ Un terminal suele estar en otra máquina de la misma red, así que el servidor t
 - **La página «Terminal creado»**, además del token, lleva el tutorial de conexión con el token ya puesto: las direcciones del servidor (la de `BASE_URL`, la que el navegador está usando ahora según su cabecera `Host` y las privadas conocidas), la instalación del plugin desde el catálogo de este repositorio o con `--plugin-dir`, los dos valores que pide al activarse, la alternativa sin plugin con `claude mcp add` por HTTP y cabecera bearer, la configuración de la statusline, el arranque con `/loop /mcp-tareas:tareas`, y cómo comprobar que ha conectado: la fila del terminal pasa a «conectado». Cada bloque es copiable.
 - **El mismo tutorial sin token** está siempre en `GET /terminales/conectar`, con `<token>` como marcador, enlazado desde la lista de terminales.
 - **Los comandos del tutorial se verifican contra la documentación de Claude Code** cuando se escriben; no se inventan.
+
+### Enlace de conexión y rotación del token
+
+El token solo se puede leer en el momento en que nace: la base de datos guarda su hash. Eso obligaba a copiarlo a mano en la otra máquina y, si se perdía, a crear un terminal nuevo dejando el anterior revocado. Dos añadidos lo resuelven.
+
+- **Enlace de conexión.** `GET /terminales/conectar` acepta `?token=<token>` y pinta el tutorial con ese token y las direcciones ya puestas. Es lo que la página «Terminal creado» ofrece junto al token, para abrirlo directamente en la máquina del terminal.
+- **Con un token válido no exige sesión.** El servidor busca el terminal por el hash del token, igual que el bearer del MCP: si existe y no está revocado, sirve la página sin cookie; si no, redirige a `/login` como el resto de la web. Así el enlace se abre en la otra máquina sin dar de alta un usuario allí, y deja de valer en cuanto se revoca o se rota el token, sin nada que caducar aparte. Sin `?token=` la ruta sigue exigiendo sesión y enseña `<token>` como marcador.
+- **El enlace es un secreto**: quien lo tiene, tiene el terminal. La web lo advierte donde lo ofrece. No se guarda en ninguna parte ni se puede volver a componer después: dura lo que dure el token.
+- **Rotar el token.** `POST /terminales/:id/rotar` da un token nuevo al mismo terminal y deja el anterior sin valor. Conserva el terminal con su nombre, su historial y su consumo; es lo que evita que cada token perdido deje una fila revocada de más. Va en la fila de la lista como enlace discreto junto a «Revocar», con confirmación en página aparte, y acaba en la misma página que el alta: el token una sola vez, su enlace de conexión y el tutorial.
+- **Rotar no revoca.** `revocado_en` sigue a nulo: el terminal sigue vivo, lo que cambia es `token_hash`. Un terminal revocado no se rota (`terminal_revocado`).
+- **Deja rastro** en la actividad como `rotar_terminal` y no sube la revisión: es configuración del terminal, no contenido.
+- **Actualizar el token en la máquina del terminal.** Claude Code no tiene ningún enlace que configure un servidor MCP: `claude-cli://open` abre sesiones, no configuración. Por eso el enlace lleva a la página y de ahí se copia el comando. Con el plugin, volver a instalarlo pide otra vez los dos valores; sin plugin, se repite `claude mcp add`. El tutorial lo dice en el paso que toca.
+
+### Borrar un terminal
+
+Revocar deja la fila para siempre: es lo correcto para un token comprometido, pero convierte la lista en un cementerio de terminales que ya no existen. Borrar lo quita de la lista del todo.
+
+- **Se puede borrar en cualquier estado**, revocado o no. Borrar uno conectado lo desconecta en el acto, que es lo mismo que revocarlo y además limpia. La confirmación va en página aparte y dice qué se lleva por delante.
+- **Sus tareas quedan sin terminal.** Las cuatro referencias de `tareas` (`analisis_terminal_id`, `ejecucion_terminal_id`, `en_marcha_terminal_id`, `creada_por_terminal_id`) pasan a nulo, como al borrar un usuario. Las que estén en `prepared` o `doing` recuperan la marca `sin terminal` y cualquier terminal puede tomarlas; una que estuviera «en marcha» se libera, porque el terminal que la había tomado ya no existe.
+- **El consumo se conserva.** Son tokens gastados de verdad y están sumados en la ficha de la tarea: borrarlos falsearía el coste. `consumo.terminal_id` pasa a ser anulable y queda a nulo, que es lo único que impedía borrar la fila del terminal. Nadie lee esa columna: solo se escribe al reportar consumo.
+- **El rastro se conserva**, con el nombre del terminal en texto, igual que el de un usuario borrado: `actividad` no tiene clave foránea hacia el objeto.
+- **Deja rastro** como `baja_terminal` y **sube la revisión**, como el alta y la revocación: cambia quién puede tomar tareas, y eso los agentes lo ven.
+- **Migración.** Reconstruye `consumo` para quitarle el `NOT NULL` de `terminal_id`, con el procedimiento de siempre: claves foráneas apagadas, tabla nueva, copia, `foreign_key_check` al terminar.
 
 ## Operaciones del MCP
 
