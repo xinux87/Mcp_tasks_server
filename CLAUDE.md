@@ -17,6 +17,8 @@ Un sistema para gestionar visualmente las tareas y cómo se está trabajando en 
 1. **El servidor MCP**, programado en Node y publicado como imagen Docker. Guarda las tareas con su hilo de comentarios y sirve la web.
 2. **El plugin de Claude Code**, que define cómo conectarse a ese servidor y arranca el bucle del agente.
 
+`README.md` cuenta esto mismo de una ojeada, para quien llega al repositorio. Se mantiene: cuando cambie una pieza o el ciclo de una tarea, se actualiza ahí también. Este archivo manda; el README es el resumen.
+
 ## Cómo se construye este proyecto
 
 El desarrollo de este repositorio se hace con dos modelos y dos papeles separados. Es el mismo reparto de fases que implementa la herramienta: un modelo define, otro ejecuta.

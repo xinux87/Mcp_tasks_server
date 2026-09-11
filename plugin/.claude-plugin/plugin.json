@@ -16,7 +16,6 @@
   ],
   "license": "MIT",
   "mcpServers": "./.mcp.json",
-  "hooks": "./hooks/hooks.json",
   "userConfig": {
     "servidor_url": {
       "type": "string",
