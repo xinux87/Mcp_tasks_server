@@ -20,6 +20,9 @@ const CATALOGO = "mcp-tareas-marketplace";
 /** El servidor MCP se llama así al declararlo a mano, sin plugin. */
 const NOMBRE_MCP = "tareas";
 
+/** El repositorio del que se instala el plugin. */
+const REPOSITORIO = "xinux87/Mcp_tasks_server";
+
 /** Marcador de la ruta donde el usuario haya clonado el repositorio: el servidor no la sabe. */
 const RUTA_REPOSITORIO = "<ruta-del-repositorio>";
 
@@ -129,13 +132,18 @@ function pasoDirecciones(filas: readonly Fila[], recomendacion: string): Html {
 function pasoInstalar(): Html {
 	return html`<li>
 			<h3>Instalar el plugin</h3>
-			<p>Desde una sesión de Claude Code, con la ruta donde esté clonado este repositorio:</p>
+			<p>
+				Desde una sesión de Claude Code en la máquina del terminal, que necesita acceso git a ese
+				repositorio (por SSH; con <code>CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1</code>, por HTTPS):
+			</p>
+			${bloque(`/plugin marketplace add ${REPOSITORIO}\n/plugin install ${PLUGIN}@${CATALOGO}`)}
+			<p>Si lo tienes clonado y quieres esa copia, en su lugar la ruta del clon:</p>
 			${bloque(`/plugin marketplace add ${RUTA_REPOSITORIO}\n/plugin install ${PLUGIN}@${CATALOGO}`)}
-			<p>Para probarlo sin instalar nada, arranca Claude Code apuntando a la carpeta del plugin:</p>
+			<p>Y para probarlo sin instalar nada, arranca Claude Code apuntando a la carpeta del plugin:</p>
 			${bloque(`claude --plugin-dir ${RUTA_REPOSITORIO}/plugin`)}
 			<p class="pequeno silencio">
-				Con <code>--plugin-dir</code> no se piden los dos valores del plugin: hay que escribirlos a mano
-				donde toque.
+				Si Claude Code no te pide los dos valores del plugin (con <code>--plugin-dir</code> puede no
+				hacerlo), escríbelos a mano donde toque.
 			</p>
 		</li>`;
 }
@@ -155,8 +163,8 @@ function pasoValores(recomendacion: string, token: string): Html {
 			</div>
 			<p class="pequeno silencio">
 				El token se guarda en la configuración local de Claude Code, nunca en el repositorio. Si lo has
-				rotado, vuelve a instalar el plugin: al activarse pide otra vez los dos valores y se queda con
-				el nuevo.
+				rotado, cámbialo en <code>/plugin</code> → Installed → <code>${PLUGIN}</code>, o con
+				<code>${`claude plugin install ${PLUGIN}@${CATALOGO} --config token_terminal=<token nuevo>`}</code>.
 			</p>
 		</li>`;
 }
@@ -184,7 +192,7 @@ function pasoStatusline(recomendacion: string, token: string): Html {
 		"{",
 		'  "statusLine": {',
 		'    "type": "command",',
-		`    "command": "~/.claude/plugins/marketplaces/${CATALOGO}/plugin/scripts/statusline.sh",`,
+		'    "command": "~/.claude/mcp-tareas/statusline.sh",',
 		'    "padding": 2',
 		"  }",
 		"}",
@@ -204,9 +212,13 @@ function pasoStatusline(recomendacion: string, token: string): Html {
 				que la pinta y de paso lo reenvía aquí. En <code>~/.claude/settings.json</code>:
 			</p>
 			${bloque(ajustes)}
+			<p class="pequeno silencio">
+				Esa ruta es fija: el plugin copia ahí su script al empezar cada sesión, porque su carpeta de
+				instalación lleva la versión y cambia al actualizarlo.
+			</p>
 			<p>
-				El script lee la dirección y el token de su propio archivo. El plugin lo escribe al empezar cada
-				sesión; con <code>--plugin-dir</code>, escríbelo tú:
+				El script lee la dirección y el token de su propio archivo, que el plugin también escribe al
+				empezar la sesión. Si Claude Code no te ha pedido los valores, escríbelo tú:
 			</p>
 			${bloque(config)}
 		</li>`;

@@ -551,7 +551,7 @@ Un terminal suele estar en otra máquina de la misma red, así que el servidor t
 
 - **Direcciones conocidas**: `BASE_URL`, las que lista la variable `DIRECCIONES` (URLs base separadas por comas, por ejemplo `http://192.168.1.10:3020`), y, si `DIRECCIONES` no está definida, las que el propio proceso detecta en sus interfaces de red: IPv4 de rangos privados (`10/8`, `172.16/12`, `192.168/16`) con el puerto de `PORT`. Dentro de Docker las interfaces detectadas son las del contenedor, no las del anfitrión: por eso existe `DIRECCIONES`, y el tutorial lo advierte.
 - **Todas las direcciones conocidas se admiten en la cabecera `Host`**, además de `localhost`. La protección contra DNS rebinding sigue activa para cualquier otro host.
-- **La página «Terminal creado»**, además del token, lleva el tutorial de conexión con el token ya puesto: las direcciones del servidor (la de `BASE_URL`, la que el navegador está usando ahora según su cabecera `Host` y las privadas conocidas), la instalación del plugin desde el catálogo de este repositorio o con `--plugin-dir`, los dos valores que pide al activarse, la alternativa sin plugin con `claude mcp add` por HTTP y cabecera bearer, la configuración de la statusline, el arranque con `/loop /mcp-tareas:tareas`, y cómo comprobar que ha conectado: la fila del terminal pasa a «conectado». Cada bloque es copiable.
+- **La página «Terminal creado»**, además del token, lleva el tutorial de conexión con el token ya puesto: las direcciones del servidor (la de `BASE_URL`, la que el navegador está usando ahora según su cabecera `Host` y las privadas conocidas), la instalación del plugin desde GitHub (`/plugin marketplace add xinux87/Mcp_tasks_server` y `/plugin install`), con la ruta de un clon local y `--plugin-dir` como alternativa de desarrollo, los dos valores que pide al activarse, la alternativa sin plugin con `claude mcp add` por HTTP y cabecera bearer, la configuración de la statusline, el arranque con `/loop /mcp-tareas:tareas`, y cómo comprobar que ha conectado: la fila del terminal pasa a «conectado». Cada bloque es copiable.
 - **El mismo tutorial sin token** está siempre en `GET /terminales/conectar`, con `<token>` como marcador, enlazado desde la lista de terminales.
 - **Los comandos del tutorial se verifican contra la documentación de Claude Code** cuando se escriben; no se inventan.
 
@@ -565,7 +565,7 @@ El token solo se puede leer en el momento en que nace: la base de datos guarda s
 - **Rotar el token.** `POST /terminales/:id/rotar` da un token nuevo al mismo terminal y deja el anterior sin valor. Conserva el terminal con su nombre, su historial y su consumo; es lo que evita que cada token perdido deje una fila revocada de más. Va en la fila de la lista como enlace discreto junto a «Revocar», con confirmación en página aparte, y acaba en la misma página que el alta: el token una sola vez, su enlace de conexión y el tutorial.
 - **Rotar no revoca.** `revocado_en` sigue a nulo: el terminal sigue vivo, lo que cambia es `token_hash`. Un terminal revocado no se rota (`terminal_revocado`).
 - **Deja rastro** en la actividad como `rotar_terminal` y no sube la revisión: es configuración del terminal, no contenido.
-- **Actualizar el token en la máquina del terminal.** Claude Code no tiene ningún enlace que configure un servidor MCP: `claude-cli://open` abre sesiones, no configuración. Por eso el enlace lleva a la página y de ahí se copia el comando. Con el plugin, volver a instalarlo pide otra vez los dos valores; sin plugin, se repite `claude mcp add`. El tutorial lo dice en el paso que toca.
+- **Actualizar el token en la máquina del terminal.** Claude Code no tiene ningún enlace que configure un servidor MCP: `claude-cli://open` abre sesiones, no configuración. Por eso el enlace lleva a la página y de ahí se copia el comando. Con el plugin, se cambia el valor desde `/plugin` → Installed → `mcp-tareas`, o con `claude plugin install mcp-tareas@mcp-tareas-marketplace --config token_terminal=<token>`; sin plugin, se repite `claude mcp add`. El tutorial lo dice en el paso que toca.
 
 ### Borrar un terminal
 
@@ -712,13 +712,15 @@ server/                    # el servidor, un paquete npm
 plugin/                    # el plugin de Claude Code, sin dependencias
   .claude-plugin/plugin.json
   .mcp.json
-  hooks/hooks.json         # SessionStart: vuelca URL y token para la statusline
+  hooks/hooks.json         # SessionStart: vuelca URL y token y copia la statusline
   skills/tareas/SKILL.md   # una vuelta del bucle del agente
   scripts/statusline.sh    # reenvía el uso al servidor y pinta la línea
   scripts/guardar-config.sh
   scripts/revision.sh      # lee y guarda la última revisión vista
   README.md                # instalación y arranque
-.claude-plugin/marketplace.json   # exigido para instalar el plugin desde este repositorio
+.claude-plugin/marketplace.json   # el catálogo: es lo que permite instalar el plugin desde este repositorio
+modelo-comunicacion.md     # el diseño original del hilo y de la señal de novedad; este archivo lo absorbe
+LICENSE                    # MIT, la que declara el plugin
 ```
 
 ### Variables de entorno del servidor
@@ -765,6 +767,9 @@ Verificado contra la documentación de Claude Code:
 - **No puede incluir un comando de bucle propio.** La skill del plugin ejecuta una vuelta; la repetición la pone el bucle de Claude Code: `/loop /mcp-tareas:tareas` (o `/loop 2m /mcp-tareas:tareas` con intervalo fijo). Las skills de plugin van siempre con el prefijo del plugin. El bucle solo se dispara mientras Claude Code está abierto y en reposo, y caduca a los siete días de crearlo: hay que relanzarlo.
 - **Los nombres de las herramientas llevan el plugin y el servidor.** En Claude Code una herramienta de un servidor MCP empaquetado en un plugin se llama `mcp__plugin_mcp-tareas_tareas__novedades`, no `mcp__tareas__novedades`.
 - **Las claves de `userConfig` llegan a los hooks** como variables `CLAUDE_PLUGIN_OPTION_<CLAVE>`; la forma `${user_config.*}` en un comando de hook en modo shell falla. La statusline no recibe ninguna de las dos: por eso un hook `SessionStart` vuelca la URL y el token a `~/.claude/mcp-tareas/config` con permisos 600 y el script de statusline lee ese archivo.
+- **El mismo hook copia el script de statusline a `~/.claude/mcp-tareas/statusline.sh`**, y esa es la ruta que va en `statusLine.command` de `~/.claude/settings.json`. La carpeta donde Claude Code instala el plugin lleva la versión dentro (`~/.claude/plugins/cache/<catálogo>/<plugin>/<versión>/`) y cambia con cada actualización; la copia es lo que da una ruta estable y se refresca en cada sesión. El hook localiza el script por su propia ruta (`dirname "$0"`), sin depender de ninguna variable.
 - **La última revisión vista se guarda en `${CLAUDE_PLUGIN_DATA}/revision`**, que persiste entre sesiones y actualizaciones del plugin. Nunca en `${CLAUDE_PLUGIN_ROOT}`, que se sobrescribe al actualizar.
-- **La instalación local exige un `marketplace.json`** en `.claude-plugin/` de la raíz del repositorio que apunte a `./plugin`. Validación: `claude plugin validate ./plugin --strict`.
+- **El plugin se instala desde el catálogo del repositorio**, `.claude-plugin/marketplace.json` en la raíz, que apunta a `./plugin`. La ruta relativa vale también cuando el catálogo se añade desde git: Claude Code lo clona entero y la resuelve contra el clon. El catálogo se registra con el `name` del `marketplace.json` (`mcp-tareas-marketplace`), no con el nombre del repositorio. Validación: `claude plugin validate ./plugin --strict` y `claude plugin validate . --strict`.
+- **El repositorio es `xinux87/Mcp_tasks_server` en GitHub, privado.** En otra máquina: `claude plugin marketplace add xinux87/Mcp_tasks_server` y `claude plugin install mcp-tareas@mcp-tareas-marketplace` (o los mismos comandos con `/plugin` dentro de una sesión). La forma `owner/repo` clona por SSH; con `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` clona por HTTPS con las credenciales git del sistema. Por ser privado, la máquina necesita acceso git al repositorio. Actualizar: `claude plugin update mcp-tareas@mcp-tareas-marketplace`. `claude --plugin-dir <clon>/plugin` queda como vía de desarrollo, sin instalar.
+- **Los dos valores se piden al habilitar el plugin.** Para cambiarlos después (por ejemplo tras rotar el token): `/plugin` → Installed → `mcp-tareas`, o `claude plugin install mcp-tareas@mcp-tareas-marketplace --config token_terminal=<token>`. No hace falta desinstalar.
 - **OAuth existe pero no se usa.** Si se declarase, tendría prioridad sobre la cabecera bearer.

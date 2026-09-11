@@ -3,6 +3,12 @@
 	"version": "0.1.0",
 	"private": true,
 	"description": "Servidor MCP de tareas: MCP, API y web en un solo proceso",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/xinux87/Mcp_tasks_server.git",
+		"directory": "server"
+	},
 	"type": "module",
 	"engines": {
 		"node": ">=24"

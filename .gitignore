@@ -18,5 +18,5 @@ data/
 # sistema
 .DS_Store
 
-# worktrees de subagentes
-.claude/worktrees/
+# configuración local de Claude Code
+.claude/

@@ -2,7 +2,7 @@
   "name": "mcp-tareas-marketplace",
   "description": "Plugins de este repositorio. Contiene el plugin del bucle de tareas.",
   "owner": {
-    "name": "Mcp_tasks_server"
+    "name": "xinux87"
   },
   "plugins": [
     {
@@ -11,8 +11,11 @@
       "description": "Conecta el terminal al servidor MCP de tareas y arranca el bucle del agente.",
       "version": "0.1.0",
       "author": {
-        "name": "Mcp_tasks_server"
-      }
+        "name": "xinux87"
+      },
+      "homepage": "https://github.com/xinux87/Mcp_tasks_server",
+      "repository": "https://github.com/xinux87/Mcp_tasks_server",
+      "license": "MIT"
     }
   ]
 }

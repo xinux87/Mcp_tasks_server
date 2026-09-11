@@ -15,8 +15,17 @@ las preguntas que le hagan; los agentes las toman solos, las trabajan y devuelve
 **Una tarea** pasa por cinco columnas: `backlog` (la escribe el humano), `prepared` (un agente la analiza),
 `doing` (otro la ejecuta), `done` (el humano revisa) y `finished`. Cada una lleva un hilo de comentarios
 donde queda el análisis, las preguntas con sus opciones, las respuestas del humano y el resultado con su
-commit, y cuenta los tokens que ha costado. Una **funcionalidad** es una tarea que se descompone en partes;
-una **pregunta** es una tarea cuya respuesta es la respuesta misma, sin código.
+commit, y cuenta los tokens que ha costado. Sobre la tarjeta se ven las marcas que dicen en qué anda
+(`bloqueada` si espera una respuesta, `sin terminal` si cualquiera puede tomarla, `en marcha` si ya la ha
+tomado alguien, `esperando` si depende de otra tarea que aún no está hecha), y con `autoejecucion`
+activada —lo normal— la ejecución arranca sola en cuanto el análisis termina sin preguntas abiertas.
+Una **funcionalidad** es una tarea que se descompone en partes; una **pregunta** es una tarea cuya
+respuesta es la respuesta misma, sin código.
+
+## Requisitos
+
+Docker (o Node 24 si se levanta a mano) y, en la máquina del terminal, Claude Code con acceso git a este
+repositorio.
 
 ## Levantarlo
 
@@ -26,10 +35,54 @@ printf 'BASE_URL=http://localhost:9917\nSESSION_SECRET=%s\nADMIN_PASSWORD=cambia
 docker compose up --build
 ```
 
-La web queda en el puerto de `PORT` (9917 en local). Entra, crea un terminal en **Terminales** y sigue el
-tutorial de conexión que sale con su token: trae los comandos ya montados para esa máquina.
+Abre `http://localhost:9917` (el puerto lo publica `compose.yaml`) y entra como **`admin`** con la
+contraseña de `ADMIN_PASSWORD`; se crea sola en el primer arranque, cámbiala después en **Usuarios**.
+
+Crea un terminal en **Terminales**: la página que enseña su token trae el tutorial de conexión con los
+comandos ya montados para esa máquina, y un enlace para abrirlo allí directamente. El plugin se instala
+desde GitHub con dos comandos en la sesión de Claude Code de esa máquina:
+
+```
+/plugin marketplace add xinux87/Mcp_tasks_server
+/plugin install mcp-tareas@mcp-tareas-marketplace
+```
+
+El detalle está en [`plugin/README.md`](plugin/README.md). Después, una vez por sesión,
+`/loop /mcp-tareas:tareas` arranca el bucle del agente.
+
+### Si el terminal está en otra máquina
+
+Con `BASE_URL=http://localhost:9917` y sin nada más, cualquier petición desde otra máquina de la red
+responde `403 Invalid Host`: el servidor solo admite las direcciones que conoce. Y dentro de Docker las
+que detecta solo son las del contenedor, que no valen desde fuera. Añade al `server/.env`, antes de
+levantarlo:
+
+```sh
+DIRECCIONES=http://<ip-del-anfitrión>:9917
+```
+
+Es la dirección que el tutorial pondrá en los comandos del terminal.
+
+### A mano, sin Docker
+
+Con Node 24, las mismas variables del `.env` más `DATA_DIR`, que sin Docker apunta por defecto a `/data`:
+
+```sh
+cd server
+npm install
+DATA_DIR=./data npm run dev
+```
+
+### Desarrollo
+
+Dentro de `server/`: `npm test`, `npm run typecheck` y `npm run lint`. El plugin se comprueba con
+`claude plugin validate ./plugin --strict`.
 
 ## Dónde está el detalle
 
 [`CLAUDE.md`](CLAUDE.md) es la definición completa: el modelo de tareas, las reglas, las operaciones del MCP,
 la web y el stack, y cómo se construye este repositorio. Manda sobre este archivo; esto es solo el resumen.
+[`modelo-comunicacion.md`](modelo-comunicacion.md) es el diseño original del hilo de comentarios y de la
+señal de novedad, del que salió lo que hoy está en `CLAUDE.md`.
+
+Licencia MIT.

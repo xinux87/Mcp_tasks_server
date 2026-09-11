@@ -10,74 +10,101 @@ Plugin de Claude Code que conecta un terminal al servidor MCP de tareas. Hace tr
 
 1. Entra en la web del servidor y ve a la sección de terminales.
 2. Crea un terminal con su **nombre** (por ejemplo `portatil-1`) y la **cuenta de origen** de la sesión de Claude Code.
-3. La web te enseña el **token una sola vez**. Cópialo antes de cerrar. Si lo pierdes, revoca ese terminal y crea otro.
+3. La web te enseña el **token una sola vez**. Cópialo antes de cerrar. Si lo pierdes, rota el token de ese terminal desde la web: el terminal sigue siendo el mismo, con su nombre, su historial y su consumo, y lo que deja de valer es el token anterior.
+
+Esa misma página trae el tutorial de conexión con el token ya puesto y un **enlace de conexión**. El enlace abre el tutorial en la máquina del terminal sin necesidad de sesión en la web, así que no hace falta copiar el token a mano de una máquina a otra. Es un secreto: quien lo tiene, tiene el terminal, y deja de valer en cuanto se revoca o se rota el token.
 
 El token identifica al terminal y a su usuario. El plugin lo guarda en tu configuración local; nunca en el repositorio.
 
 ## 2. Instalar el plugin
 
-### Desde una ruta local
+### Desde GitHub
 
-Desde una sesión de Claude Code, con la raíz de este repositorio como `<repo>`:
+Dentro de una sesión de Claude Code:
+
+```
+/plugin marketplace add xinux87/Mcp_tasks_server
+/plugin install mcp-tareas@mcp-tareas-marketplace
+```
+
+Y los mismos dos pasos desde fuera de la sesión:
+
+```
+claude plugin marketplace add xinux87/Mcp_tasks_server
+claude plugin install mcp-tareas@mcp-tareas-marketplace
+```
+
+El primer comando registra el catálogo del repositorio (`.claude-plugin/marketplace.json` en la raíz, que apunta a `./plugin`). El catálogo se llama `mcp-tareas-marketplace`, que es el `name` del `marketplace.json`, no el nombre del repositorio: por eso el segundo comando lleva ese sufijo.
+
+El repositorio es **privado**, así que la máquina donde instalas necesita acceso git a él. La forma `owner/repo` clona por SSH; para clonar por HTTPS con las credenciales git del sistema:
+
+```
+CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1 claude plugin marketplace add xinux87/Mcp_tasks_server
+```
+
+Para fijar una rama o una etiqueta, añade `#` y la referencia: `xinux87/Mcp_tasks_server#v0.1.0`.
+
+Actualizar y desinstalar:
+
+```
+claude plugin update mcp-tareas@mcp-tareas-marketplace
+claude plugin uninstall mcp-tareas@mcp-tareas-marketplace
+```
+
+### Desde un clon local
+
+Con la raíz del clon de este repositorio como `<repo>`:
 
 ```
 /plugin marketplace add <repo>
 /plugin install mcp-tareas@mcp-tareas-marketplace
 ```
 
-El primer comando registra el catálogo (`.claude-plugin/marketplace.json` en la raíz del repositorio, que apunta a `./plugin`). El segundo instala el plugin y te pide el ámbito.
+Es la misma instalación, con el catálogo leído del disco en vez de clonado de GitHub.
 
-Para probar sin instalar nada, arranca Claude Code apuntando directamente al plugin:
+Para desarrollo, sin instalar ni registrar nada, arranca Claude Code apuntando directamente al plugin:
 
 ```
 claude --plugin-dir <repo>/plugin
 ```
 
-Con `--plugin-dir` no hay marketplace ni instalación, pero tampoco se te piden los valores de `userConfig`: para esa vía, escribe el archivo de configuración de la statusline a mano (paso 4) y declara el servidor MCP por tu cuenta.
-
-### Desde git
-
-```
-/plugin marketplace add <owner>/<repo>
-/plugin install mcp-tareas@mcp-tareas-marketplace
-```
-
-También sirve la URL completa. En hosts que no son github.com ni gitlab.com hay que poner el sufijo `.git`:
-
-```
-/plugin marketplace add https://git.example.com/equipo/repo.git
-```
-
-Para fijar una rama o una etiqueta, añade `#` y la referencia: `...repo.git#v0.1.0`.
-
 ### Configuración
 
-Al activarlo, Claude Code te pide los dos valores:
+Cuando habilitas el plugin, Claude Code te pide los dos valores:
 
 | Clave | Qué es |
 |---|---|
 | `servidor_url` | URL base del servidor, sin barra final. Por ejemplo `https://tareas.example.com` |
-| `token_terminal` | El token que te dio la web. Se guarda en el llavero del sistema, no en `settings.json` |
+| `token_terminal` | El token que te dio la web. Va marcado como sensible y se guarda en la configuración de Claude Code, nunca en el repositorio |
+
+Si Claude Code no te los pide (con `--plugin-dir` puede no hacerlo), escribe el archivo de configuración de la statusline a mano (paso 3) y declara el servidor MCP por tu cuenta.
 
 Si el resumen de la instalación dice `Run /reload-plugins to activate.`, ejecuta `/reload-plugins`.
 
-Para cambiarlos después, abre `/plugin`, ve a la pestaña **Installed** y entra en el detalle de `mcp-tareas`.
+Para cambiarlos después, por ejemplo tras rotar el token, hay dos formas y ninguna exige desinstalar:
+
+- Abre `/plugin`, ve a la pestaña **Installed** y entra en el detalle de `mcp-tareas`.
+- O vuelve a lanzar la instalación con el valor nuevo:
+
+```
+claude plugin install mcp-tareas@mcp-tareas-marketplace --config token_terminal=<token>
+```
 
 ## 3. Configurar la statusline
 
-Claude Code solo pasa el uso disponible de la cuenta (`rate_limits`) a la statusline, y un plugin no puede imponer la suya. Añade esto a `~/.claude/settings.json`, con la ruta real donde quedó instalado el plugin:
+Claude Code solo pasa el uso disponible de la cuenta (`rate_limits`) a la statusline, y un plugin no puede imponer la suya. Añade esto a `~/.claude/settings.json`:
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "~/.claude/plugins/marketplaces/mcp-tareas-marketplace/plugin/scripts/statusline.sh",
+    "command": "~/.claude/mcp-tareas/statusline.sh",
     "padding": 2
   }
 }
 ```
 
-Si no sabes la ruta, ejecuta `claude plugin details mcp-tareas` o mira el detalle en `/plugin`.
+Esa ruta es una copia que el hook `SessionStart` del plugin refresca al empezar cada sesión, porque la carpeta donde Claude Code instala el plugin lleva la versión dentro y cambia con cada actualización.
 
 La línea que pinta es el modelo y, cuando existen, el porcentaje usado de la ventana de 5 horas y la de 7 días:
 
@@ -91,14 +118,14 @@ El script envía el JSON al servidor como mucho una vez por minuto y por sesión
 
 ### De dónde saca el script la URL y el token
 
-La statusline no es un componente del plugin: Claude Code no le pasa `${user_config.*}` ni las variables `CLAUDE_PLUGIN_OPTION_*`. El puente es el hook `SessionStart` del plugin (`scripts/guardar-config.sh`), que al empezar cada sesión escribe `~/.claude/mcp-tareas/config` con permisos 600 y este contenido:
+La statusline no es un componente del plugin: Claude Code no le pasa `${user_config.*}` ni las variables `CLAUDE_PLUGIN_OPTION_*`. El puente es el mismo hook `SessionStart` (`scripts/guardar-config.sh`), que al empezar cada sesión escribe `~/.claude/mcp-tareas/config` con permisos 600 y este contenido:
 
 ```
 SERVIDOR_URL=https://tareas.example.com
 TOKEN=el-token-del-terminal
 ```
 
-No hay que hacer nada: el hook lo mantiene al día. Si usas el plugin con `--plugin-dir`, o quieres apuntar la statusline a otro servidor, crea ese archivo tú:
+No hay que hacer nada: el hook lo mantiene al día. Si Claude Code no te pidió los dos valores, o quieres apuntar la statusline a otro servidor, crea ese archivo tú:
 
 ```
 mkdir -p ~/.claude/mcp-tareas
@@ -139,17 +166,20 @@ plugin/
   .claude-plugin/plugin.json   manifiesto, userConfig (URL y token)
   .mcp.json                    el servidor MCP `tareas`, HTTP con bearer
   skills/tareas/SKILL.md       una vuelta del bucle del agente
-  hooks/hooks.json             SessionStart, para la config de la statusline
+  hooks/hooks.json             SessionStart, para la statusline y su config
   scripts/statusline.sh        pinta la línea y reenvía el uso a /api/uso
-  scripts/guardar-config.sh    vuelca URL y token a ~/.claude/mcp-tareas/config
+  scripts/guardar-config.sh    copia la statusline a ~/.claude/mcp-tareas/ y
+                               vuelca ahí la URL y el token
   scripts/revision.sh          guarda la última revisión vista del servidor
 ```
 
 ## Comprobaciones
 
+Desde la raíz del repositorio:
+
 ```
-claude plugin validate <repo>/plugin
-claude plugin validate <repo>
+claude plugin validate ./plugin --strict
+claude plugin validate . --strict
 ```
 
 El segundo valida el marketplace de la raíz.

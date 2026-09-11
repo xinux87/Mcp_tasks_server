@@ -695,6 +695,13 @@ test("la página del terminal creado lleva el tutorial con el token y las direcc
 		);
 		assert.match(cuerpo, new RegExp(`SERVIDOR_URL=http://192\\.168\\.50\\.5:3000\nTOKEN=${token}`));
 		assert.match(cuerpo, /\/plugin install mcp-tareas@mcp-tareas-marketplace/);
+		// Se instala desde GitHub, no solo desde un clon local.
+		assert.match(cuerpo, /marketplace add xinux87\/Mcp_tasks_server/);
+		// La statusline va por una ruta estable, no por la carpeta de instalación del plugin.
+		assert.match(cuerpo, /~\/\.claude\/mcp-tareas\/statusline\.sh/);
+		assert.doesNotMatch(cuerpo, /plugins\/marketplaces/);
+		// Rotar el token no obliga a reinstalar.
+		assert.match(cuerpo, /--config token_terminal=/);
 		assert.match(cuerpo, /\/loop \/mcp-tareas:tareas/);
 		// La advertencia de Docker, que es la trampa de las direcciones detectadas.
 		assert.match(cuerpo, /Docker[\s\S]*máquina anfitriona/);

@@ -1,5 +1,5 @@
 {
-  "description": "Al arrancar la sesion vuelca la URL del servidor y el token del terminal a ~/.claude/mcp-tareas/config, para que el script de statusline pueda leerlos.",
+  "description": "Al arrancar la sesion copia el script de statusline a ~/.claude/mcp-tareas/statusline.sh, que es su ruta estable, y vuelca la URL del servidor y el token del terminal a ~/.claude/mcp-tareas/config para que ese script pueda leerlos.",
   "hooks": {
     "SessionStart": [
       {
