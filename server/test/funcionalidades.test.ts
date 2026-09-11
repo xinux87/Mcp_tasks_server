@@ -376,7 +376,7 @@ test("borrar una tarea se hace en cualquier columna, sin hijas, y se lleva su hi
 	}
 });
 
-test("una tarea que un terminal tiene en marcha no se borra hasta que esa fase cierre", () => {
+test("una tarea en doing que un terminal tiene en marcha también se borra", () => {
 	const banco = montar();
 	try {
 		const tarea = crearTareaHumana(banco.db, {
@@ -385,26 +385,13 @@ test("una tarea que un terminal tiene en marcha no se borra hasta que esa fase c
 			usuarioId: banco.xinux,
 		});
 		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
-
-		// Con el análisis dentro, borrarla dejaría al agente gastando tokens en
-		// una tarea que ya no existe.
 		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil, modelo: "sonnet" });
-		assert.equal(
-			codigoDe(() => borrarTarea(banco.db, { tareaId: tarea.id, actor: { usuarioId: banco.xinux } })),
-			"en_marcha",
-		);
-		assert.equal(exigirTarea(banco.db, tarea.id).titulo, "La que está dentro de un agente");
-
-		// Y la de ejecución frena igual: la marca no distingue de qué fase es.
 		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "plan" });
 		tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil, modelo: "opus" });
-		assert.equal(
-			codigoDe(() => borrarTarea(banco.db, { tareaId: tarea.id, actor: { usuarioId: banco.xinux } })),
-			"en_marcha",
-		);
+		assert.equal(exigirTarea(banco.db, tarea.id).estado, "doing");
 
-		// Cerrada la fase, ya no hay nadie dentro y se borra como cualquier otra.
-		comentarResultado(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "hecho\n\nCommit: ccccccc" });
+		// El humano manda: se borra aunque haya un agente dentro. Ese agente se
+		// entera al intentar escribir en ella.
 		borrarTarea(banco.db, { tareaId: tarea.id, actor: { usuarioId: banco.xinux } });
 		assert.equal(leerTarea(banco.db, tarea.id), undefined);
 	} finally {

@@ -1085,16 +1085,13 @@ export type BorradoDeTarea = {
  * Una tarea con hijas no se borra: primero se borran ellas. Un solo «sí» no
  * puede llevarse por delante siete tareas con su historia.
  *
- * Tampoco se borra la que un terminal tiene en marcha: el agente está gastando
- * tokens en ella y no se enteraría hasta intentar escribir, porque `novedades`
- * cuenta lo que cambió y no lo que dejó de existir.
+ * La que un terminal tiene en marcha sí se borra: el humano manda, y la
+ * confirmación le dice que ese trabajo se corta. El agente se entera al
+ * intentar escribir en ella.
  */
 export function borrarTarea(db: DatabaseSync, datos: BorradoDeTarea): Tarea {
 	return escribirContenido(db, (conexion, revision) => {
 		const tarea = exigirTarea(conexion, datos.tareaId);
-		if (tarea.enMarchaTerminalId !== null) {
-			throw new ErrorDeRegla("en_marcha", "Un terminal está trabajando la tarea: se podrá borrar cuando esa fase cierre.");
-		}
 		const hijas = sentencia(conexion, "SELECT COUNT(*) AS total FROM tareas WHERE padre_id = ?").get(tarea.id);
 		if (hijas !== undefined && entero(hijas, "total") > 0) {
 			throw new ErrorDeRegla("con_hijas", "La tarea tiene tareas colgando: borra primero las hijas.");

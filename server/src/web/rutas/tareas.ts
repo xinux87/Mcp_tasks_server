@@ -1062,28 +1062,6 @@ function hiloQueSeVa(comentarios: number): string {
 	return comentarios === 1 ? "Se va su hilo entero: 1 comentario." : `Se va su hilo entero: ${comentarios} comentarios.`;
 }
 
-/** Lo que se ve en vez de la confirmación cuando un terminal la tiene dentro. */
-function paginaEnMarcha(c: Context, tarea: Tarea, terminal: string): RespuestaHtml {
-	const id = formatearId(tarea.id);
-	const cuerpo = html`<section class="caja caja-estrecha">
-		<p>
-			No se puede borrar la tarea ${enlaceTarea(tarea.id)} <strong>${tarea.titulo}</strong>: ahora mismo la está
-			trabajando <strong>${terminal}</strong>.
-		</p>
-		<p class="silencio">Se podrá borrar cuando esa fase cierre.</p>
-		<div class="acciones"><a class="boton" href="/tareas/${id}">Volver a la ficha</a></div>
-	</section>`;
-	return c.html(
-		pagina({
-			titulo: "Borrar tarea",
-			usuario: usuarioActual(c),
-			vista: "tarea",
-			migas: [{ texto: "Tareas", href: "/tareas" }, { texto: id, href: `/tareas/${id}` }, { texto: "Borrar" }],
-			cuerpo,
-		}),
-	);
-}
-
 /**
  * La confirmación de un borrado, en su propia página: sin JavaScript, el
  * enlace de la ficha lleva aquí y aquí está el POST, como el borrado de un
@@ -1100,11 +1078,6 @@ function paginaBorrar(c: Context, deps: DependenciasWeb, tareaId: number): Respu
 	const enMarcha =
 		tarea.enMarchaTerminalId === null ? undefined : buscarTerminalPorId(deps.db, tarea.enMarchaTerminalId);
 	const dejanDeEsperar = dependientesDe(deps.db, tarea.id);
-	// Con un terminal dentro no hay nada que confirmar: la página lo dice y no
-	// ofrece el botón, que es lo que el POST rechazaría igualmente.
-	if (enMarcha !== undefined) {
-		return paginaEnMarcha(c, tarea, enMarcha.nombre);
-	}
 	const cuerpo = html`<section class="caja caja-estrecha">
 		<p>Se borra la tarea ${enlaceTarea(tarea.id)} <strong>${tarea.titulo}</strong>, que está en ${tarea.estado}.</p>
 		<ul>
@@ -1113,6 +1086,11 @@ function paginaBorrar(c: Context, deps: DependenciasWeb, tareaId: number): Respu
 				completa.consumo.totalConHijas === 0
 					? ""
 					: html`<li>Sus ${numeroLegible(completa.consumo.totalConHijas)} tokens de consumo dejan de contar.</li>`
+			}
+			${
+				enMarcha === undefined
+					? ""
+					: html`<li><strong>Ahora mismo la está trabajando ${enMarcha.nombre}</strong>: ese trabajo se corta.</li>`
 			}
 			${
 				dejanDeEsperar.length === 0
