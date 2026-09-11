@@ -192,6 +192,8 @@ export type TerminalListado = {
 	usuario: string;
 	nombre: string;
 	cuenta: string;
+	/** Cuántos subagentes lanza a la vez su bucle. */
+	agentes: number;
 	conectadoEn: string | null;
 	ultimaRevision: number | null;
 	usoJson: string | null;
@@ -202,7 +204,7 @@ export type TerminalListado = {
 /** Todos los terminales, activos primero y por orden de alta. */
 export function listarTerminales(db: DatabaseSync): TerminalListado[] {
 	const sql = `
-		SELECT t.id, t.usuario_id, u.nombre AS usuario, t.nombre, t.cuenta, t.conectado_en,
+		SELECT t.id, t.usuario_id, u.nombre AS usuario, t.nombre, t.cuenta, t.agentes, t.conectado_en,
 			t.ultima_revision, t.uso_json, t.creado, t.revocado_en
 		FROM terminales t
 		JOIN usuarios u ON u.id = t.usuario_id
@@ -215,6 +217,7 @@ export function listarTerminales(db: DatabaseSync): TerminalListado[] {
 			usuario: texto(fila, "usuario"),
 			nombre: texto(fila, "nombre"),
 			cuenta: texto(fila, "cuenta"),
+			agentes: entero(fila, "agentes"),
 			conectadoEn: textoOpcional(fila, "conectado_en"),
 			ultimaRevision: enteroOpcional(fila, "ultima_revision"),
 			usoJson: textoOpcional(fila, "uso_json"),
@@ -227,7 +230,25 @@ export type AltaTerminal = {
 	usuarioId: number;
 	nombre: string;
 	cuenta: string;
+	/** Cuántos subagentes lanza a la vez su bucle. Sin él, uno. */
+	agentes?: number | string;
 };
+
+/**
+ * Los agentes en paralelo de un terminal: un entero de 1 en adelante. Llega
+ * como texto desde el formulario de la web y como número desde el resto, así
+ * que se valida en un solo sitio. Sin valor, uno: el comportamiento de siempre.
+ */
+function agentesValidos(valor: number | string | undefined): number {
+	if (valor === undefined || (typeof valor === "string" && valor.trim() === "")) {
+		return 1;
+	}
+	const numero = typeof valor === "number" ? valor : Number(valor.trim());
+	if (!Number.isInteger(numero) || numero < 1) {
+		throw new ErrorDeRegla("agentes_invalido", "Los agentes en paralelo son un número entero de 1 en adelante.");
+	}
+	return numero;
+}
 
 /**
  * Alta de terminal desde la web. Devuelve el token en claro: es la única vez
@@ -242,8 +263,50 @@ export function altaTerminal(db: DatabaseSync, datos: AltaTerminal): TerminalCon
 	if (cuenta === "") {
 		throw new ErrorDeRegla("cuenta_vacia", "El terminal necesita la cuenta de origen de la sesión.");
 	}
+	const agentes = agentesValidos(datos.agentes);
 	// El terminal es del usuario de la sesión, que es también quien lo da de alta.
-	return crearTerminalConToken(db, datos.usuarioId, nombre, cuenta, { usuarioId: datos.usuarioId }).valor;
+	return crearTerminalConToken(db, datos.usuarioId, nombre, cuenta, { usuarioId: datos.usuarioId }, agentes).valor;
+}
+
+export type CambioAgentes = {
+	terminalId: number;
+	agentes: number | string;
+	actorId: number;
+};
+
+/**
+ * Cambia los agentes en paralelo de un terminal. No sube la revisión: es
+ * configuración del terminal, como rotar el token, y el bucle lo lee al
+ * registrarse, así que vale a partir de su siguiente sesión. El servidor no lo
+ * impone en `tomar_tarea`: quien lo respeta es el bucle.
+ */
+export function cambiarAgentes(db: DatabaseSync, datos: CambioAgentes): TerminalListado {
+	return enTransaccion(db, (conexion) => {
+		const terminal = listarTerminales(conexion).find((candidato) => candidato.id === datos.terminalId);
+		if (terminal === undefined) {
+			throw new ErrorDeRegla("terminal_inexistente", `No existe el terminal ${datos.terminalId}.`);
+		}
+		if (terminal.revocadoEn !== null) {
+			throw new ErrorDeRegla(
+				"terminal_revocado",
+				`El terminal «${terminal.nombre}» está revocado: ya no va a tomar ninguna tarea.`,
+			);
+		}
+		const agentes = agentesValidos(datos.agentes);
+		if (agentes === terminal.agentes) {
+			return terminal;
+		}
+		sentencia(conexion, "UPDATE terminales SET agentes = ? WHERE id = ?").run(agentes, terminal.id);
+		registrarActividad(conexion, {
+			actor: { usuarioId: datos.actorId },
+			accion: "cambiar_agentes",
+			objeto: "terminal",
+			objetoId: terminal.id,
+			objetoNombre: terminal.nombre,
+			detalle: `${terminal.agentes} → ${agentes}`,
+		});
+		return { ...terminal, agentes };
+	});
 }
 
 /** Los terminales que todavía valen: los que se pueden asignar a una tarea. */

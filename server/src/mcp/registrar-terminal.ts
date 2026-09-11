@@ -16,7 +16,7 @@ export function registrarHerramientaRegistrarTerminal(server: McpServer, db: Dat
 		{
 			title: "Registrar terminal",
 			description:
-				"Marca este terminal como conectado. Devuelve su nombre, su cuenta de origen y la revisión actual del servidor.",
+				"Marca este terminal como conectado. Devuelve su nombre, su cuenta de origen, cuántos agentes en paralelo asume y la revisión actual del servidor.",
 			inputSchema: z.object({}),
 		},
 		async () => {
@@ -24,7 +24,14 @@ export function registrarHerramientaRegistrarTerminal(server: McpServer, db: Dat
 			// revisión, así que la actual se lee aparte.
 			const terminal = marcarTerminalConectado(db, terminalId);
 			const revision = revisionActual(db);
-			const texto = [`terminal: ${terminal.nombre}`, `cuenta: ${terminal.cuenta}`, `revision: ${revision}`].join("\n");
+			const texto = [
+				`terminal: ${terminal.nombre}`,
+				`cuenta: ${terminal.cuenta}`,
+				// Cuántos subagentes puede lanzar a la vez el bucle. Lo respeta él:
+				// el servidor no lo impone al tomar una tarea.
+				`agentes: ${terminal.agentes}`,
+				`revision: ${revision}`,
+			].join("\n");
 			return { content: [{ type: "text", text: texto }] };
 		},
 	);

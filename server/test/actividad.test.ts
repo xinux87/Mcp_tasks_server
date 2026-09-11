@@ -10,6 +10,7 @@ import {
 	altaTerminal,
 	borrarTerminal,
 	borrarUsuario,
+	cambiarAgentes,
 	cambiarColor,
 	cambiarPassword,
 	listarUsuarios,
@@ -219,6 +220,59 @@ test("los terminales dejan rastro de su alta y de su revocación", () => {
 
 		// Los terminales del banco se crearon sin actor: no tienen rastro.
 		assert.deepEqual(acciones(banco.db, banco.portatil, "terminal"), []);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("los agentes en paralelo se eligen en el alta y se cambian después, sin subir la revisión", () => {
+	const banco = montar();
+	try {
+		// En el alta, con un entero de 1 en adelante; sin él, uno.
+		const tres = altaTerminal(banco.db, {
+			usuarioId: banco.xinux,
+			nombre: "torre-xinux",
+			cuenta: "xinux@ejemplo.com",
+			agentes: 3,
+		});
+		assert.equal(tres.terminal.agentes, 3);
+		assert.equal(
+			altaTerminal(banco.db, { usuarioId: banco.xinux, nombre: "otra", cuenta: "xinux@ejemplo.com" }).terminal.agentes,
+			1,
+		);
+		for (const agentes of [0, -1, 1.5, "x"] as (number | string)[]) {
+			assert.equal(
+				codigoDe(() => altaTerminal(banco.db, { usuarioId: banco.xinux, nombre: "mala", cuenta: "c", agentes })),
+				"agentes_invalido",
+				`se esperaba agentes_invalido con ${agentes}`,
+			);
+		}
+
+		// Cambiarlo es configuración del terminal: deja rastro y nadie más lo ve.
+		const antes = revisionActual(banco.db);
+		assert.equal(cambiarAgentes(banco.db, { terminalId: banco.portatil, agentes: "3", actorId: banco.xinux }).agentes, 3);
+		assert.equal(revisionActual(banco.db), antes);
+		assert.equal(detalleDe(banco.db, "terminal", banco.portatil, "cambiar_agentes"), "1 → 3");
+
+		// El mismo valor no escribe nada: arrastrar el formulario no es un cambio.
+		cambiarAgentes(banco.db, { terminalId: banco.portatil, agentes: 3, actorId: banco.xinux });
+		assert.deepEqual(acciones(banco.db, banco.portatil, "terminal"), ["cambiar_agentes"]);
+
+		assert.equal(
+			codigoDe(() => cambiarAgentes(banco.db, { terminalId: banco.portatil, agentes: 0, actorId: banco.xinux })),
+			"agentes_invalido",
+		);
+		assert.equal(
+			codigoDe(() => cambiarAgentes(banco.db, { terminalId: 999, agentes: 2, actorId: banco.xinux })),
+			"terminal_inexistente",
+		);
+
+		// Un terminal revocado ya no va a tomar nada: no se le cambian.
+		revocarTerminal(banco.db, tres.terminal.id, banco.xinux);
+		assert.equal(
+			codigoDe(() => cambiarAgentes(banco.db, { terminalId: tres.terminal.id, agentes: 2, actorId: banco.xinux })),
+			"terminal_revocado",
+		);
 	} finally {
 		banco.cerrar();
 	}

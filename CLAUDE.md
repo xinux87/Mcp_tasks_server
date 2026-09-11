@@ -163,7 +163,7 @@ Una funcionalidad es lo que pide el humano en lenguaje de negocio: qué quiere c
 - **Partes añadidas después.** En `doing`, el humano puede crear más partes desde la web con la funcionalidad como padre; nacen en `backlog` y él las pasa a `prepared`. Las hijas de trabajo que creen los agentes de una parte cuelgan de la parte, no de la funcionalidad, y no cuentan para cerrarla.
 - **Vueltas atrás.** De `prepared` a `backlog` repite el análisis y deja las partes en `backlog` para que el humano las borre o las conserve. De `done` a `doing` con nota, cuando lo entregado no vale: el humano crea las partes que falten.
 - **En el índice y en el frontmatter** se ve como `tipo: funcionalidad`, y la línea de índice lleva `funcionalidad 3/7` justo después del estado: partes cerradas sobre partes totales. No lleva segmento `ejecucion:`. El frontmatter añade `rama` si la tiene y `partes: 7` y `partesCerradas: 3`.
-- **Borrar.** Una tarea se puede borrar desde la web y el CLI esté en la columna que esté, con confirmación. Es lo que permite podar una descomposición antes de aprobarla y también la salida de una tarea que ya no va a ninguna parte. Se lleva por delante su hilo entero, su consumo y sus dependencias en los dos sentidos; se quedan el rastro de actividad, con el título escrito como texto, y el número, que no se vuelve a repartir. **Una tarea con hijas no se borra** (`con_hijas`): primero se borran ellas, que ahora se puede hacer de abajo arriba. La confirmación dice qué se pierde: cuántos comentarios tiene el hilo, qué terminal la está trabajando si la tiene en marcha, y qué tareas dejan de esperarla. Si era la última parte pendiente de una funcionalidad, borrarla la cierra.
+- **Borrar.** Una tarea se puede borrar desde la web y el CLI esté en la columna que esté, con confirmación. Es lo que permite podar una descomposición antes de aprobarla y también la salida de una tarea que ya no va a ninguna parte. Se lleva por delante su hilo entero, su consumo y sus dependencias en los dos sentidos; se quedan el rastro de actividad, con el título escrito como texto, y el número, que no se vuelve a repartir. **Una tarea con hijas no se borra** (`con_hijas`): primero se borran ellas, que ahora se puede hacer de abajo arriba. **Una tarea que un terminal tiene en marcha no se borra** (`en_marcha`), en cualquiera de las dos fases: el agente está gastando tokens en ella y no se enteraría hasta intentar escribir, porque `novedades` cuenta lo que cambió, no lo que dejó de existir. Se borra cuando esa fase cierre. Las hijas de trabajo nacen en marcha, así que quedan cubiertas igual; por eso no hace falta que `novedades` avise de borrados. La página de confirmación, en ese caso, dice qué terminal la trabaja y no ofrece el botón. La confirmación normal dice qué se pierde: cuántos comentarios tiene el hilo y qué tareas dejan de esperarla. Si era la última parte pendiente de una funcionalidad, borrarla la cierra.
 - **Una funcionalidad no admite hijas de trabajo** (`funcionalidad_sin_ejecucion`): sin ese corte, una hija colgada por error contaría como parte y la funcionalidad no podría cerrarse. `partesCerradas` cuenta solo las partes `finished`. Aprobar con preguntas abiertas falla con `tarea_bloqueada`.
 - **Una parte creada a mano por el humano** con la funcionalidad como padre hereda la rama igual que las que crea el análisis.
 
@@ -350,20 +350,21 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 |---|---|
 | `GET /login`, `POST /login`, `POST /logout` | Sesión |
 | `GET /` | Redirige a `/tareas` |
-| `GET /tareas` | Vista lista: tareas agrupadas por estado en el orden de las columnas, con filtros por estado, terminal y marca |
+| `GET /tareas` | Vista lista: tareas agrupadas por estado en el orden de las columnas, con filtros por estado, terminal y marca. Ocupa todo el ancho, como el kanban (`ancho: "completo"`): una tabla de seis columnas no cabe bien en 60 rem |
 | `GET /tareas/kanban` | Vista kanban con las cinco columnas y arrastre entre columnas y dentro de ellas |
 | `GET /tareas/nueva`, `POST /tareas` | Crear una tarea en `backlog` |
 | `GET /tareas/T-0042` | Ficha: campos, descripción, hijas, hilo, preguntas abiertas con formulario de respuesta, nota, acciones según estado, consumo |
 | `POST /tareas/T-0042/editar` | Solo en `backlog`: título, descripción, asignaciones, `autoejecucion` |
 | `POST /tareas/T-0042/mover` | Las transiciones del humano, con nota cuando es vuelta atrás |
 | `POST /tareas/T-0042/aprobar` | Aprueba la ejecución cuando `autoejecucion` está desactivada; en una funcionalidad, aprueba la descomposición: pasa a `doing` y sus partes en `backlog` a `prepared` |
-| `POST /tareas/T-0042/borrar` | Borra la tarea en cualquier estado, con confirmación en página aparte |
+| `POST /tareas/T-0042/borrar` | Borra la tarea en cualquier estado salvo si un terminal la tiene en marcha, con confirmación en página aparte |
 | `GET /funcionalidades` | Las funcionalidades como filas: estado, progreso en partes cerradas sobre total, bloqueadas y esperando, consumo acumulado, rama y quién la creó |
 | `GET /tareas/T-0050` de una funcionalidad | Su ficha es su propio tablero: encima la descripción, el hilo de decisiones y el botón de aprobar la descomposición; debajo el kanban solo con sus partes, cada una con sus dependencias |
 | `POST /tareas/T-0042/responder/P1` | Guarda la opción elegida por su texto y la nota |
 | `POST /tareas/T-0042/nota` | Nota del humano en el hilo |
 | `POST /tareas/T-0042/orden` | Reordena dentro de la columna, o cambia de columna cuando la transición es del humano |
 | `GET /terminales`, `POST /terminales`, `POST /terminales/:id/revocar`, `POST /terminales/:id/rotar`, `POST /terminales/:id/borrar` | Terminales: lista con uso disponible y conexión; alta que enseña el token una sola vez junto con su enlace de conexión y el tutorial; revocación; rotación del token; borrado |
+| `POST /terminales/:id/agentes` | Cambia cuántos agentes en paralelo asume el terminal. Ver «Agentes en paralelo» |
 | `GET /terminales/conectar` | El tutorial de conexión. Con `?token=` lleva ese token puesto y no exige sesión; sin él, `<token>` como marcador y sesión como el resto de la web |
 | `GET /usuarios`, `POST /usuarios`, `POST /usuarios/:id/borrar`, `POST /usuarios/contrasena` | Usuarios: alta con color, baja (nunca el último) y cambio de la propia contraseña |
 | `POST /usuarios/:id/color` | Cambia el color de un usuario |
@@ -449,7 +450,7 @@ Tipografía `ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helve
 - **Ficha**: migas `Tareas › T-0042`, título, etiquetas de estado y marcas, y las acciones hacia delante a la derecha (Pasar a preparadas, Aprobar ejecución, Finalizar). Después el bloque de **propiedades**: filas de dos columnas con el nombre en `--texto-suave` y el valor al lado: Estado, Tipo, Análisis, Ejecución, Autoejecución, Padre, Orden, Creada (chip de quien la creó, o el terminal si fue una propuesta, y la fecha), Revisión. Después Descripción, Hijas (cada una con su etiqueta de estado), Consumo, Hilo, Nota, Actividad. Las **vueltas atrás** (volver a backlog, devolver a doing), **Editar** y **Borrar** van al final como `<details>`, porque son excepcionales.
 - **Hilo**: cada comentario es una tarjeta con cabecera de chip del autor, etiqueta del tipo, `P<n>` cuando toca y la fecha; debajo el cuerpo renderizado; el formulario de respuesta dentro de la tarjeta de la pregunta abierta, con las opciones como tarjetas seleccionables y la recomendada marcada.
 - **Nueva tarea** y **Editar**: una columna, etiquetas encima de los campos; Análisis y Ejecución como dos tarjetas lado a lado a partir de 48 rem.
-- **Terminales**: tabla con chip del dueño, columna «Creado por» y, si está revocado, «Revocado por». El uso disponible se enseña por ventana como barra fina (`data-nivel` de 0 a 10, en rojo con 2 o menos) con el porcentaje disponible y la hora de reinicio; `resets_at` se acepta en segundos desde la época o en ISO 8601. «Revocar» va como enlace rojo discreto en la fila, no como botón: con diez columnas el botón no cabía.
+- **Terminales**: tabla con chip del dueño, columna «Creado por» y, si está revocado, «Revocado por». El uso disponible se enseña por ventana como barra fina (`data-nivel` de 0 a 10, en rojo con 2 o menos) con el porcentaje disponible y la hora de reinicio; `resets_at` se acepta en segundos desde la época o en ISO 8601. «Revocar» va como enlace rojo discreto en la fila, no como botón: con diez columnas el botón no cabía. La columna «Agentes» lleva el número en un formulario mínimo a `POST /terminales/:id/agentes` (un `<input type="number" min="1">` y un botón «Guardar»), y el alta pide el mismo valor con 1 preseleccionado.
 - **La pestaña de la ficha** lleva el título de la tarea; el id se lee en las migas.
 - **Usuarios**: tabla con chip, fecha de alta, «Alta por» y acciones. El alta lleva un selector de color con las ocho muestras como botones de radio, con la automática preseleccionada. Cada fila lleva el mismo selector en un formulario a `POST /usuarios/:id/color`.
 - **Actividad**: las últimas cien acciones, agrupadas por día; cada línea es chip, frase de la acción, enlace al objeto y hora.
@@ -499,6 +500,7 @@ CREATE INDEX actividad_por_objeto ON actividad (objeto, objeto_id, id);
 | `alta_terminal` | terminal | `cuenta xinux@ejemplo.com, de xinux` |
 | `revocar_terminal` | terminal | vacío |
 | `rotar_terminal` | terminal | vacío |
+| `cambiar_agentes` | terminal | `1 → 3` |
 | `baja_terminal` | terminal | vacío |
 
 - **Se escribe en la misma transacción que la acción**, desde las funciones de `src/db/` con `registrarActividad` de `src/db/actividad.ts`. Nunca sube la revisión por sí sola: la acción ya lo hace si es contenido, y las que no lo son (contraseña, color) tampoco lo hacen por dejar rastro.
@@ -536,6 +538,17 @@ Cada terminal que se conecta al servidor se identifica con:
 - **Nombre** del terminal.
 - **Cuenta de origen** de la sesión.
 - **Uso disponible** en esa cuenta. Lo reporta el plugin leyéndolo de la sesión local de Claude Code; el servidor solo lo recibe y lo muestra, nunca lo calcula.
+- **Agentes en paralelo** que asume. Ver el apartado siguiente.
+
+### Agentes en paralelo
+
+Cuántos subagentes lanza a la vez el bucle de ese terminal. Lo fija el humano por terminal, porque depende de la máquina y de la cuenta.
+
+- **Columna `terminales.agentes`**, `INTEGER NOT NULL DEFAULT 1 CHECK (agentes >= 1)`. La migración la añade con `ALTER TABLE`; los terminales existentes quedan a 1.
+- **Se elige en el alta y se cambia desde la fila** de la lista con `POST /terminales/:id/agentes`. Un valor que no sea un entero de 1 en adelante falla con `agentes_invalido`. Deja rastro como `cambiar_agentes` y **no sube la revisión**: es configuración del terminal, como rotar el token.
+- **El terminal lo lee en `registrar_terminal`**, que devuelve una línea `agentes: 3` tras la cuenta. El bucle lo apunta al arrancar la sesión; cambiarlo desde la web vale a partir de la siguiente sesión de ese terminal. Basta: no merece una línea más en cada `novedades`.
+- **En cada vuelta el bucle toma hasta ese número de candidatas**, en el orden en que `novedades` las devuelve, y lanza sus subagentes en un mismo bloque para que corran a la vez. Espera a que terminen todos y reporta el consumo de cada uno con su id y su fase. Con 1, es el comportamiento de siempre.
+- **El servidor no lo impone** en `tomar_tarea`: una fase que se quedara en marcha por un subagente caído bloquearía al terminal entero contra un tope que solo el bucle conoce. El bucle es quien lo respeta.
 
 Verificado contra la documentación de Claude Code:
 
@@ -586,7 +599,7 @@ Todas devuelven Markdown. Las listas devuelven un índice de una línea por elem
 
 | Operación | Quién la llama | Entrada | Salida |
 |---|---|---|---|
-| `registrar_terminal` | el plugin al arrancar la sesión | nada; el terminal sale del token | nombre del terminal, cuenta y revisión actual; marca el terminal como conectado |
+| `registrar_terminal` | el plugin al arrancar la sesión | nada; el terminal sale del token | nombre del terminal, cuenta, agentes en paralelo y revisión actual; marca el terminal como conectado |
 | `reportar_consumo` | el bucle, al terminar cada subagente de fase | id de tarea, fase, modelo, tokens totales, llamadas a herramientas, duración | confirmación; el servidor suma al consumo de la tarea y al de sus ancestros |
 
 ### API HTTP, fuera del MCP

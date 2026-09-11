@@ -191,7 +191,9 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		// «Creada por» enseña el chip de quien la creó, con su color.
 		assert.match(backlog, /<span class="chip color-\w+"><span class="inicial">X<\/span>xinux<\/span>/);
 		assert.match(grupo(cuerpoLista, "Preparadas"), /Ninguna\./);
-		// La lista arranca con «cabeceraPagina» y su acción principal.
+		// La lista arranca con «cabeceraPagina» y su acción principal, y su tabla
+		// ocupa todo el ancho como el kanban.
+		assert.match(cuerpoLista, /<div class="dentro dentro-completo">/);
 		assert.match(cuerpoLista, /<header class="cabecera-pagina">/);
 		assert.match(cuerpoLista, /<a class="boton principal" href="\/tareas\/nueva">Nueva tarea<\/a>/);
 		// Sin filtros puestos no hay nada que quitar.
@@ -823,6 +825,47 @@ test("la página del terminal creado ofrece el enlace de conexión con el token 
 			new RegExp(`<code class="token">http://192\\.168\\.50\\.5:3000/terminales/conectar\\?token=${token}</code>`),
 		);
 		assert.match(cuerpo, /quien lo tenga, tiene el terminal/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("los agentes en paralelo se eligen en el alta y se cambian desde la fila", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		await pedir(montaje, "/terminales", {
+			cookie,
+			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com", agentes: "2" },
+		});
+		const id = listarTerminales(montaje.db)[0]?.id ?? 0;
+		assert.equal(listarTerminales(montaje.db)[0]?.agentes, 2);
+
+		// La fila lo enseña en su propio formulario, con el valor de ahora.
+		const lista = await (await pedir(montaje, "/terminales", { cookie })).text();
+		assert.match(lista, /<th>Agentes<\/th>/);
+		assert.match(lista, new RegExp(`<form class="cambio-agentes" method="post" action="/terminales/${id}/agentes">`));
+		assert.match(lista, /<input type="number" name="agentes" min="1" value="2"/);
+
+		const antes = revisionActual(montaje.db);
+		const cambio = await pedir(montaje, `/terminales/${id}/agentes`, { cookie, formulario: { agentes: "4" } });
+		assert.equal(cambio.status, 302);
+		assert.equal(listarTerminales(montaje.db)[0]?.agentes, 4);
+		// Es configuración del terminal, como rotar el token: ningún agente lo ve.
+		assert.equal(revisionActual(montaje.db), antes);
+		assert.match(await (await pedir(montaje, "/terminales", { cookie })).text(), /name="agentes" min="1" value="4"/);
+
+		// Con el usuario de la sesión, en el rastro del terminal.
+		const rastro = actividadDe(montaje.db, "terminal", id).filter((fila) => fila.accion === "cambiar_agentes");
+		assert.equal(rastro.length, 1);
+		assert.equal(rastro[0]?.usuarioNombre, "xinux");
+		assert.equal(rastro[0]?.detalle, "2 → 4");
+
+		// Un valor que no es un entero de 1 en adelante vuelve a la lista con el aviso.
+		const malo = await pedir(montaje, `/terminales/${id}/agentes`, { cookie, formulario: { agentes: "0" } });
+		assert.equal(malo.status, 422);
+		assert.match(await malo.text(), /número entero de 1 en adelante/);
+		assert.equal(listarTerminales(montaje.db)[0]?.agentes, 4);
 	} finally {
 		await montaje.cerrar();
 	}

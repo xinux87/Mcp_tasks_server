@@ -7,6 +7,7 @@ import { actividadDe, altaPor } from "../../db/actividad.ts";
 import {
 	altaTerminal,
 	borrarTerminal,
+	cambiarAgentes,
 	listarTerminales,
 	revocarTerminal,
 	rotarTerminal,
@@ -172,6 +173,23 @@ function insigniaTerminal(terminal: TerminalListado): Html {
 	return html`${etiqueta("revocado", "gris")}<span class="pequeno silencio">${fechaLegible(terminal.revocadoEn)}</span>`;
 }
 
+/**
+ * Los agentes en paralelo se cambian desde la propia fila, sin salir de la
+ * lista. Un terminal revocado no los cambia: ya no va a tomar nada.
+ */
+function formularioAgentes(terminal: TerminalListado): Html {
+	if (terminal.revocadoEn !== null) {
+		return html`<span class="silencio">${terminal.agentes}</span>`;
+	}
+	// El rótulo va en `aria-label`: la cabecera de la columna ya dice qué es, y
+	// una etiqueta visible por fila repetiría «Agentes» diez veces.
+	return html`<form class="cambio-agentes" method="post" action="/terminales/${terminal.id}/agentes">
+			<input type="number" name="agentes" min="1" value="${terminal.agentes}" required
+				aria-label="Agentes en paralelo de ${terminal.nombre}">
+			<button type="submit" class="pequeno">Guardar</button>
+		</form>`;
+}
+
 function filaTerminal(db: DatabaseSync, terminal: TerminalListado, colorDe: ColorDe): Html {
 	const revocado = terminal.revocadoEn !== null;
 	return html`<tr>
@@ -179,6 +197,7 @@ function filaTerminal(db: DatabaseSync, terminal: TerminalListado, colorDe: Colo
 			<td class="pequeno celda-cuenta">${terminal.cuenta}</td>
 			<td>${chipUsuario(terminal.usuario, colorDe(terminal.usuario))}</td>
 			<td>${insigniaTerminal(terminal)}</td>
+			<td>${formularioAgentes(terminal)}</td>
 			<td class="pequeno">${terminal.conectadoEn === null ? "nunca" : fechaLegible(terminal.conectadoEn)}</td>
 			<td class="numero pequeno">${terminal.ultimaRevision === null ? SIN_DATO : terminal.ultimaRevision}</td>
 			<td class="celda-uso">${usoLegible(terminal.usoJson)}</td>
@@ -222,6 +241,11 @@ function tarjetaNuevoTerminal(): Html {
 					<input type="text" name="cuenta" placeholder="xinux@ejemplo.com" required>
 					<span class="ayuda">La cuenta de Claude Code de esa máquina. La escribes tú: el servidor no puede leerla, y es de la que sale el uso disponible.</span>
 				</label>
+				<label>
+					<span>Agentes en paralelo</span>
+					<input type="number" name="agentes" min="1" value="1" required>
+					<span class="ayuda">Cuántos subagentes lanza a la vez el bucle de ese terminal. Se cambia después desde su fila.</span>
+				</label>
 				<button type="submit" class="principal">Crear terminal</button>
 			</form>
 			<p class="pequeno silencio">
@@ -240,7 +264,7 @@ function paginaTerminales(c: Context, deps: DependenciasWeb, aviso: string | nul
 					<table class="tabla-terminales">
 						<thead>
 							<tr>
-								<th>Nombre</th><th>Cuenta</th><th>Dueño</th><th>Estado</th>
+								<th>Nombre</th><th>Cuenta</th><th>Dueño</th><th>Estado</th><th>Agentes</th>
 								<th>Conectado</th><th class="numero">Última revisión</th><th>Uso disponible</th>
 								<th>Creado por</th><th>Revocado por</th><th></th>
 							</tr>
@@ -458,6 +482,7 @@ export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void
 				usuarioId: usuarioActual(c).id,
 				nombre: campo(formulario, "nombre"),
 				cuenta: campo(formulario, "cuenta"),
+				agentes: campo(formulario, "agentes"),
 			});
 			return paginaToken(c, deps, creado, "Terminal creado");
 		} catch (error) {
@@ -470,6 +495,19 @@ export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void
 	// que `/terminales/:id/...` por claridad; no chocan, porque esas llevan un
 	// segmento más.
 	app.get("/terminales/conectar", (c) => paginaConectar(c, deps, usuarioActual(c), null));
+
+	// El único cambio que se hace desde la propia fila: no destruye nada y no
+	// merece una página de confirmación.
+	app.post("/terminales/:id/agentes", async (c) => {
+		const id = Number.parseInt(c.req.param("id") ?? "", 10);
+		const formulario = await leerFormulario(c);
+		try {
+			cambiarAgentes(deps.db, { terminalId: id, agentes: campo(formulario, "agentes"), actorId: usuarioActual(c).id });
+			return c.redirect("/terminales", 302);
+		} catch (error) {
+			return paginaTerminales(c, deps, mensajeDeRegla(error));
+		}
+	});
 
 	// Sin JavaScript: el enlace de la tabla lleva a esta página y aquí está el POST.
 	app.get("/terminales/:id/rotar", (c) => {

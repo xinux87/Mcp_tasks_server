@@ -156,6 +156,7 @@ const FRASE_ACCION: Record<string, string | undefined> = {
 	cambiar_color: "cambió el color de",
 	alta_terminal: "creó el terminal",
 	rotar_terminal: "rotó el token del terminal",
+	cambiar_agentes: "cambió los agentes en paralelo del terminal",
 	revocar_terminal: "revocó el terminal",
 	baja_terminal: "borró el terminal",
 };

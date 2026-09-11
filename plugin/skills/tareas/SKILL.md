@@ -1,6 +1,6 @@
 ---
 name: tareas
-description: Una vuelta del bucle del agente de tareas. Sincroniza con el servidor MCP, y si hay una tarea para este terminal la analiza o la ejecuta con un subagente y reporta su consumo. Se arranca con /loop /mcp-tareas:tareas.
+description: Una vuelta del bucle del agente de tareas. Sincroniza con el servidor MCP, y si hay tareas para este terminal las analiza o las ejecuta con un subagente cada una y reporta su consumo. Se arranca con /loop /mcp-tareas:tareas.
 argument-hint: "[id de tarea opcional]"
 allowed-tools:
   - Agent
@@ -83,9 +83,11 @@ plugin. Si esa variable no está definida usa `~/.claude/mcp-tareas/revision`.
    no has llamado a `registrar_terminal` en esta conversación, lo es.
 
    Si lo es, llama a `registrar_terminal`. No lleva entrada; el terminal sale del
-   token. Devuelve el nombre del terminal, la cuenta y la revisión actual.
-   **Apunta el nombre del terminal**, lo necesitas en el paso 3 para saber qué
-   tareas son tuyas.
+   token. Devuelve el nombre del terminal, la cuenta, sus `agentes` y la revisión
+   actual. **Apunta el nombre del terminal**, lo necesitas en el paso 3 para
+   saber qué tareas son tuyas, y **apunta `agentes`**: es cuántas tareas puedes
+   trabajar a la vez en una vuelta. Si no viene esa línea, es 1. Vale para toda
+   la sesión: cambiarlo en la web se nota en la siguiente.
 
    Ahora decide con qué revisión sigues:
    - Si `${CLAUDE_PLUGIN_ROOT}/scripts/revision.sh leer` imprime un número, este
@@ -150,53 +152,57 @@ no lleva bloque `ejecucion:` y su línea de índice tampoco. Al escribir el
 comentario `analisis` el servidor la pasa él solo a `done`: no la ejecutes
 después ni le cambies el estado a mano.
 
-**Una tarea por vuelta como máximo.** Si sale más de una candidata, quédate con
-la que aparezca más arriba en la salida de `novedades`: ese orden es la prioridad
-que ha puesto el humano. Las demás esperan a la vuelta siguiente. Es a propósito:
-así el humano ve avance de una en una y el consumo queda bien atribuido.
+**Hasta `agentes` tareas por vuelta.** Es el número que apuntaste al registrar
+el terminal; con `agentes: 1`, una sola. Si salen más candidatas que ese número,
+quédate con las primeras en el orden de la salida de `novedades`: ese orden es la
+prioridad que ha puesto el humano. Las demás esperan a la vuelta siguiente.
 
-## Paso 4. Tomar la fase y lanzar el subagente
+## Paso 4. Tomar las fases y lanzar los subagentes
 
-1. Llama a `tomar_tarea` con el id, la fase (`analisis` o `ejecucion`) y
-   `modelo`: el modelo con el que vas a lanzar el subagente en el punto 2, que
-   es el del frontmatter de esa fase o, si viene vacío o no lo reconoces, el de
-   reserva (`sonnet` para análisis, `opus` para ejecución). Si la fase no tenía
-   modelo asignado, el que mandes queda fijado ahí, y así firma los comentarios
-   y cuadra con el consumo.
+1. Para **cada** candidata, llama a `tomar_tarea` con el id, la fase (`analisis`
+   o `ejecucion`) y `modelo`: el modelo con el que vas a lanzar su subagente en
+   el punto 2, que es el del frontmatter de esa fase o, si viene vacío o no lo
+   reconoces, el de reserva (`sonnet` para análisis, `opus` para ejecución). Si
+   la fase no tenía modelo asignado, el que mandes queda fijado ahí, y así firma
+   los comentarios y cuadra con el consumo.
    - Si devuelve el error `fase_tomada`, esa fase ya tiene otro terminal
-     responsable: no insistas, di que la tarea está tomada y termina la vuelta.
+     responsable: no insistas con ella. Descártala y sigue con las demás; si no
+     queda ninguna, di que estaban tomadas y termina la vuelta.
    - Si devuelve `modelo_no_coincide`, la fase ya tiene otro modelo asignado:
      usa el que diga el mensaje, tanto para volver a llamar a `tomar_tarea` como
      para lanzar el subagente.
    - `tomar_tarea` con fase `ejecucion` pasa la tarea a `doing` ella sola. No
      cambies el estado a mano.
-2. Lanza **un** subagente con la herramienta Agent:
+2. Lanza un subagente por cada tarea que hayas tomado, **todos en un mismo
+   bloque de llamadas a Agent**, para que corran a la vez. Cada uno:
    - `subagent_type`: `general-purpose`.
    - `model`: el del frontmatter de la fase que toca. El mapeo es directo:
      `opus` → `opus`, `sonnet` → `sonnet`, `haiku` → `haiku`, `fable` → `fable`.
      Si el campo viene vacío o con un valor que no reconoces, usa `sonnet` para
      análisis y `opus` para ejecución, y dilo en tu línea de cierre.
    - `prompt`: la plantilla que corresponda, de las tres de más abajo, con los
-     huecos rellenos.
-3. Espera a que termine. No lances dos subagentes en la misma vuelta.
+     huecos rellenos con los de **esa** tarea.
+3. Espera a que terminen todos. No lances más subagentes de los que te permite
+   `agentes`: con 1 es uno solo, y hasta la vuelta siguiente no hay otro.
 
 ## Paso 5. Reportar el consumo
 
-Cuando el subagente termina, Claude Code te entrega un aviso de finalización con
+Cuando un subagente termina, Claude Code te entrega un aviso de finalización con
 sus **tokens totales**, sus **llamadas a herramientas** y su **duración**. Llama
-a `reportar_consumo` con:
+a `reportar_consumo` **una vez por subagente**, con:
 
-- el id de la tarea,
+- el id de la tarea que trabajó,
 - la fase (`analisis` o `ejecucion`),
-- el modelo con el que lanzaste el subagente,
-- y esas tres cifras **copiadas tal cual del aviso**.
+- el modelo con el que lo lanzaste,
+- y esas tres cifras **copiadas tal cual de su aviso**.
 
-No las estimes, no las redondees, no las calcules. Si el aviso no trae alguna de
-las tres, manda las que sí trae y dilo en tu línea de cierre; un número inventado
-es peor que un hueco.
+No las estimes, no las redondees, no las calcules, y no sumes las de varios
+subagentes: cada tarea carga con lo suyo. Si el aviso no trae alguna de las tres,
+manda las que sí trae y dilo en tu línea de cierre; un número inventado es peor
+que un hueco.
 
-Después, cierra el turno con **una línea**: qué tarea trabajaste, en qué fase, con
-qué modelo y cómo acabó.
+Después, cierra el turno con **una línea**, con una tarea por frase: qué tarea
+trabajaste, en qué fase, con qué modelo y cómo acabó.
 
 ---
 

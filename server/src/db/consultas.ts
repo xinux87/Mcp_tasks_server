@@ -34,6 +34,8 @@ export type Terminal = {
 	nombre: string;
 	cuenta: string;
 	tokenHash: string;
+	/** Cuántos subagentes lanza a la vez su bucle. Lo respeta el bucle, no el servidor. */
+	agentes: number;
 	conectadoEn: string | null;
 	ultimaRevision: number | null;
 	usoJson: string | null;
@@ -71,6 +73,7 @@ function comoTerminal(fila: Record<string, unknown>): Terminal {
 		nombre: texto(fila, "nombre"),
 		cuenta: texto(fila, "cuenta"),
 		tokenHash: texto(fila, "token_hash"),
+		agentes: entero(fila, "agentes"),
 		conectadoEn: textoOpcional(fila, "conectado_en"),
 		ultimaRevision: enteroOpcional(fila, "ultima_revision"),
 		usoJson: textoOpcional(fila, "uso_json"),
@@ -141,7 +144,7 @@ export function crearUsuario(
 // --- terminales --------------------------------------------------------------
 
 const COLUMNAS_TERMINAL =
-	"id, usuario_id, nombre, cuenta, token_hash, conectado_en, ultima_revision, uso_json, creado, revocado_en";
+	"id, usuario_id, nombre, cuenta, token_hash, agentes, conectado_en, ultima_revision, uso_json, creado, revocado_en";
 
 export function buscarTerminalPorId(db: DatabaseSync, id: number): Terminal | undefined {
 	const fila = sentencia(db, `SELECT ${COLUMNAS_TERMINAL} FROM terminales WHERE id = ?`).get(id);
@@ -173,12 +176,14 @@ export function crearTerminal(
 	cuenta: string,
 	tokenHash: string,
 	actor?: Actor,
+	/** Ya validado por quien llama. Sin él, el de siempre: un subagente por vuelta. */
+	agentes = 1,
 ): ConRevision<Terminal> {
 	return enTransaccionConRevision(db, (conexion) => {
 		const cambios = sentencia(
 			conexion,
-			"INSERT INTO terminales (usuario_id, nombre, cuenta, token_hash, creado) VALUES (?, ?, ?, ?, ?)",
-		).run(usuarioId, nombre, cuenta, tokenHash, ahora());
+			"INSERT INTO terminales (usuario_id, nombre, cuenta, token_hash, agentes, creado) VALUES (?, ?, ?, ?, ?, ?)",
+		).run(usuarioId, nombre, cuenta, tokenHash, agentes, ahora());
 		const id = idInsertado(cambios.lastInsertRowid);
 		const creado = buscarTerminalPorId(conexion, id);
 		if (creado === undefined) {

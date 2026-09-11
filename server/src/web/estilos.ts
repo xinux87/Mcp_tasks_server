@@ -550,7 +550,7 @@ select[multiple] {
 
 /* Los controles no llevan borde propio: un fondo suave y ya. El borde
    transparente reserva el sitio para que el foco no mueva el diseño. */
-input[type="text"], input[type="password"], textarea, select {
+input[type="text"], input[type="password"], input[type="number"], textarea, select {
 	width: 100%;
 	max-width: 34rem;
 	padding: 0.4rem 0.6rem;
@@ -561,7 +561,12 @@ input[type="text"], input[type="password"], textarea, select {
 	border-radius: var(--radio);
 }
 
-input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
+/* Un número de una o dos cifras no necesita el ancho de un campo de texto. */
+input[type="number"] {
+	max-width: 6rem;
+}
+
+input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus, textarea:focus, select:focus {
 	outline: 2px solid var(--acento);
 	outline-offset: 0;
 }
@@ -1110,6 +1115,20 @@ button.pequeno, .boton.pequeno {
 .tabla-terminales th, .tabla-terminales td {
 	padding-left: 0.4rem;
 	padding-right: 0.4rem;
+}
+
+/* Los agentes en paralelo se cambian en la propia fila: el número es de una
+   cifra, así que el campo ocupa lo justo y el botón va a su lado. */
+.cambio-agentes {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.3rem;
+	margin: 0;
+}
+
+.cambio-agentes input {
+	width: 3.5rem;
 }
 
 .celda-cuenta {

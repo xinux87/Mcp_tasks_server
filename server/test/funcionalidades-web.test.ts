@@ -337,11 +337,22 @@ test("una tarea se borra con su confirmación esté en la columna que esté", as
 			new RegExp(`<a class="accion-peligro" href="/tareas/${suelta}/borrar">`),
 		);
 
-		// La confirmación cuenta lo que se lleva por delante: el hilo, el terminal
-		// que la está trabajando y quién deja de esperarla.
+		// Con la ejecución dentro no hay confirmación que dar: la página dice qué
+		// terminal la trabaja y no ofrece el botón.
+		const dentro = await ver(montaje, cookie, `/tareas/${suelta}/borrar`);
+		assert.match(dentro, /la está\s+trabajando <strong>portatil-xinux<\/strong>/);
+		assert.match(dentro, /Se podrá borrar cuando esa fase cierre/);
+		assert.doesNotMatch(dentro, /Sí, borrar/);
+		// Y el POST lo rechaza como cualquier otra regla.
+		const frenada = await pedir(montaje, `/tareas/${suelta}/borrar`, { cookie, formulario: {} });
+		assert.equal(frenada.status, 422);
+		assert.match(await frenada.text(), /se podrá borrar cuando esa fase cierre/i);
+
+		// Cerrada la fase, la confirmación cuenta lo que se lleva por delante: el
+		// hilo y quién deja de esperarla.
+		comentarResultado(montaje.db, { tareaId: sueltaId, terminalId: 1, texto: "hecho\n\nCommit: ccccccc" });
 		const aviso = await ver(montaje, cookie, `/tareas/${suelta}/borrar`);
-		assert.match(aviso, /Se va su hilo entero: 1 comentario/);
-		assert.match(aviso, /la está trabajando portatil-xinux/);
+		assert.match(aviso, /Se va su hilo entero: 2 comentarios/);
 		assert.match(aviso, /Dejan de esperarla/);
 		assert.match(aviso, /La que la espera/);
 

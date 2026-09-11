@@ -297,3 +297,38 @@ test("la migración del borrado de terminales deja anulable el terminal del cons
 		rmSync(carpeta, { recursive: true, force: true });
 	}
 });
+
+test("la migración de los agentes deja a 1 los terminales de antes y no admite menos", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-agentes.sql"));
+		assert.ok(cual > 0, "no está la migración de los agentes en paralelo");
+
+		// Un terminal ya conectado, que es lo que hay en una base en marcha.
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('xinux', 'h', 'azul', ?)").run(FECHA);
+		db
+			.prepare(
+				"INSERT INTO terminales (usuario_id, nombre, cuenta, token_hash, creado) VALUES (1, 'portatil-a', 'c', 'hash', ?)",
+			)
+			.run(FECHA);
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		// El de antes estrena la columna con el comportamiento de siempre.
+		assert.equal(db.prepare("SELECT agentes FROM terminales WHERE id = 1").get()?.agentes, 1);
+
+		// Y de uno en adelante: cero agentes sería un terminal que no trabaja.
+		db.prepare("UPDATE terminales SET agentes = 3 WHERE id = 1").run();
+		assert.throws(() => {
+			db.prepare("UPDATE terminales SET agentes = 0 WHERE id = 1").run();
+		});
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});

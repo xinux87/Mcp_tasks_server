@@ -141,6 +141,8 @@ test("registrar_terminal devuelve nombre, cuenta y revisión, y marca el termina
 		const texto = textoDe(resultado.content);
 		assert.match(texto, new RegExp(`^terminal: ${montaje.nombreTerminal}$`, "m"));
 		assert.match(texto, new RegExp(`^cuenta: ${montaje.cuenta}$`, "m"));
+		// Cuántos subagentes puede lanzar a la vez su bucle. Sin tocarlo, uno.
+		assert.match(texto, /^agentes: 1$/m);
 		assert.match(texto, /^revision: 2$/m);
 		assert.equal(revisionActual(montaje.db), antes);
 

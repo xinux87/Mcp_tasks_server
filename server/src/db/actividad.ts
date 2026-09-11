@@ -33,6 +33,7 @@ export type AccionActividad =
 	| "cambiar_color"
 	| "alta_terminal"
 	| "rotar_terminal"
+	| "cambiar_agentes"
 	| "revocar_terminal"
 	| "baja_terminal";
 
