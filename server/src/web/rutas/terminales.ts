@@ -198,21 +198,35 @@ function filaTerminal(db: DatabaseSync, terminal: TerminalListado, colorDe: Colo
 		</tr>`;
 }
 
-/** El formulario de alta, en su tarjeta, al que apunta la acción de la cabecera. */
+/**
+ * El formulario de alta, en su tarjeta, al que apunta la acción de la cabecera.
+ * Lleva la explicación de qué se está dando de alta: quien crea un terminal por
+ * primera vez no tiene por qué saber qué es, y los dos campos no se adivinan.
+ */
 function tarjetaNuevoTerminal(): Html {
 	return html`<section class="caja" id="nuevo-terminal">
 			<h2>Nuevo terminal</h2>
+			<p>
+				Un terminal es cada máquina con Claude Code que trabaja las tareas de este servidor. Al crearlo
+				se enseña <strong>una sola vez</strong> su token, con los pasos para conectarlo; después, las
+				tareas se le asignan por su nombre.
+			</p>
 			<form method="post" action="/terminales">
 				<label>
 					<span>Nombre</span>
 					<input type="text" name="nombre" placeholder="portatil-xinux" required>
+					<span class="ayuda">Con el que lo eliges en cada fase de una tarea y firma en el hilo: opus@portatil-xinux.</span>
 				</label>
 				<label>
 					<span>Cuenta de origen</span>
 					<input type="text" name="cuenta" placeholder="xinux@ejemplo.com" required>
+					<span class="ayuda">La cuenta de Claude Code de esa máquina. La escribes tú: el servidor no puede leerla, y es de la que sale el uso disponible.</span>
 				</label>
 				<button type="submit" class="principal">Crear terminal</button>
 			</form>
+			<p class="pequeno silencio">
+				Los pasos completos están en <a href="/terminales/conectar">Cómo conectar un terminal</a>.
+			</p>
 		</section>`;
 }
 
