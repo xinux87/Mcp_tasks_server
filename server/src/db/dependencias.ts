@@ -41,6 +41,23 @@ export function dependenciasPendientes(db: DatabaseSync, tareaId: number): numbe
 		.map((fila) => entero(fila, "depende_de_id"));
 }
 
+/**
+ * Qué tareas dependen de esta. Solo para avisar antes de borrarla: al borrarla
+ * dejan de esperarla y pueden empezar, y eso el humano tiene que verlo antes.
+ */
+export function dependientesDe(db: DatabaseSync, tareaId: number): { id: number; titulo: string }[] {
+	return sentencia(
+		db,
+		`SELECT t.id, t.titulo
+			FROM dependencias d
+			JOIN tareas t ON t.id = d.tarea_id
+			WHERE d.depende_de_id = ?
+			ORDER BY t.id`,
+	)
+		.all(tareaId)
+		.map((fila) => ({ id: entero(fila, "id"), titulo: texto(fila, "titulo") }));
+}
+
 /** Cuántas dependencias quedan sin satisfacer. Es lo que necesita `marcasDe`. */
 export function contarDependenciasPendientes(db: DatabaseSync, tareaId: number): number {
 	return dependenciasPendientes(db, tareaId).length;

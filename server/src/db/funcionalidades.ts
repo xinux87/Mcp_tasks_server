@@ -254,11 +254,18 @@ function commitDe(conexion: DatabaseSync, parteId: number): string {
  * Corre dentro de la escritura que mueve la parte a `finished`.
  */
 export function cerrarFuncionalidadSiProcede(conexion: DatabaseSync, revision: number, parteId: number): void {
-	const parte = exigirTarea(conexion, parteId);
-	if (parte.padreId === null) {
+	cerrarPadreSiProcede(conexion, revision, exigirTarea(conexion, parteId).padreId);
+}
+
+/**
+ * Lo mismo, pero a partir del padre. Es lo que necesita el borrado de una
+ * parte: cuando toca comprobarlo, la parte ya no existe.
+ */
+export function cerrarPadreSiProcede(conexion: DatabaseSync, revision: number, padreId: number | null): void {
+	if (padreId === null) {
 		return;
 	}
-	const funcionalidad = exigirTarea(conexion, parte.padreId);
+	const funcionalidad = exigirTarea(conexion, padreId);
 	if (funcionalidad.tipo !== "funcionalidad" || funcionalidad.estado !== "doing") {
 		return;
 	}

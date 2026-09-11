@@ -254,14 +254,15 @@ test("el CLI crea una funcionalidad con rama y dependencias, la aprueba y borra 
 		assert.equal(padreMalo.codigo, 1);
 		assert.match(padreMalo.salida, /^padre_no_es_funcionalidad: /m);
 
-		// Borrar es de backlog: lo que permite podar la descomposición.
+		// Borrar: lo que permite podar la descomposición.
 		assert.match(bien(dataDir, "borrar-tarea", "xinux", "T-0004"), /^borrada: T-0004 · Una parte a mano$/m);
 		assert.doesNotMatch(bien(dataDir, "listar"), /Una parte a mano/);
 
+		// Fuera de backlog también se borra; lo que frena es tener hijas.
+		bien(dataDir, "mover-tarea", "xinux", "T-0002", "prepared");
+		assert.match(bien(dataDir, "borrar-tarea", "xinux", "T-0002"), /^borrada: T-0002 · Primera$/m);
+
 		bien(dataDir, "mover-tarea", "xinux", "T-0001", "prepared");
-		const fuera = cli(dataDir, "borrar-tarea", "xinux", "T-0001");
-		assert.equal(fuera.codigo, 1);
-		assert.match(fuera.salida, /^solo_en_backlog: /m);
 
 		// La descomposición la hace el agente por el MCP: aquí con las funciones
 		// de dominio, para probar solo la aprobación del humano.

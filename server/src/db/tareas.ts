@@ -23,7 +23,12 @@ import {
 	dependenciasDeVarias,
 	escribirDependencias,
 } from "./dependencias.ts";
-import { aprobarDescomposicion, cerrarFuncionalidadSiProcede, partesDe } from "./funcionalidades.ts";
+import {
+	aprobarDescomposicion,
+	cerrarFuncionalidadSiProcede,
+	cerrarPadreSiProcede,
+	partesDe,
+} from "./funcionalidades.ts";
 import {
 	autorHumano,
 	type Comentario,
@@ -1072,23 +1077,17 @@ export type BorradoDeTarea = {
 };
 
 /**
- * Borrar una tarea. Solo en `backlog`: fuera de esa columna nada se borra,
- * porque el hilo es el registro de lo que pasó. Es lo que permite podar la
- * descomposición de una funcionalidad antes de aprobarla.
+ * Borrar una tarea, esté en la columna que esté. Se lleva por delante lo que
+ * cuelga de ella (hilo, preguntas, consumo y sus dependencias en los dos
+ * sentidos); el rastro de actividad se queda, porque no apunta a la fila con
+ * una clave foránea y cuenta lo que pasó, y el id queda quemado para siempre.
  *
- * Se lleva por delante lo que cuelga de la tarea (hilo, preguntas, consumo y
- * sus dependencias en los dos sentidos); el rastro de actividad se queda,
- * porque no apunta a la fila con una clave foránea y cuenta lo que pasó.
+ * Una tarea con hijas no se borra: primero se borran ellas. Un solo «sí» no
+ * puede llevarse por delante siete tareas con su historia.
  */
-export function borrarTareaBacklog(db: DatabaseSync, datos: BorradoDeTarea): Tarea {
-	return escribirContenido(db, (conexion) => {
+export function borrarTarea(db: DatabaseSync, datos: BorradoDeTarea): Tarea {
+	return escribirContenido(db, (conexion, revision) => {
 		const tarea = exigirTarea(conexion, datos.tareaId);
-		if (tarea.estado !== "backlog") {
-			throw new ErrorDeRegla(
-				"solo_en_backlog",
-				`La tarea está en ${tarea.estado}: fuera de backlog una tarea se archiva, no se borra.`,
-			);
-		}
 		const hijas = sentencia(conexion, "SELECT COUNT(*) AS total FROM tareas WHERE padre_id = ?").get(tarea.id);
 		if (hijas !== undefined && entero(hijas, "total") > 0) {
 			throw new ErrorDeRegla("con_hijas", "La tarea tiene tareas colgando: borra primero las hijas.");
@@ -1108,6 +1107,9 @@ export function borrarTareaBacklog(db: DatabaseSync, datos: BorradoDeTarea): Tar
 		sentencia(conexion, "DELETE FROM consumo WHERE tarea_id = ?").run(tarea.id);
 		borrarDependenciasDe(conexion, tarea.id);
 		sentencia(conexion, "DELETE FROM tareas WHERE id = ?").run(tarea.id);
+		// Si era la última parte pendiente de una funcionalidad, con ella fuera
+		// la funcionalidad ya está entera: nadie más va a pasar por el cierre.
+		cerrarPadreSiProcede(conexion, revision, tarea.padreId);
 		return tarea;
 	});
 }

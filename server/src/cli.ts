@@ -8,7 +8,7 @@ import { buscarTerminalPorNombre, buscarUsuarioPorNombre, crearUsuario, type Usu
 import { preguntasDeTarea, responder } from "./db/hilo.ts";
 import {
 	aprobarEjecucion,
-	borrarTareaBacklog,
+	borrarTarea,
 	crearTareaHumana,
 	esEstado,
 	leerTarea,
@@ -42,8 +42,8 @@ const AYUDA = `Uso: node src/cli.ts <comando>
       trabaja, que sus partes heredan. --padre solo admite una funcionalidad.
 
   borrar-tarea <usuario> <id>
-      Borra una tarea que esté en backlog, con su hilo. Fuera de backlog no se
-      borra nada.
+      Borra una tarea, esté en la columna que esté, con su hilo. Una tarea con
+      hijas no se borra: primero se borran ellas.
 
   mover-tarea <usuario> <id> <estado> [nota]
       Mueve la tarea de columna. Las vueltas atrás exigen nota.
@@ -304,7 +304,7 @@ function comandoBorrarTarea(argumentos: string[]): void {
 
 	conBaseDeDatos((db) => {
 		const dueno = exigirUsuario(db, usuario);
-		const tarea = borrarTareaBacklog(db, { tareaId: parsearId(id), actor: { usuarioId: dueno.id } });
+		const tarea = borrarTarea(db, { tareaId: parsearId(id), actor: { usuarioId: dueno.id } });
 		console.log(`borrada: ${formatearId(tarea.id)} · ${tarea.titulo}`);
 	});
 }

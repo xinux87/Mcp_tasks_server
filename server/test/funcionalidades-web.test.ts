@@ -296,14 +296,14 @@ test("la descomposición se aprueba desde la ficha y la funcionalidad se cierra 
 	}
 });
 
-test("una tarea en backlog se borra con su confirmación, y fuera de backlog no", async () => {
+test("una tarea se borra con su confirmación esté en la columna que esté", async () => {
 	const montaje = montar();
 	try {
 		const cookie = await entrar(montaje);
 		await crear(montaje, cookie, { titulo: "Listados para comerciales", tipo: "funcionalidad" });
 		const parte = await crear(montaje, cookie, { titulo: "Parte que sobra", tipo: "tarea", padre: "T-0001" });
 
-		// El enlace vive en el bloque de editar, que solo sale en backlog.
+		// El enlace vive en su propio bloque al final de la ficha.
 		const ficha = await ver(montaje, cookie, `/tareas/${parte}`);
 		assert.match(ficha, /<a class="accion-peligro" href="\/tareas\/T-0002\/borrar">Borrar esta tarea<\/a>/);
 
@@ -324,13 +324,30 @@ test("una tarea en backlog se borra con su confirmación, y fuera de backlog no"
 		assert.match(actividad, /borró la tarea/);
 		assert.match(actividad, /Parte que sobra/);
 
-		// Fuera de backlog nada se borra: la ficha vuelve con su aviso.
+		// Fuera de backlog también se borra, y la ficha ofrece el enlace igual.
 		const suelta = await crear(montaje, cookie, { titulo: "Ya en marcha", tipo: "tarea", autoejecucion: "on" });
+		const sueltaId = Number.parseInt(suelta.slice(2), 10);
+		await crear(montaje, cookie, { titulo: "La que la espera", tipo: "tarea", dependeDe: suelta });
 		await pedir(montaje, `/tareas/${suelta}/mover`, { cookie, formulario: { estado: "prepared" } });
-		const rechazada = await pedir(montaje, `/tareas/${suelta}/borrar`, { cookie, formulario: {} });
-		assert.equal(rechazada.status, 422);
-		assert.match(await rechazada.text(), /fuera de backlog una tarea se archiva, no se borra/);
-		assert.notEqual(buscarTarea(montaje.db, Number.parseInt(suelta.slice(2), 10)), undefined);
+		tomarTarea(montaje.db, { tareaId: sueltaId, fase: "analisis", terminalId: 1, modelo: "sonnet" });
+		comentarAnalisis(montaje.db, { tareaId: sueltaId, terminalId: 1, texto: "Plan." });
+		tomarTarea(montaje.db, { tareaId: sueltaId, fase: "ejecucion", terminalId: 1, modelo: "opus" });
+		assert.match(
+			await ver(montaje, cookie, `/tareas/${suelta}`),
+			new RegExp(`<a class="accion-peligro" href="/tareas/${suelta}/borrar">`),
+		);
+
+		// La confirmación cuenta lo que se lleva por delante: el hilo, el terminal
+		// que la está trabajando y quién deja de esperarla.
+		const aviso = await ver(montaje, cookie, `/tareas/${suelta}/borrar`);
+		assert.match(aviso, /Se va su hilo entero: 1 comentario/);
+		assert.match(aviso, /la está trabajando portatil-xinux/);
+		assert.match(aviso, /Dejan de esperarla/);
+		assert.match(aviso, /La que la espera/);
+
+		const fuera = await pedir(montaje, `/tareas/${suelta}/borrar`, { cookie, formulario: {} });
+		assert.equal(fuera.status, 302);
+		assert.equal(buscarTarea(montaje.db, sueltaId), undefined);
 	} finally {
 		await montaje.cerrar();
 	}

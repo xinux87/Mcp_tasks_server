@@ -4,7 +4,7 @@ import { revisionActual } from "../src/db/consultas.ts";
 import { comentarAnalisis, comentarResultado, preguntar } from "../src/db/hilo.ts";
 import {
 	aprobarEjecucion,
-	borrarTareaBacklog,
+	borrarTarea,
 	crearHija,
 	crearPropuesta,
 	crearTareaHumana,
@@ -714,7 +714,7 @@ test("un id de tarea no se reutiliza nunca, ni después de borrar la última", (
 		const segunda = crearTareaHumana(banco.db, { titulo: "La que sobra", descripcion: "d", usuarioId: banco.xinux });
 		assert.equal(segunda.id, primera.id + 1);
 
-		borrarTareaBacklog(banco.db, { tareaId: segunda.id, actor: { usuarioId: banco.xinux } });
+		borrarTarea(banco.db, { tareaId: segunda.id, actor: { usuarioId: banco.xinux } });
 		assert.equal(leerTarea(banco.db, segunda.id), undefined);
 
 		// El id borrado queda quemado: el hilo, la actividad y los commits ya lo

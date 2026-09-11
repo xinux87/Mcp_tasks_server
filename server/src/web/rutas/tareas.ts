@@ -3,14 +3,14 @@ import type { Context, Hono } from "hono";
 import { html, raw } from "hono/html";
 import { type Actividad, actividadDe } from "../../db/actividad.ts";
 import { type TerminalListado, terminalesActivos } from "../../db/admin.ts";
-import { revisionActual } from "../../db/consultas.ts";
+import { buscarTerminalPorId, revisionActual } from "../../db/consultas.ts";
 import type { ConsumoDeTarea } from "../../db/consumo.ts";
-import { dependenciasPendientes } from "../../db/dependencias.ts";
+import { dependenciasPendientes, dependientesDe } from "../../db/dependencias.ts";
 import { editarTareaBacklog, exigirTitulo } from "../../db/edicion.ts";
 import { type Comentario, notaHumana, type Pregunta, responder } from "../../db/hilo.ts";
 import {
 	aprobarEjecucion,
-	borrarTareaBacklog,
+	borrarTarea,
 	buscarTarea,
 	crearTareaHumana,
 	type Estado,
@@ -808,9 +808,7 @@ function vueltasAtras(completa: TareaCompleta): Html {
 
 /**
  * Editar solo en `backlog`: al salir, la descripción y las asignaciones se
- * congelan. Borrar vive aquí dentro, con el mismo motivo: fuera de `backlog`
- * una tarea se archiva y no se borra, y dentro es lo que permite podar la
- * descomposición de una funcionalidad antes de aprobarla.
+ * congelan.
  */
 function detallesEditar(db: DatabaseSync, tarea: Tarea, dependeDe: number[]): Html {
 	if (tarea.estado !== "backlog") {
@@ -840,6 +838,19 @@ function detallesEditar(db: DatabaseSync, tarea: Tarea, dependeDe: number[]): Ht
 					<button type="submit" class="principal">Guardar cambios</button>
 				</div>
 			</form>
+		</details>`;
+}
+
+/**
+ * Borrar, al final y en cualquier columna: es la salida de una tarea que ya no
+ * va a ninguna parte. Plegado como las vueltas atrás, porque es igual de
+ * excepcional; lo que se lleva por delante lo cuenta la confirmación.
+ */
+function detallesBorrar(tarea: Tarea): Html {
+	const id = formatearId(tarea.id);
+	return html`<details class="caja">
+			<summary><strong>Borrar</strong></summary>
+			<p class="silencio">Se lleva el hilo entero y no se puede deshacer.</p>
 			<p><a class="accion-peligro" href="/tareas/${id}/borrar">Borrar esta tarea</a></p>
 		</details>`;
 }
@@ -978,7 +989,8 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 		${actividadDeTarea(deps.db, tarea.id, colorDe)}
 
 		${vueltasAtras(completa)}
-		${detallesEditar(deps.db, tarea, completa.dependeDe)}`;
+		${detallesEditar(deps.db, tarea, completa.dependeDe)}
+		${detallesBorrar(tarea)}`;
 
 	const propias = html`${propiedadesDeTarea(deps.db, completa, buscadorDeCreador(deps.db))}
 
@@ -1040,20 +1052,58 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 	);
 }
 
+/** Lo que se pierde del hilo, dicho en una línea. */
+function hiloQueSeVa(comentarios: number): string {
+	if (comentarios === 0) {
+		return "Todavía no tiene hilo: no se pierde ningún comentario.";
+	}
+	return comentarios === 1 ? "Se va su hilo entero: 1 comentario." : `Se va su hilo entero: ${comentarios} comentarios.`;
+}
+
 /**
  * La confirmación de un borrado, en su propia página: sin JavaScript, el
  * enlace de la ficha lleva aquí y aquí está el POST, como el borrado de un
- * usuario o la revocación de un terminal.
+ * usuario o la revocación de un terminal. Dice qué se lleva por delante, que
+ * es lo que el humano necesita ver antes de confirmar.
  */
 function paginaBorrar(c: Context, deps: DependenciasWeb, tareaId: number): RespuestaHtml {
-	const tarea = buscarTarea(deps.db, tareaId);
-	if (tarea === undefined) {
+	const completa = leerTarea(deps.db, tareaId);
+	if (completa === undefined) {
 		return paginaNoEncontrada(c, `No existe la tarea ${formatearId(tareaId)}.`);
 	}
+	const { tarea } = completa;
 	const id = formatearId(tarea.id);
+	const enMarcha =
+		tarea.enMarchaTerminalId === null ? undefined : buscarTerminalPorId(deps.db, tarea.enMarchaTerminalId);
+	const dejanDeEsperar = dependientesDe(deps.db, tarea.id);
 	const cuerpo = html`<section class="caja caja-estrecha">
-		<p>Se borra la tarea ${enlaceTarea(tarea.id)} <strong>${tarea.titulo}</strong>, con su hilo entero.</p>
-		<p class="silencio">No se puede deshacer. Fuera de backlog una tarea se archiva y no se borra.</p>
+		<p>Se borra la tarea ${enlaceTarea(tarea.id)} <strong>${tarea.titulo}</strong>, que está en ${tarea.estado}.</p>
+		<ul>
+			<li>${hiloQueSeVa(completa.comentarios.length)}</li>
+			${
+				completa.consumo.totalConHijas === 0
+					? ""
+					: html`<li>Sus ${numeroLegible(completa.consumo.totalConHijas)} tokens de consumo dejan de contar.</li>`
+			}
+			${
+				enMarcha === undefined
+					? ""
+					: html`<li><strong>Ahora mismo la está trabajando ${enMarcha.nombre}</strong>: ese trabajo se corta.</li>`
+			}
+			${
+				dejanDeEsperar.length === 0
+					? ""
+					: html`<li>
+							Dejan de esperarla y podrán empezar:
+							<ul>
+								${dejanDeEsperar.map((otra) => html`<li>${enlaceTarea(otra.id)} ${otra.titulo}</li>`)}
+							</ul>
+						</li>`
+			}
+		</ul>
+		<p class="silencio">
+			No se puede deshacer. El rastro se queda en la actividad y el número ${id} no vuelve a usarse.
+		</p>
 		<div class="acciones">
 			<form method="post" action="/tareas/${id}/borrar">
 				<button type="submit" class="peligro">Sí, borrar</button>
@@ -1130,7 +1180,7 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 			return paginaNoEncontrada(c, "Eso no es un identificador de tarea; tiene la forma T-0042.");
 		}
 		try {
-			const borrada = borrarTareaBacklog(deps.db, { tareaId, actor: { usuarioId: usuarioActual(c).id } });
+			const borrada = borrarTarea(deps.db, { tareaId, actor: { usuarioId: usuarioActual(c).id } });
 			// Una parte vuelve al tablero de su funcionalidad, que es de donde se
 			// estaba podando; una tarea suelta, a la lista.
 			const destino = borrada.padreId === null ? "/tareas" : `/tareas/${formatearId(borrada.padreId)}`;

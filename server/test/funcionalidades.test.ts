@@ -5,7 +5,7 @@ import { crearParte, partesDe } from "../src/db/funcionalidades.ts";
 import { comentarAnalisis, comentarResultado, preguntar } from "../src/db/hilo.ts";
 import {
 	aprobarEjecucion,
-	borrarTareaBacklog,
+	borrarTarea,
 	crearHija,
 	crearTareaHumana,
 	exigirTarea,
@@ -265,6 +265,41 @@ test("sin rama no se crea la parte de integrar, y las hijas de trabajo de una pa
 	}
 });
 
+test("borrar la última parte pendiente cierra la funcionalidad", () => {
+	const banco = montar();
+	try {
+		const evolutivo = funcionalidad(banco, null);
+		tomarTarea(banco.db, { tareaId: evolutivo.id, fase: "analisis", terminalId: banco.portatil });
+		const hecha = crearParte(banco.db, {
+			titulo: "La que sí se hace",
+			descripcion: "d",
+			padreId: evolutivo.id,
+			terminalId: banco.portatil,
+		});
+		const sobrante = crearParte(banco.db, {
+			titulo: "La que se cae por el camino",
+			descripcion: "d",
+			padreId: evolutivo.id,
+			terminalId: banco.portatil,
+		});
+		comentarAnalisis(banco.db, { tareaId: evolutivo.id, terminalId: banco.portatil, texto: "dos partes" });
+		aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux });
+
+		cerrarParte(banco, hecha.id, "hecho\n\nCommit: bbbbbbb");
+		// Con una parte sin cerrar, la funcionalidad sigue en marcha.
+		assert.equal(exigirTarea(banco.db, evolutivo.id).estado, "doing");
+
+		// Al borrar la que quedaba, ya no falta nada: se cierra en el mismo acto.
+		borrarTarea(banco.db, { tareaId: sobrante.id, actor: { usuarioId: banco.xinux } });
+		const cerrada = leerTarea(banco.db, evolutivo.id);
+		assert.equal(cerrada?.tarea.estado, "done");
+		assert.deepEqual(partesDe(banco.db, evolutivo.id), { total: 1, cerradas: 1 });
+		assert.equal(cerrada?.comentarios.at(-1)?.texto, `- ${formatearId(hecha.id)} · La que sí se hace · Commit: bbbbbbb`);
+	} finally {
+		banco.cerrar();
+	}
+});
+
 test("el análisis de una funcionalidad exige partes, y la aprobación exige análisis sin preguntas", () => {
 	const banco = montar();
 	try {
@@ -302,7 +337,7 @@ test("el análisis de una funcionalidad exige partes, y la aprobación exige an�
 	}
 });
 
-test("borrar una tarea solo se hace en backlog, sin hijas, y se lleva su hilo por delante", () => {
+test("borrar una tarea se hace en cualquier columna, sin hijas, y se lleva su hilo por delante", () => {
 	const banco = montar();
 	try {
 		const evolutivo = funcionalidad(banco);
@@ -320,29 +355,21 @@ test("borrar una tarea solo se hace en backlog, sin hijas, y se lleva su hilo po
 			dependeDe: [parte.id],
 		});
 
-		// La funcionalidad está en prepared y además tiene una parte colgando.
+		// La funcionalidad está en prepared, que ya no frena el borrado, pero
+		// tiene una parte colgando: eso sí lo frena.
 		assert.equal(
-			codigoDe(() => borrarTareaBacklog(banco.db, { tareaId: evolutivo.id, actor: { usuarioId: banco.xinux } })),
-			"solo_en_backlog",
-		);
-		moverTareaHumano(banco.db, {
-			tareaId: evolutivo.id,
-			usuarioId: banco.xinux,
-			estado: "backlog",
-			nota: "hay que repensarla",
-		});
-		assert.equal(
-			codigoDe(() => borrarTareaBacklog(banco.db, { tareaId: evolutivo.id, actor: { usuarioId: banco.xinux } })),
+			codigoDe(() => borrarTarea(banco.db, { tareaId: evolutivo.id, actor: { usuarioId: banco.xinux } })),
 			"con_hijas",
 		);
 
-		// La parte sí se borra: es lo que permite podar la descomposición.
-		const borrada = borrarTareaBacklog(banco.db, { tareaId: parte.id, actor: { usuarioId: banco.xinux } });
+		// La parte se borra esté donde esté: es lo que permite podar la
+		// descomposición y también deshacerse de una tarea ya en marcha.
+		const borrada = borrarTarea(banco.db, { tareaId: parte.id, actor: { usuarioId: banco.xinux } });
 		assert.equal(borrada.titulo, "Una parte que sobra");
 		assert.equal(leerTarea(banco.db, parte.id), undefined);
 		assert.deepEqual(dependenciasDe(banco.db, otra.id), []);
 		// Y ahora la funcionalidad se queda sin hijas y se puede borrar.
-		borrarTareaBacklog(banco.db, { tareaId: evolutivo.id, actor: { usuarioId: banco.xinux } });
+		borrarTarea(banco.db, { tareaId: evolutivo.id, actor: { usuarioId: banco.xinux } });
 		assert.equal(leerTarea(banco.db, evolutivo.id), undefined);
 		assert.equal(banco.db.prepare("SELECT COUNT(*) AS t FROM comentarios").get()?.t, 0);
 	} finally {
