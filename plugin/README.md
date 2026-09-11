@@ -36,7 +36,7 @@ claude plugin install mcp-tareas@mcp-tareas-marketplace
 
 El primer comando registra el catálogo del repositorio (`.claude-plugin/marketplace.json` en la raíz, que apunta a `./plugin`). El catálogo se llama `mcp-tareas-marketplace`, que es el `name` del `marketplace.json`, no el nombre del repositorio: por eso el segundo comando lleva ese sufijo.
 
-El repositorio es **privado**, así que la máquina donde instalas necesita acceso git a él. La forma `owner/repo` clona por SSH; para clonar por HTTPS con las credenciales git del sistema:
+El repositorio es **privado**, así que la máquina donde instalas necesita acceso git a él con sus propias credenciales: sirve haber hecho `git push` o `git clone` por HTTPS desde ahí alguna vez. Claude Code 2.1 clona por HTTPS; si tu versión intenta SSH y no tienes clave, fuerza HTTPS:
 
 ```
 CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1 claude plugin marketplace add xinux87/Mcp_tasks_server

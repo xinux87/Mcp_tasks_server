@@ -134,7 +134,8 @@ function pasoInstalar(): Html {
 			<h3>Instalar el plugin</h3>
 			<p>
 				Desde una sesión de Claude Code en la máquina del terminal, que necesita acceso git a ese
-				repositorio (por SSH; con <code>CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1</code>, por HTTPS):
+				repositorio con sus propias credenciales (si intenta clonar por SSH y no hay clave,
+				<code>CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1</code> fuerza HTTPS):
 			</p>
 			${bloque(`/plugin marketplace add ${REPOSITORIO}\n/plugin install ${PLUGIN}@${CATALOGO}`)}
 			<p>Si lo tienes clonado y quieres esa copia, en su lugar la ruta del clon:</p>
