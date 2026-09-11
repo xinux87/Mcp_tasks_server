@@ -36,6 +36,9 @@ let pendiente = false;
 /** Promesa de la carga de SortableJS, para no pedirlo dos veces. */
 let cargaSortable = null;
 
+/** La conexión SSE abierta, o null mientras la pestaña no está visible. */
+let fuenteEventos = null;
+
 /** Temporizador del aviso del tablero, que se borra solo a los pocos segundos. */
 let temporizadorAviso = 0;
 
@@ -385,20 +388,50 @@ function alSubirLaRevision() {
 	}
 }
 
+/**
+ * Solo la pestaña visible mantiene la conexión abierta. El navegador admite
+ * seis conexiones por servidor: cada pestaña en segundo plano se quedaba con
+ * una para siempre y las peticiones nuevas hacían cola. Al volver no hay que
+ * comprobar nada, porque el primer evento de la conexión nueva trae la
+ * revisión actual y dispara el refresco de siempre si subió.
+ */
 function escucharEventos() {
 	if (typeof EventSource !== "function" || !Number.isFinite(revision)) {
 		return;
 	}
-	// Si la conexión se cae, el navegador reconecta solo: no hay nada que hacer.
-	const fuente = new EventSource("/eventos");
-	fuente.addEventListener("revision", function (evento) {
-		const numero = Number.parseInt(evento.data, 10);
-		if (!Number.isFinite(numero) || numero <= revision) {
+	function abrir() {
+		if (fuenteEventos !== null) {
 			return;
 		}
-		revision = numero;
-		alSubirLaRevision();
+		// Si la conexión se cae, el navegador reconecta solo: no hay nada que hacer.
+		fuenteEventos = new EventSource("/eventos");
+		fuenteEventos.addEventListener("revision", function (evento) {
+			const numero = Number.parseInt(evento.data, 10);
+			if (!Number.isFinite(numero) || numero <= revision) {
+				return;
+			}
+			revision = numero;
+			alSubirLaRevision();
+		});
+	}
+	function cerrar() {
+		if (fuenteEventos === null) {
+			return;
+		}
+		fuenteEventos.close();
+		fuenteEventos = null;
+	}
+	document.addEventListener("visibilitychange", function () {
+		if (document.visibilityState === "visible") {
+			abrir();
+			return;
+		}
+		cerrar();
 	});
+	// Una pestaña abierta en segundo plano no conecta hasta que se mira.
+	if (document.visibilityState === "visible") {
+		abrir();
+	}
 }
 
 // --- arranque ----------------------------------------------------------------

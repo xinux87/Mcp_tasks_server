@@ -427,6 +427,9 @@ test("el JavaScript del cliente y SortableJS se sirven como estáticos", async (
 		assert.equal(propio.headers.get("content-type"), "application/javascript; charset=utf-8");
 		const cuerpoPropio = await propio.text();
 		assert.match(cuerpoPropio, /EventSource\("\/eventos"\)/);
+		// Solo la pestaña visible se queda con una de las seis conexiones.
+		assert.match(cuerpoPropio, /visibilitychange/);
+		assert.match(cuerpoPropio, /\.close\(\)/);
 		assert.match(cuerpoPropio, /\/tareas\/kanban\/tablero/);
 		// El ámbito del tablero viaja con la posición al soltar.
 		assert.match(cuerpoPropio, /dataset\.padre/);
