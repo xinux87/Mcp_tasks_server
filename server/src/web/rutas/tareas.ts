@@ -9,6 +9,13 @@ import { dependenciasPendientes, dependientesDe } from "../../db/dependencias.ts
 import { editarTareaBacklog, exigirTitulo } from "../../db/edicion.ts";
 import { type Comentario, notaHumana, type Pregunta, responder } from "../../db/hilo.ts";
 import {
+	buscarProyectoPorClave,
+	buscarProyectoPorId,
+	listarProyectos,
+	PROYECTO_PRINCIPAL,
+	type Proyecto,
+} from "../../db/proyectos.ts";
+import {
 	aprobarEjecucion,
 	borrarTarea,
 	buscarTarea,
@@ -34,11 +41,13 @@ import {
 	COLOR_ESTADO,
 	type Color,
 	chipAutor,
+	chipProyecto,
 	chipUsuario,
 	enlaceFuncionalidad,
 	etiqueta,
 	filtroSelect,
 	fraseDeAccion,
+	type Miga,
 	type Propiedad,
 	propiedades,
 	type QuienCreo,
@@ -69,7 +78,8 @@ import {
 	type RespuestaHtml,
 } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
-import { MARCAS, opcionesFuncionalidad, tablero } from "./kanban.ts";
+import { type Filtros, filtrosDe, MARCAS, opcionesFuncionalidad, opcionesProyecto, tablero } from "./kanban.ts";
+import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
 
 const ESTADOS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
 
@@ -87,12 +97,8 @@ type Creador = (quien: QuienCreo) => Html | null;
 type ColorDe = (nombre: string) => Color | null;
 
 /** Lo que se puede filtrar en la lista. Vacío es no filtrar por ese campo. */
-type FiltrosLista = {
+type FiltrosLista = Filtros & {
 	estado: string;
-	terminal: string;
-	marca: string;
-	/** Identificador visible de la funcionalidad de la que se enseñan las partes. */
-	padre: string;
 };
 
 /** Los valores de los campos de una tarea, para pintar el formulario relleno. */
@@ -100,6 +106,8 @@ type ValoresTarea = {
 	titulo: string;
 	descripcion: string;
 	tipo: TipoTarea;
+	/** Proyecto en el que vive. Nulo es «el que traiga la ruta, o el principal». */
+	proyectoId: number | null;
 	/** Rama de git en la que se trabaja. Una parte hereda la de su funcionalidad. */
 	rama: string | null;
 	/** La funcionalidad de la que esta tarea es parte, si cuelga de alguna. */
@@ -117,6 +125,7 @@ const TAREA_VACIA: ValoresTarea = {
 	titulo: "",
 	descripcion: "",
 	tipo: "tarea",
+	proyectoId: null,
 	rama: null,
 	padreId: null,
 	dependeDe: [],
@@ -138,14 +147,17 @@ type OpcionesTarea = {
 	activos: TerminalListado[];
 	padres: ItemIndice[];
 	candidatas: ItemIndice[];
+	/** Entre qué proyectos se elige, o `null` si lo fija la ruta del tablero. */
+	proyectos: Proyecto[] | null;
 };
 
-function opcionesDeTarea(db: DatabaseSync, tareaId: number | null): OpcionesTarea {
+function opcionesDeTarea(db: DatabaseSync, tareaId: number | null, conProyecto = true): OpcionesTarea {
 	const items = listarTareas(db);
 	return {
 		activos: terminalesActivos(db),
 		padres: items.filter((item) => item.tipo === "funcionalidad" && item.estado !== "finished" && item.id !== tareaId),
 		candidatas: items.filter((item) => item.estado !== "finished" && item.id !== tareaId),
+		proyectos: conProyecto ? listarProyectos(db) : null,
 	};
 }
 
@@ -227,6 +239,7 @@ function valoresCrudos(formulario: Formulario): ValoresTarea {
 		titulo: campo(formulario, "titulo"),
 		descripcion: campo(formulario, "descripcion"),
 		tipo,
+		proyectoId: numeroONull(campo(formulario, "proyecto")),
 		rama: campoOpcional(formulario, "rama"),
 		padreId: idONull(campo(formulario, "padre")),
 		dependeDe: idsDeFormulario(formulario, "dependeDe"),
@@ -302,6 +315,24 @@ function fase(
 				${selectTerminal(`${prefijo}Terminal`, activos, terminalId)}
 			</label>
 		</fieldset>`;
+}
+
+/**
+ * El desplegable del proyecto. Una tarea cambia de proyecto solo en `backlog`
+ * y solo si está sola: la regla la comprueba la base al guardar.
+ */
+function selectProyecto(proyectos: Proyecto[], elegido: number | null): Html {
+	const principal = elegido ?? PROYECTO_PRINCIPAL;
+	return html`<label>
+			<span>Proyecto</span>
+			<select name="proyecto">
+				${proyectos.map(
+					(cual) =>
+						html`<option value="${cual.id}"${cual.id === principal ? raw(" selected") : ""}>${cual.clave} · ${cual.nombre}</option>`,
+				)}
+			</select>
+			<span class="ayuda">El repositorio en el que vive. Solo se cambia en backlog y si la tarea no cuelga de nada.</span>
+		</label>`;
 }
 
 /** El desplegable del tipo: qué clase de encargo es esta tarea. */
@@ -390,6 +421,7 @@ function camposTarea(valores: ValoresTarea, opciones: OpcionesTarea): Html {
 			<span>Descripción (Markdown)</span>
 			<textarea name="descripcion" rows="10">${valores.descripcion}</textarea>
 		</label>
+		${opciones.proyectos === null ? html`` : selectProyecto(opciones.proyectos, valores.proyectoId)}
 		${selectTipo(valores.tipo)}
 		<label>
 			<span>Rama</span>
@@ -414,15 +446,22 @@ function camposTarea(valores: ValoresTarea, opciones: OpcionesTarea): Html {
 
 // --- la lista ----------------------------------------------------------------
 
-function filaTarea(db: DatabaseSync, item: ItemIndice, creadorDe: Creador, deQuien: Funcionalidades): Html {
+function filaTarea(
+	db: DatabaseSync,
+	item: ItemIndice,
+	creadorDe: Creador,
+	deQuien: Funcionalidades,
+	claves: Claves,
+): Html {
 	const tarea = buscarTarea(db, item.id);
 	const creador =
 		tarea === undefined
 			? null
 			: creadorDe({ usuarioId: tarea.creadaPorUsuarioId, terminalId: tarea.creadaPorTerminalId });
 	const funcionalidad = item.padreId === null ? undefined : deQuien.get(item.padreId);
+	const clave = claves?.get(item.proyectoId);
 	return html`<tr>
-			<td>${enlaceTarea(item.id)}</td>
+			<td>${enlaceTarea(item.id)} ${clave === undefined ? html`` : chipProyecto(clave)}</td>
 			<td>
 				${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas)}${item.titulo}
 				${
@@ -438,7 +477,16 @@ function filaTarea(db: DatabaseSync, item: ItemIndice, creadorDe: Creador, deQui
 		</tr>`;
 }
 
-function tablaLista(db: DatabaseSync, items: ItemIndice[], creadorDe: Creador, deQuien: Funcionalidades): Html {
+/** La clave de cada proyecto, solo en la vista cruzada: acotada sobraría. */
+type Claves = Map<number, string> | null;
+
+function tablaLista(
+	db: DatabaseSync,
+	items: ItemIndice[],
+	creadorDe: Creador,
+	deQuien: Funcionalidades,
+	claves: Claves,
+): Html {
 	if (items.length === 0) {
 		return html`<p class="silencio">Ninguna.</p>`;
 	}
@@ -449,7 +497,7 @@ function tablaLista(db: DatabaseSync, items: ItemIndice[], creadorDe: Creador, d
 						<th>Id</th><th>Título</th><th>Análisis</th><th>Ejecución</th><th>Creada por</th><th>Actualizada</th>
 					</tr>
 				</thead>
-				<tbody>${items.map((item) => filaTarea(db, item, creadorDe, deQuien))}</tbody>
+				<tbody>${items.map((item) => filaTarea(db, item, creadorDe, deQuien, claves))}</tbody>
 			</table>
 		</div>`;
 }
@@ -460,8 +508,9 @@ function grupoColumna(
 	items: ItemIndice[],
 	creadorDe: Creador,
 	deQuien: Funcionalidades,
+	claves: Claves,
 ): Html {
-	const tabla = tablaLista(db, items, creadorDe, deQuien);
+	const tabla = tablaLista(db, items, creadorDe, deQuien, claves);
 	const rotulo = rotuloColumna(insigniaEstado(columna.estado), columna.titulo, items.length);
 	// Las cerradas están archivadas: se ven si se piden, no estorban por defecto.
 	if (columna.estado === "finished") {
@@ -504,10 +553,22 @@ function funcionalidadesDe(db: DatabaseSync, items: ItemIndice[]): Funcionalidad
  * La fila de filtros: desplegables compactos y nada más. «Quitar filtros» solo
  * aparece cuando hay algo que quitar; si no, sería un enlace que no hace nada.
  */
-function formularioFiltros(db: DatabaseSync, activos: TerminalListado[], filtros: FiltrosLista): Html {
+function formularioFiltros(
+	db: DatabaseSync,
+	activos: TerminalListado[],
+	filtros: FiltrosLista,
+	acotado: Proyecto | undefined,
+): Html {
 	const { estado, terminal, marca, padre } = filtros;
-	const hayFiltro = estado !== "" || terminal !== "" || marca !== "" || padre !== "";
-	return html`<form class="filtros" method="get" action="/tareas">
+	const base = `${prefijo(acotado)}/tareas`;
+	const hayFiltro =
+		estado !== "" ||
+		terminal !== "" ||
+		marca !== "" ||
+		padre !== "" ||
+		(acotado === undefined && filtros.proyecto !== "");
+	return html`<form class="filtros" method="get" action="${base}">
+			${acotado !== undefined ? html`` : filtroSelect(opcionesProyecto(db, filtros.proyecto))}
 			${filtroSelect({
 				nombre: "estado",
 				titulo: "Estado",
@@ -531,7 +592,7 @@ function formularioFiltros(db: DatabaseSync, activos: TerminalListado[], filtros
 			})}
 			${filtroSelect(opcionesFuncionalidad(db, padre))}
 			<button type="submit" class="pequeno">Filtrar</button>
-			${hayFiltro ? html`<a class="quitar" href="/tareas">Quitar filtros</a>` : html``}
+			${hayFiltro ? html`<a class="quitar" href="${base}">Quitar filtros</a>` : html``}
 		</form>`;
 }
 
@@ -542,6 +603,15 @@ function creadaLegible(tarea: Tarea, creadorDe: Creador): Html {
 	const quien = creadorDe({ usuarioId: tarea.creadaPorUsuarioId, terminalId: tarea.creadaPorTerminalId });
 	const cuando = html`<span class="silencio">${fechaLegible(tarea.creada)}</span>`;
 	return quien === null ? cuando : html`${quien} ${cuando}`;
+}
+
+/** El proyecto de la tarea: su chip, enlazado a su tablero, y su nombre. */
+function proyectoLegible(db: DatabaseSync, proyectoId: number): Html {
+	const proyecto = buscarProyectoPorId(db, proyectoId);
+	if (proyecto === undefined) {
+		return html`<span class="silencio">${SIN_DATO}</span>`;
+	}
+	return html`<a href="/p/${proyecto.clave}/tareas">${chipProyecto(proyecto.clave)}</a> ${proyecto.nombre}`;
 }
 
 /** La rama en la que se trabaja la tarea, o que no hay ninguna. */
@@ -593,7 +663,10 @@ function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe
 	if (tarea.tipo === "funcionalidad") {
 		return propiedadesDeFuncionalidad(db, completa, creadorDe);
 	}
-	const filas: Propiedad[] = [{ nombre: "Estado", valor: insigniaEstado(tarea.estado) }];
+	const filas: Propiedad[] = [
+		{ nombre: "Estado", valor: insigniaEstado(tarea.estado) },
+		{ nombre: "Proyecto", valor: proyectoLegible(db, tarea.proyectoId) },
+	];
 	if (tarea.tipo === "pregunta") {
 		filas.push({ nombre: "Tipo", valor: insigniaTipoTarea(tarea.tipo) });
 	}
@@ -619,6 +692,7 @@ function propiedadesDeFuncionalidad(db: DatabaseSync, completa: TareaCompleta, c
 	const { tarea } = completa;
 	const filas: Propiedad[] = [
 		{ nombre: "Estado", valor: insigniaEstado(tarea.estado) },
+		{ nombre: "Proyecto", valor: proyectoLegible(db, tarea.proyectoId) },
 		{ nombre: "Tipo", valor: insigniaTipoTarea(tarea.tipo) },
 		{ nombre: "Rama", valor: ramaLegible(tarea.rama) },
 		{ nombre: "Partes", valor: barraProgreso(completa.partesCerradas ?? 0, completa.partes ?? 0) },
@@ -823,6 +897,7 @@ function detallesEditar(db: DatabaseSync, tarea: Tarea, dependeDe: number[]): Ht
 						titulo: tarea.titulo,
 						descripcion: tarea.descripcion,
 						tipo: tarea.tipo,
+						proyectoId: tarea.proyectoId,
 						rama: tarea.rama,
 						padreId: tarea.padreId,
 						dependeDe,
@@ -857,9 +932,26 @@ function detallesBorrar(tarea: Tarea): Html {
 
 // --- páginas -----------------------------------------------------------------
 
-function paginaNoEncontrada(c: Context, mensaje: string): RespuestaHtml {
+/**
+ * Las migas de la ficha y de lo que cuelga de ella: `WEB › Tareas › T-0042`.
+ * La clave lleva al kanban del proyecto y «Tareas», a su lista.
+ */
+function migasDeFicha(db: DatabaseSync, proyectoId: number, ...donde: string[]): Miga[] {
+	const proyecto = buscarProyectoPorId(db, proyectoId);
+	const base = proyecto === undefined ? "" : `/p/${proyecto.clave}`;
+	const migas: Miga[] = proyecto === undefined ? [] : [{ texto: proyecto.clave, href: `${base}/tareas/kanban` }];
+	migas.push({ texto: "Tareas", href: `${base}/tareas` });
+	for (const [indice, texto] of donde.entries()) {
+		// El último es donde se está: no enlaza. Los de en medio, a la ficha.
+		migas.push(indice === donde.length - 1 ? { texto } : { texto, href: `/tareas/${texto}` });
+	}
+	return migas;
+}
+
+function paginaNoEncontrada(c: Context, deps: DependenciasWeb, mensaje: string): RespuestaHtml {
 	return c.html(
 		pagina({
+			...navProyectos(c, deps.db),
 			titulo: "No encontrada",
 			usuario: usuarioActual(c),
 			vista: "tarea",
@@ -873,13 +965,10 @@ function paginaNoEncontrada(c: Context, mensaje: string): RespuestaHtml {
 function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	const { db } = deps;
 	const activos = terminalesActivos(db);
-	const filtros: FiltrosLista = {
-		estado: c.req.query("estado") ?? "",
-		terminal: c.req.query("terminal") ?? "",
-		marca: c.req.query("marca") ?? "",
-		padre: c.req.query("padre") ?? "",
-	};
+	const acotado = proyectoActual(c);
+	const filtros: FiltrosLista = { ...filtrosDe(c), estado: c.req.query("estado") ?? "" };
 	const padreId = idONull(filtros.padre);
+	const proyectoId = filtros.proyecto === "" ? null : (buscarProyectoPorClave(db, filtros.proyecto)?.id ?? 0);
 
 	const terminalId = Number.parseInt(filtros.terminal, 10);
 	const items = listarTareas(db, Number.isSafeInteger(terminalId) ? { terminalId } : {}).filter((item) => {
@@ -887,6 +976,9 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 			return false;
 		}
 		if (esMarca(filtros.marca) && !item.marcas.includes(filtros.marca)) {
+			return false;
+		}
+		if (proyectoId !== null && item.proyectoId !== proyectoId) {
 			return false;
 		}
 		// Un identificador que no encaja no es un error del que avisar: no
@@ -898,7 +990,9 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	// no puede consultar usuarios y terminales en cada una.
 	const creadorDe = buscadorDeCreador(db);
 	const deQuien = funcionalidadesDe(db, items);
-	const cuerpo = html`${formularioFiltros(db, activos, filtros)}
+	// En la vista acotada el proyecto es el de la página: el chip solo repetiría.
+	const claves = acotado === undefined ? new Map(listarProyectos(db).map((cual) => [cual.id, cual.clave])) : null;
+	const cuerpo = html`${formularioFiltros(db, activos, filtros, acotado)}
 		${COLUMNAS.map((columna) =>
 			grupoColumna(
 				db,
@@ -906,19 +1000,21 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 				items.filter((item) => item.estado === columna.estado),
 				creadorDe,
 				deQuien,
+				claves,
 			),
 		)}`;
 	// `vista` y `revision` son lo que el cliente necesita para refrescarse: la
 	// lista se recarga entera cuando sube la revisión.
 	return c.html(
 		pagina({
-			titulo: "Tareas",
+			...navProyectos(c, db),
+			titulo: acotado === undefined ? "Tareas" : `Tareas · ${acotado.clave}`,
 			usuario: usuarioActual(c),
 			vista: "lista",
 			// La tabla tiene seis columnas: en 60 rem se aprieta o se desplaza.
 			ancho: "completo",
 			revision: revisionActual(db),
-			acciones: accionNuevaTarea(),
+			acciones: accionNuevaTarea(prefijo(acotado)),
 			cuerpo,
 		}),
 	);
@@ -941,20 +1037,26 @@ function valoresIniciales(c: Context): ValoresTarea {
 
 function paginaNueva(c: Context, deps: DependenciasWeb, valores: ValoresTarea, aviso: string | null): RespuestaHtml {
 	const esFuncionalidad = valores.tipo === "funcionalidad";
-	const cuerpo = html`<form method="post" action="/tareas">
-			${camposTarea(valores, opcionesDeTarea(deps.db, null))}
+	// Desde un tablero acotado el proyecto viene en la ruta y no se elige: la
+	// tarea nace donde se está mirando.
+	const acotado = proyectoActual(c);
+	const base = prefijo(acotado);
+	const cuerpo = html`<form method="post" action="${base}/tareas">
+			${camposTarea(valores, opcionesDeTarea(deps.db, null, acotado === undefined))}
 			<div class="acciones">
 				<button type="submit" class="principal">${esFuncionalidad ? "Crear funcionalidad" : "Crear tarea"}</button>
-				<a class="boton" href="${valores.padreId === null ? "/tareas" : `/tareas/${formatearId(valores.padreId)}`}">Cancelar</a>
+				<a class="boton" href="${valores.padreId === null ? `${base}/tareas` : `/tareas/${formatearId(valores.padreId)}`}">Cancelar</a>
 			</div>
 		</form>`;
 	const titulo = esFuncionalidad ? "Nueva funcionalidad" : "Nueva tarea";
 	return c.html(
 		pagina({
+			...navProyectos(c, deps.db),
 			titulo,
 			usuario: usuarioActual(c),
 			vista: "tarea-nueva",
-			migas: [{ texto: "Tareas", href: "/tareas" }, { texto: titulo }],
+			migas: [{ texto: "Tareas", href: `${base}/tareas` }, { texto: titulo }],
+			etiquetas: acotado === undefined ? undefined : chipProyecto(acotado.clave),
 			aviso,
 			cuerpo,
 		}),
@@ -965,7 +1067,7 @@ function paginaNueva(c: Context, deps: DependenciasWeb, valores: ValoresTarea, a
 function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: string | null): RespuestaHtml {
 	const completa = leerTarea(deps.db, tareaId);
 	if (completa === undefined) {
-		return paginaNoEncontrada(c, `No existe la tarea ${formatearId(tareaId)}.`);
+		return paginaNoEncontrada(c, deps, `No existe la tarea ${formatearId(tareaId)}.`);
 	}
 	const { tarea } = completa;
 	const id = formatearId(tarea.id);
@@ -1010,7 +1112,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 				<div class="acciones acciones-partes">
 					<a class="boton" href="/tareas/nueva?padre=${id}">Nueva parte</a>
 				</div>
-				${tablero(deps.db, { terminal: "", marca: "", padre: id })}
+				${tablero(deps.db, { terminal: "", marca: "", padre: id, proyecto: "" })}
 
 				${cierre}`
 			: html`${propias}
@@ -1037,11 +1139,14 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 		// escribiendo una nota. El cliente solo avisa; en una funcionalidad,
 		// además, repinta el tablero de sus partes, que no tiene nada que perder.
 		pagina({
+			...navProyectos(c, deps.db),
 			titulo: tarea.titulo,
 			usuario: usuarioActual(c),
 			vista: "ficha",
 			revision: completa.revisionServidor,
-			migas: [{ texto: "Tareas", href: "/tareas" }, { texto: id }],
+			// La ficha es global, que el identificador lo es; las migas dicen de qué
+			// proyecto es y llevan a sus tableros.
+			migas: migasDeFicha(deps.db, tarea.proyectoId, id),
 			etiquetas: html`${insigniaEstado(tarea.estado)}${insigniaTipoTarea(tarea.tipo)}${insigniasMarcas(completa.marcas)}`,
 			// El tablero de las partes necesita las cinco columnas: en 60 rem se
 			// desplazaría en horizontal cada vez que se mira.
@@ -1071,7 +1176,7 @@ function hiloQueSeVa(comentarios: number): string {
 function paginaBorrar(c: Context, deps: DependenciasWeb, tareaId: number): RespuestaHtml {
 	const completa = leerTarea(deps.db, tareaId);
 	if (completa === undefined) {
-		return paginaNoEncontrada(c, `No existe la tarea ${formatearId(tareaId)}.`);
+		return paginaNoEncontrada(c, deps, `No existe la tarea ${formatearId(tareaId)}.`);
 	}
 	const { tarea } = completa;
 	const id = formatearId(tarea.id);
@@ -1115,10 +1220,11 @@ function paginaBorrar(c: Context, deps: DependenciasWeb, tareaId: number): Respu
 	</section>`;
 	return c.html(
 		pagina({
+			...navProyectos(c, deps.db),
 			titulo: "Borrar tarea",
 			usuario: usuarioActual(c),
 			vista: "tarea",
-			migas: [{ texto: "Tareas", href: "/tareas" }, { texto: id, href: `/tareas/${id}` }, { texto: "Borrar" }],
+			migas: migasDeFicha(deps.db, tarea.proyectoId, id, "Borrar"),
 			cuerpo,
 		}),
 	);
@@ -1129,26 +1235,37 @@ function paginaBorrar(c: Context, deps: DependenciasWeb, tareaId: number): Respu
 /** Todas las rutas de tareas: lista, alta, ficha y las acciones del humano. */
 export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 	app.get("/tareas", (c) => paginaLista(c, deps));
+	app.get("/p/:clave/tareas", (c) => paginaLista(c, deps));
 
 	// Antes de `/tareas/:id` para que «nueva» no se lea como identificador.
 	app.get("/tareas/nueva", (c) => paginaNueva(c, deps, valoresIniciales(c), null));
+	app.get("/p/:clave/tareas/nueva", (c) => paginaNueva(c, deps, valoresIniciales(c), null));
 
-	app.post("/tareas", async (c) => {
+	// Desde un tablero acotado la tarea nace en ese proyecto; desde la vista
+	// cruzada, en el que diga el desplegable.
+	const crear = async (c: Context): Promise<RespuestaHtml> => {
 		const formulario = await leerFormulario(c);
 		const activos = terminalesActivos(deps.db);
 		try {
-			const valores = valoresDeFormulario(formulario, activos);
-			const tarea = crearTareaHumana(deps.db, { ...valores, usuarioId: usuarioActual(c).id });
+			const { proyectoId, ...valores } = valoresDeFormulario(formulario, activos);
+			const elegido = proyectoActual(c)?.id ?? proyectoId;
+			const tarea = crearTareaHumana(deps.db, {
+				...valores,
+				usuarioId: usuarioActual(c).id,
+				...(elegido === null ? {} : { proyectoId: elegido }),
+			});
 			return c.redirect(`/tareas/${formatearId(tarea.id)}`, 302);
 		} catch (error) {
 			return paginaNueva(c, deps, valoresCrudos(formulario), mensajeDeRegla(error));
 		}
-	});
+	};
+	app.post("/tareas", crear);
+	app.post("/p/:clave/tareas", crear);
 
 	app.get("/tareas/:id", (c) => {
 		const tareaId = idDeRuta(c);
 		if (tareaId === null) {
-			return paginaNoEncontrada(c, "Eso no es un identificador de tarea; tiene la forma T-0042.");
+			return paginaNoEncontrada(c, deps, "Eso no es un identificador de tarea; tiene la forma T-0042.");
 		}
 		return paginaFicha(c, deps, tareaId, null);
 	});
@@ -1156,12 +1273,17 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 	app.post("/tareas/:id/editar", async (c) => {
 		const tareaId = idDeRuta(c);
 		if (tareaId === null) {
-			return paginaNoEncontrada(c, "Eso no es un identificador de tarea; tiene la forma T-0042.");
+			return paginaNoEncontrada(c, deps, "Eso no es un identificador de tarea; tiene la forma T-0042.");
 		}
 		const formulario = await leerFormulario(c);
 		try {
-			const valores = valoresDeFormulario(formulario, terminalesActivos(deps.db));
-			editarTareaBacklog(deps.db, { ...valores, tareaId, usuarioId: usuarioActual(c).id });
+			const { proyectoId, ...valores } = valoresDeFormulario(formulario, terminalesActivos(deps.db));
+			editarTareaBacklog(deps.db, {
+				...valores,
+				tareaId,
+				usuarioId: usuarioActual(c).id,
+				...(proyectoId === null ? {} : { proyectoId }),
+			});
 			return c.redirect(`/tareas/${formatearId(tareaId)}`, 302);
 		} catch (error) {
 			return paginaFicha(c, deps, tareaId, mensajeDeRegla(error));
@@ -1171,7 +1293,7 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 	app.get("/tareas/:id/borrar", (c) => {
 		const tareaId = idDeRuta(c);
 		if (tareaId === null) {
-			return paginaNoEncontrada(c, "Eso no es un identificador de tarea; tiene la forma T-0042.");
+			return paginaNoEncontrada(c, deps, "Eso no es un identificador de tarea; tiene la forma T-0042.");
 		}
 		return paginaBorrar(c, deps, tareaId);
 	});
@@ -1179,7 +1301,7 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 	app.post("/tareas/:id/borrar", (c) => {
 		const tareaId = idDeRuta(c);
 		if (tareaId === null) {
-			return paginaNoEncontrada(c, "Eso no es un identificador de tarea; tiene la forma T-0042.");
+			return paginaNoEncontrada(c, deps, "Eso no es un identificador de tarea; tiene la forma T-0042.");
 		}
 		try {
 			const borrada = borrarTarea(deps.db, { tareaId, actor: { usuarioId: usuarioActual(c).id } });
@@ -1195,7 +1317,7 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 	app.post("/tareas/:id/mover", async (c) => {
 		const tareaId = idDeRuta(c);
 		if (tareaId === null) {
-			return paginaNoEncontrada(c, "Eso no es un identificador de tarea; tiene la forma T-0042.");
+			return paginaNoEncontrada(c, deps, "Eso no es un identificador de tarea; tiene la forma T-0042.");
 		}
 		const formulario = await leerFormulario(c);
 		const estado = campo(formulario, "estado");
@@ -1218,7 +1340,7 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 	app.post("/tareas/:id/aprobar", (c) => {
 		const tareaId = idDeRuta(c);
 		if (tareaId === null) {
-			return paginaNoEncontrada(c, "Eso no es un identificador de tarea; tiene la forma T-0042.");
+			return paginaNoEncontrada(c, deps, "Eso no es un identificador de tarea; tiene la forma T-0042.");
 		}
 		try {
 			aprobarEjecucion(deps.db, { tareaId, usuarioId: usuarioActual(c).id });
@@ -1231,7 +1353,7 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 	app.post("/tareas/:id/nota", async (c) => {
 		const tareaId = idDeRuta(c);
 		if (tareaId === null) {
-			return paginaNoEncontrada(c, "Eso no es un identificador de tarea; tiene la forma T-0042.");
+			return paginaNoEncontrada(c, deps, "Eso no es un identificador de tarea; tiene la forma T-0042.");
 		}
 		const formulario = await leerFormulario(c);
 		try {
@@ -1245,16 +1367,16 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 	app.post("/tareas/:id/responder/:pregunta", async (c) => {
 		const tareaId = idDeRuta(c);
 		if (tareaId === null) {
-			return paginaNoEncontrada(c, "Eso no es un identificador de tarea; tiene la forma T-0042.");
+			return paginaNoEncontrada(c, deps, "Eso no es un identificador de tarea; tiene la forma T-0042.");
 		}
 		const completa = leerTarea(deps.db, tareaId);
 		if (completa === undefined) {
-			return paginaNoEncontrada(c, `No existe la tarea ${formatearId(tareaId)}.`);
+			return paginaNoEncontrada(c, deps, `No existe la tarea ${formatearId(tareaId)}.`);
 		}
 		const numero = Number.parseInt((c.req.param("pregunta") ?? "").replace(/^P/, ""), 10);
 		const pregunta = completa.preguntas.find((candidata) => candidata.numero === numero);
 		if (pregunta === undefined) {
-			return paginaNoEncontrada(c, `La tarea ${formatearId(tareaId)} no tiene la pregunta indicada.`);
+			return paginaNoEncontrada(c, deps, `La tarea ${formatearId(tareaId)} no tiene la pregunta indicada.`);
 		}
 		const formulario = await leerFormulario(c);
 		try {

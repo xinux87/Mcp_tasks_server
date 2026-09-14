@@ -6,6 +6,7 @@ import { registrarRutasActividad } from "./rutas/actividad.ts";
 import { registrarRutasEventos } from "./rutas/eventos.ts";
 import { registrarRutasFuncionalidades } from "./rutas/funcionalidades.ts";
 import { registrarRutasKanban } from "./rutas/kanban.ts";
+import { exigeProyecto, registrarRutasProyectos } from "./rutas/proyectos.ts";
 import { registrarRutasSesion } from "./rutas/sesion.ts";
 import { registrarRutasTareas } from "./rutas/tareas.ts";
 import { registrarEnlaceDeConexion, registrarRutasTerminales } from "./rutas/terminales.ts";
@@ -23,6 +24,11 @@ const PRIVADAS = [
 	"/tareas",
 	"/tareas/*",
 	"/funcionalidades",
+	// Las vistas acotadas a un proyecto: las mismas de arriba bajo `/p/:clave`.
+	"/p/*",
+	"/proyectos",
+	"/proyectos/*",
+	"/ir",
 	"/terminales",
 	"/terminales/*",
 	"/usuarios",
@@ -53,6 +59,10 @@ export function montarWeb(app: Hono, deps: DependenciasWeb): void {
 		app.use(ruta, requiereSesion(deps));
 	}
 
+	// Detrás de la sesión: deja el proyecto de la URL en el contexto, o responde
+	// 404 si la clave no es de ninguno. Las vistas acotadas lo leen de ahí.
+	app.use("/p/:clave/*", exigeProyecto(deps));
+
 	// La hoja de estilos, el JavaScript propio y SortableJS.
 	registrarEstaticos(app);
 
@@ -65,6 +75,7 @@ export function montarWeb(app: Hono, deps: DependenciasWeb): void {
 	registrarRutasKanban(app, deps);
 	registrarRutasTareas(app, deps);
 	registrarRutasFuncionalidades(app, deps);
+	registrarRutasProyectos(app, deps);
 	registrarRutasTerminales(app, deps);
 	registrarRutasUsuarios(app, deps);
 	registrarRutasActividad(app, deps);

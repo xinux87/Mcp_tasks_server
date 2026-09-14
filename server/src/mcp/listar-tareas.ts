@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
-import { type Estado, type ItemIndice, listarTareas } from "../db/tareas.ts";
+import { type Estado, type ItemIndice, listarTareas, proyectoDeTerminal } from "../db/tareas.ts";
 import { lineaIndice } from "../md/indice.ts";
 import { conErroresDeRegla } from "./errores.ts";
 
@@ -23,6 +23,9 @@ function porPrioridad(items: ItemIndice[]): ItemIndice[] {
 /**
  * `listar_tareas`: el índice del tablero, una línea por tarea. Nunca devuelve
  * el cuerpo ni el hilo, para que mirar el tablero cueste poco contexto.
+ *
+ * Está acotada al proyecto del terminal, como `novedades` y `tomar_tarea`: el
+ * agente no sabe que hay proyectos, solo ve el suyo.
  */
 export function registrarHerramientaListarTareas(server: McpServer, db: DatabaseSync, terminalId: number): void {
 	server.registerTool(
@@ -41,7 +44,13 @@ export function registrarHerramientaListarTareas(server: McpServer, db: Database
 		},
 		async ({ estado, soloMias }) =>
 			conErroresDeRegla(() => {
-				const items = porPrioridad(listarTareas(db, { estado, terminalId: soloMias === true ? terminalId : undefined }));
+				const items = porPrioridad(
+					listarTareas(db, {
+						estado,
+						terminalId: soloMias === true ? terminalId : undefined,
+						proyectoId: proyectoDeTerminal(db, terminalId),
+					}),
+				);
 				return items.length === 0 ? "Ninguna." : items.map(lineaIndice).join("\n");
 			}),
 	);

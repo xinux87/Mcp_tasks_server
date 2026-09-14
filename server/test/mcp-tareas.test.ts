@@ -9,6 +9,7 @@ import { crearTerminalConToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { preguntasDeTarea, responder } from "../src/db/hilo.ts";
+import { crearProyecto } from "../src/db/proyectos.ts";
 import { aprobarEjecucion, crearTareaHumana, moverTareaHumano } from "../src/db/tareas.ts";
 import { CONFIG_PRUEBA } from "./comun.ts";
 
@@ -278,6 +279,55 @@ test("una tarea entera de principio a fin solo con las herramientas del MCP", as
 	} finally {
 		await a.close();
 		await b.close();
+		await montaje.cerrar();
+	}
+});
+
+test("un terminal solo ve, toma y crea tareas de su proyecto", async () => {
+	const montaje = montar();
+	// Una tarea de PRI sin terminal: «sin terminal» significa «cualquier
+	// terminal de este proyecto», no cualquier terminal del servidor.
+	const suelta = crearTareaHumana(montaje.db, {
+		titulo: "Avisar cuando falle el export",
+		descripcion: "Hoy no se entera nadie.",
+		usuarioId: montaje.usuarioId,
+	});
+	moverTareaHumano(montaje.db, { tareaId: suelta.id, usuarioId: montaje.usuarioId, estado: "prepared" });
+
+	const web = crearProyecto(montaje.db, { clave: "WEB", nombre: "La web" });
+	const { valor: c } = crearTerminalConToken(
+		montaje.db,
+		montaje.usuarioId,
+		"portatil-web",
+		"xinux@ejemplo.com",
+		undefined,
+		undefined,
+		web.id,
+	);
+	const cliente = await conectar(montaje, c.token);
+	try {
+		// Ni la asignada a otro terminal ni la que está sin terminal son suyas.
+		assert.match((await llamar(cliente, "novedades", { revision: 0 })).texto, /^revision: \d+$/);
+		assert.equal((await llamar(cliente, "listar_tareas", {})).texto, "Ninguna.");
+		assert.equal(codigoDe(await llamar(cliente, "tomar_tarea", { id: "T-0002", fase: "analisis" })), "otro_proyecto");
+
+		// Lo que propone nace en su proyecto, y ahí sí lo ve.
+		const propuesta = await llamar(cliente, "crear_tarea", {
+			titulo: "Pintar el tablero de la web",
+			descripcion: "Se descubrió por el camino.",
+			clase: "propuesta",
+		});
+		assert.match(propuesta.texto, /^creada: T-0003$/m);
+		assert.match(
+			(await llamar(cliente, "listar_tareas", {})).texto,
+			/^- T-0003 · backlog · Pintar el tablero de la web/m,
+		);
+
+		// `leer_tarea` no se acota: una dependencia puede citar otro proyecto.
+		assert.match((await llamar(cliente, "leer_tarea", { id: "T-0003" })).texto, /^id: T-0003\nproyecto: WEB$/m);
+		assert.match((await llamar(cliente, "leer_tarea", { id: "T-0001" })).texto, /^id: T-0001\nproyecto: PRI$/m);
+	} finally {
+		await cliente.close();
 		await montaje.cerrar();
 	}
 });

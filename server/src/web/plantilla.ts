@@ -1,5 +1,6 @@
 import { html, raw } from "hono/html";
 import type { Usuario } from "../db/consultas.ts";
+import type { Proyecto } from "../db/proyectos.ts";
 import type { Estado, ItemIndice, Marca, TipoTarea } from "../db/tareas.ts";
 import {
 	COLOR_ESTADO,
@@ -99,9 +100,11 @@ export function insigniaTipoDeItem(item: ItemIndice): Html {
 
 /** Una entrada de la navegación y las vistas que la dejan marcada como activa. */
 type EntradaNav = {
-	href: string;
+	ruta: string;
 	texto: string;
 	vistas: readonly string[];
+	/** Las tres vistas de tareas se acotan al proyecto de la URL; el sistema no. */
+	acotable?: boolean;
 };
 
 /**
@@ -112,22 +115,46 @@ const BLOQUES: readonly { titulo: string; entradas: readonly EntradaNav[] }[] = 
 	{
 		titulo: "Tareas",
 		entradas: [
-			{ href: "/tareas", texto: "Lista", vistas: ["lista", "ficha", "tarea", "tarea-nueva"] },
-			{ href: "/tareas/kanban", texto: "Kanban", vistas: ["kanban"] },
-			{ href: "/funcionalidades", texto: "Funcionalidades", vistas: ["funcionalidades"] },
+			{ ruta: "/tareas", texto: "Lista", vistas: ["lista", "ficha", "tarea", "tarea-nueva"], acotable: true },
+			{ ruta: "/tareas/kanban", texto: "Kanban", vistas: ["kanban"], acotable: true },
+			{ ruta: "/funcionalidades", texto: "Funcionalidades", vistas: ["funcionalidades"], acotable: true },
 		],
 	},
 	{
 		titulo: "Sistema",
 		entradas: [
-			{ href: "/terminales", texto: "Terminales", vistas: ["terminales", "conectar"] },
-			{ href: "/usuarios", texto: "Usuarios", vistas: ["usuarios"] },
-			{ href: "/actividad", texto: "Actividad", vistas: ["actividad"] },
+			{ ruta: "/proyectos", texto: "Proyectos", vistas: ["proyectos"] },
+			{ ruta: "/terminales", texto: "Terminales", vistas: ["terminales", "conectar"] },
+			{ ruta: "/usuarios", texto: "Usuarios", vistas: ["usuarios"] },
+			{ ruta: "/actividad", texto: "Actividad", vistas: ["actividad"] },
 		],
 	},
 ];
 
-export type OpcionesPagina = {
+/**
+ * A qué vista lleva el selector de proyecto: a la misma en la que se está, y a
+ * la lista desde cualquier otra página. Es lo que hace que cambiar de proyecto
+ * no cambie de pantalla.
+ */
+function rutaDeVista(vista: string): string {
+	if (vista === "kanban") {
+		return "/tareas/kanban";
+	}
+	return vista === "funcionalidades" ? "/funcionalidades" : "/tareas";
+}
+
+/**
+ * Lo que la barra lateral necesita saber de los proyectos: todos, para el
+ * selector, y el de la URL actual, que es el que dejan puesto los enlaces de
+ * las tres vistas de tareas. Lo compone `navProyectos` en `rutas/proyectos.ts`.
+ */
+export type NavProyectos = {
+	/** Sin lista no se pinta el selector: es lo que hacen el login y la página de error. */
+	proyectos?: readonly Proyecto[];
+	proyecto?: Proyecto;
+};
+
+export type OpcionesPagina = NavProyectos & {
 	titulo: string;
 	/** Quién mira. Sin sesión (la pantalla de login) no hay barra lateral. */
 	usuario: Usuario | null;
@@ -155,22 +182,50 @@ export type OpcionesPagina = {
 	cuerpo: Html;
 };
 
-function enlaceNav(entrada: EntradaNav, vista: string): Html {
+function enlaceNav(entrada: EntradaNav, vista: string, prefijo: string): Html {
 	const activo = entrada.vistas.includes(vista);
-	return html`<a class="enlace-nav" href="${entrada.href}"${activo ? raw(' aria-current="page"') : ""}>${entrada.texto}</a>`;
+	const href = entrada.acotable === true ? `${prefijo}${entrada.ruta}` : entrada.ruta;
+	return html`<a class="enlace-nav" href="${href}"${activo ? raw(' aria-current="page"') : ""}>${entrada.texto}</a>`;
 }
 
 /**
- * La barra lateral: el nombre del proyecto, los dos bloques de navegación y,
- * abajo, quién está dentro y por dónde se sale.
+ * El selector de proyecto, debajo del nombre de la aplicación. Cada opción
+ * lleva puesto su destino, que es la misma vista en el proyecto elegido, así
+ * que sin JavaScript basta con enviar el formulario; con él, `cliente.ts`
+ * esconde el botón y navega al cambiar.
  */
-function barraLateral(usuario: Usuario, vista: string): Html {
+function selectorProyecto(proyectos: readonly Proyecto[], proyecto: Proyecto | undefined, vista: string): Html {
+	const ruta = rutaDeVista(vista);
+	return html`<form class="selector-proyecto" method="get" action="/ir">
+			<label class="solo-lectores" for="ir-proyecto">Proyecto</label>
+			<select id="ir-proyecto" name="destino">
+				<option value="${ruta}"${proyecto === undefined ? raw(" selected") : ""}>Todos los proyectos</option>
+				${proyectos.map(
+					(cual) =>
+						html`<option value="/p/${cual.clave}${ruta}"${cual.id === proyecto?.id ? raw(" selected") : ""}>${cual.clave} · ${cual.nombre}</option>`,
+				)}
+			</select>
+			<button type="submit" class="pequeno">Ir</button>
+		</form>`;
+}
+
+/**
+ * La barra lateral: el nombre de la aplicación, el selector de proyecto, los
+ * dos bloques de navegación y, abajo, quién está dentro y por dónde se sale.
+ */
+function barraLateral(
+	usuario: Usuario,
+	vista: string,
+	nav: { proyectos: readonly Proyecto[]; proyecto?: Proyecto },
+): Html {
+	const prefijo = nav.proyecto === undefined ? "" : `/p/${nav.proyecto.clave}`;
 	return html`<aside class="lateral" id="lateral">
 			<a class="marca" href="/tareas">${NOMBRE_PROYECTO}</a>
+			${nav.proyectos.length === 0 ? html`` : selectorProyecto(nav.proyectos, nav.proyecto, vista)}
 			${BLOQUES.map(
 				(bloque) => html`<nav class="bloque">
 					<h2>${bloque.titulo}</h2>
-					${bloque.entradas.map((entrada) => enlaceNav(entrada, vista))}
+					${bloque.entradas.map((entrada) => enlaceNav(entrada, vista, prefijo))}
 				</nav>`,
 			)}
 			<div class="pie-lateral">
@@ -208,6 +263,8 @@ export function pagina({
 	acciones,
 	ancho,
 	cuerpo,
+	proyectos,
+	proyecto,
 }: OpcionesPagina): Html {
 	const conCabecera = migas !== undefined || acciones !== undefined;
 	const clasesContenido = usuario === null ? "contenido contenido-entrada" : "contenido";
@@ -228,7 +285,7 @@ ${
 	<button type="button" class="alternar-lateral" id="alternar-lateral" aria-controls="lateral" aria-label="Navegación">☰</button>
 	<a class="marca" href="/tareas">${NOMBRE_PROYECTO}</a>
 </header>
-${barraLateral(usuario, vista ?? "")}`
+${barraLateral(usuario, vista ?? "", { proyectos: proyectos ?? [], proyecto })}`
 }
 <main class="${clasesContenido}">
 	<div class="${clasesDentro}">

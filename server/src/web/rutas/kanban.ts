@@ -4,10 +4,13 @@ import { html } from "hono/html";
 import { type TerminalListado, terminalesActivos } from "../../db/admin.ts";
 import { revisionActual } from "../../db/consultas.ts";
 import { dependenciasDeVarias } from "../../db/dependencias.ts";
+import { buscarProyectoPorClave, listarProyectos, type Proyecto } from "../../db/proyectos.ts";
 import {
+	type AmbitoDeColumna,
 	buscarTarea,
 	type Estado,
 	esEstado,
+	type FiltroIndice,
 	type ItemIndice,
 	listarTareas,
 	type Marca,
@@ -19,6 +22,7 @@ import { ErrorDeRegla, esErrorDeRegla } from "../../errores.ts";
 import { formatearId, idONull, parsearId } from "../../md/ids.ts";
 import {
 	accionNuevaTarea,
+	chipProyecto,
 	enlaceFuncionalidad,
 	filtroSelect,
 	type OpcionesFiltro,
@@ -36,6 +40,7 @@ import {
 	type RespuestaHtml,
 } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
+import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
 
 /** Las marcas por las que se puede filtrar, en el orden en que se muestran. */
 export const MARCAS: readonly Marca[] = ["bloqueada", "sin terminal", "en marcha", "análisis listo", "esperando"];
@@ -68,13 +73,21 @@ export type Filtros = {
 	marca: string;
 	/** Identificador visible de la funcionalidad de la que se enseñan las partes. */
 	padre: string;
+	/** Clave del proyecto: la de la URL en una vista acotada, la elegida en la cruzada. */
+	proyecto: string;
 };
 
+/**
+ * Los filtros de la petición. El proyecto sale de la URL cuando la vista está
+ * acotada (`/p/WEB/…`) y del desplegable cuando es la cruzada: filtrar es lo
+ * mismo en los dos casos, lo que cambia es de dónde viene la clave.
+ */
 export function filtrosDe(c: Context): Filtros {
 	return {
 		terminal: c.req.query("terminal") ?? "",
 		marca: c.req.query("marca") ?? "",
 		padre: c.req.query("padre") ?? "",
+		proyecto: proyectoActual(c)?.clave ?? c.req.query("proyecto") ?? "",
 	};
 }
 
@@ -87,9 +100,22 @@ function esDeLaFuncionalidad(item: ItemIndice, padre: string): boolean {
 	return padreId !== null && item.padreId === padreId;
 }
 
-function tareasFiltradas(db: DatabaseSync, filtros: Filtros): ItemIndice[] {
+/**
+ * El filtro del índice: terminal y proyecto, que es lo que sabe resolver la
+ * base. Una clave que no es de ningún proyecto no selecciona ninguna tarea,
+ * igual que un identificador de funcionalidad que no encaja.
+ */
+function filtroDeIndice(db: DatabaseSync, filtros: Filtros): FiltroIndice {
 	const terminalId = Number.parseInt(filtros.terminal, 10);
-	return listarTareas(db, Number.isSafeInteger(terminalId) ? { terminalId } : {}).filter((item) => {
+	const proyectoId = filtros.proyecto === "" ? undefined : (buscarProyectoPorClave(db, filtros.proyecto)?.id ?? 0);
+	return {
+		...(Number.isSafeInteger(terminalId) ? { terminalId } : {}),
+		...(proyectoId === undefined ? {} : { proyectoId }),
+	};
+}
+
+function tareasFiltradas(db: DatabaseSync, filtros: Filtros): ItemIndice[] {
+	return listarTareas(db, filtroDeIndice(db, filtros)).filter((item) => {
 		if (esMarca(filtros.marca) && !item.marcas.includes(filtros.marca)) {
 			return false;
 		}
@@ -102,16 +128,21 @@ export function funcionalidadesAbiertas(db: DatabaseSync): ItemIndice[] {
 	return listarTareas(db).filter((item) => item.tipo === "funcionalidad" && item.estado !== "finished");
 }
 
-/** La query string con la que el cliente vuelve a pedir este mismo fragmento. */
-function fuenteDe(filtros: Filtros): string {
+/**
+ * La dirección con la que el cliente vuelve a pedir este mismo fragmento. En
+ * una vista acotada el proyecto ya va en la ruta, así que no se repite en la
+ * query.
+ */
+function fuenteDe(filtros: Filtros, acotado: Proyecto | undefined): string {
 	const consulta = new URLSearchParams();
 	for (const [nombre, valor] of Object.entries(filtros)) {
-		if (valor !== "") {
+		if (valor !== "" && !(nombre === "proyecto" && acotado !== undefined)) {
 			consulta.set(nombre, valor);
 		}
 	}
+	const base = `${prefijo(acotado)}/tareas/kanban/tablero`;
 	const texto = consulta.toString();
-	return texto === "" ? "/tareas/kanban/tablero" : `/tareas/kanban/tablero?${texto}`;
+	return texto === "" ? base : `${base}?${texto}`;
 }
 
 // --- trozos de página --------------------------------------------------------
@@ -120,9 +151,16 @@ function fuenteDe(filtros: Filtros): string {
  * La misma fila de filtros que la lista, sin `estado`: aquí el estado es la
  * columna. «Quitar filtros» solo sale cuando hay algo que quitar.
  */
-function formularioFiltros(db: DatabaseSync, activos: TerminalListado[], filtros: Filtros): Html {
+function formularioFiltros(
+	db: DatabaseSync,
+	activos: TerminalListado[],
+	filtros: Filtros,
+	acotado: Proyecto | undefined,
+): Html {
 	const hayFiltro = filtros.terminal !== "" || filtros.marca !== "" || filtros.padre !== "";
-	return html`<form class="filtros" method="get" action="/tareas/kanban">
+	const base = `${prefijo(acotado)}/tareas/kanban`;
+	return html`<form class="filtros" method="get" action="${base}">
+			${acotado !== undefined ? html`` : filtroSelect(opcionesProyecto(db, filtros.proyecto))}
 			${filtroSelect({
 				nombre: "terminal",
 				titulo: "Terminal",
@@ -139,8 +177,26 @@ function formularioFiltros(db: DatabaseSync, activos: TerminalListado[], filtros
 			})}
 			${filtroSelect(opcionesFuncionalidad(db, filtros.padre))}
 			<button type="submit" class="pequeno">Filtrar</button>
-			${hayFiltro ? html`<a class="quitar" href="/tareas/kanban">Quitar filtros</a>` : html``}
+			${hayFiltro || (acotado === undefined && filtros.proyecto !== "") ? html`<a class="quitar" href="${base}">Quitar filtros</a>` : html``}
 		</form>`;
+}
+
+/**
+ * El desplegable de proyectos de la vista cruzada, compartido por la lista, el
+ * kanban y las funcionalidades. En una vista acotada no se pinta: el proyecto
+ * ya está en la URL.
+ */
+export function opcionesProyecto(db: DatabaseSync, seleccionado: string): OpcionesFiltro {
+	return {
+		nombre: "proyecto",
+		titulo: "Proyecto",
+		todas: "todos",
+		valores: listarProyectos(db).map((proyecto) => ({
+			valor: proyecto.clave,
+			texto: `${proyecto.clave} · ${abreviar(proyecto.nombre, 24)}`,
+		})),
+		seleccionado,
+	};
 }
 
 /**
@@ -184,9 +240,11 @@ function fasesLegibles(item: ItemIndice): string {
 type Vecindad = {
 	dependencias: Map<number, number[]>;
 	funcionalidades: Map<number, string>;
+	/** La clave de cada proyecto, solo en la vista cruzada: acotada sobraría. */
+	proyectos: Map<number, string> | null;
 };
 
-function vecindadDe(db: DatabaseSync, items: ItemIndice[], conFuncionalidad: boolean): Vecindad {
+function vecindadDe(db: DatabaseSync, items: ItemIndice[], conFuncionalidad: boolean, conProyecto: boolean): Vecindad {
 	const padres = new Set<number>();
 	for (const item of items) {
 		if (item.padreId !== null && conFuncionalidad) {
@@ -208,6 +266,7 @@ function vecindadDe(db: DatabaseSync, items: ItemIndice[], conFuncionalidad: boo
 			items.map((item) => item.id),
 		),
 		funcionalidades,
+		proyectos: conProyecto ? new Map(listarProyectos(db).map((proyecto) => [proyecto.id, proyecto.clave])) : null,
 	};
 }
 
@@ -226,9 +285,11 @@ function dependenciasLegibles(dependeDe: number[] | undefined): Html {
 function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
 	const id = formatearId(item.id);
 	const funcionalidad = item.padreId === null ? undefined : vecindad.funcionalidades.get(item.padreId);
+	const clave = vecindad.proyectos?.get(item.proyectoId);
 	return html`<article class="tarjeta" data-id="${id}" data-estado="${item.estado}">
 			<div class="linea">
 				<a class="id-tarea" href="/tareas/${id}">${id}</a>
+				${clave === undefined ? html`` : chipProyecto(clave)}
 				${insigniaTipoDeItem(item)}
 				${insigniasMarcas(item.marcas)}
 			</div>
@@ -284,14 +345,14 @@ function ultimasCerradas(db: DatabaseSync, items: ItemIndice[]): ItemIndice[] {
  * dirección de la que salió, para volver a pedirse con sus mismos filtros: la
  * ficha de una funcionalidad enseña este mismo tablero con solo sus partes.
  */
-export function tablero(db: DatabaseSync, filtros: Filtros): Html {
+export function tablero(db: DatabaseSync, filtros: Filtros, acotado?: Proyecto): Html {
 	const items = tareasFiltradas(db, filtros);
 	// Dentro del tablero de una funcionalidad, cada tarjeta es una parte suya:
 	// repetir su título en todas no diría nada que no diga la propia página.
-	const vecindad = vecindadDe(db, items, filtros.padre === "");
-	// `data-padre` es el ámbito del tablero: con él, la posición que manda el
-	// cliente al soltar es entre las partes de esa funcionalidad.
-	return html`<section id="tablero" class="tablero" data-fuente="${fuenteDe(filtros)}" data-padre="${filtros.padre}" data-revision="${revisionActual(db)}">
+	const vecindad = vecindadDe(db, items, filtros.padre === "", acotado === undefined);
+	// `data-padre` y `data-proyecto` son el ámbito del tablero: con ellos, la
+	// posición que manda el cliente al soltar es entre las tarjetas que se ven.
+	return html`<section id="tablero" class="tablero" data-fuente="${fuenteDe(filtros, acotado)}" data-padre="${filtros.padre}" data-proyecto="${acotado?.clave ?? ""}" data-revision="${revisionActual(db)}">
 			<p class="aviso aviso-tablero" id="aviso-tablero" role="alert" hidden></p>
 			<div class="columnas">
 				${COLUMNAS.map((cual) => {
@@ -308,16 +369,18 @@ export function tablero(db: DatabaseSync, filtros: Filtros): Html {
 function paginaKanban(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	const { db } = deps;
 	const filtros = filtrosDe(c);
-	const cuerpo = html`${formularioFiltros(db, terminalesActivos(db), filtros)}
-		${tablero(db, filtros)}`;
+	const acotado = proyectoActual(c);
+	const cuerpo = html`${formularioFiltros(db, terminalesActivos(db), filtros, acotado)}
+		${tablero(db, filtros, acotado)}`;
 	// El tablero ocupa todo el ancho: cinco columnas no caben en 60 rem.
 	return c.html(
 		pagina({
-			titulo: "Kanban",
+			...navProyectos(c, db),
+			titulo: acotado === undefined ? "Kanban" : `Kanban · ${acotado.clave}`,
 			usuario: usuarioActual(c),
 			vista: "kanban",
 			revision: revisionActual(db),
-			acciones: accionNuevaTarea(),
+			acciones: accionNuevaTarea(prefijo(acotado)),
 			ancho: "completo",
 			cuerpo,
 		}),
@@ -333,6 +396,8 @@ type Orden = {
 	nota: string;
 	/** Funcionalidad del tablero del que salió, si venía acotado. Vacío en el kanban global. */
 	padre: string;
+	/** Clave del proyecto del tablero del que salió. Vacía en la vista cruzada. */
+	proyecto: string;
 };
 
 function esObjeto(valor: unknown): valor is Record<string, unknown> {
@@ -355,6 +420,7 @@ async function leerOrden(c: Context): Promise<Orden> {
 			orden: typeof orden === "number" ? orden : Number.parseInt(textoDe(objeto, "orden"), 10),
 			nota: textoDe(objeto, "nota"),
 			padre: textoDe(objeto, "padre"),
+			proyecto: textoDe(objeto, "proyecto"),
 		};
 	}
 	const formulario = await leerFormulario(c);
@@ -363,25 +429,37 @@ async function leerOrden(c: Context): Promise<Orden> {
 		orden: Number.parseInt(campo(formulario, "orden"), 10),
 		nota: campo(formulario, "nota"),
 		padre: campo(formulario, "padre"),
+		proyecto: campo(formulario, "proyecto"),
 	};
 }
 
 /**
  * El ámbito de la reordenación. En el tablero de una funcionalidad la posición
- * es entre sus partes, así que la tarjeta tiene que ser una de ellas.
+ * es entre sus partes y en el de un proyecto, entre sus tareas: en los dos la
+ * tarjeta tiene que ser una de las que ese tablero enseña.
  */
-function ambitoDe(tarea: Tarea, padre: string): { padreId: number } | undefined {
-	if (padre === "") {
+function ambitoDe(db: DatabaseSync, tarea: Tarea, datos: Orden): AmbitoDeColumna | undefined {
+	if (datos.padre !== "") {
+		const padreId = idONull(datos.padre);
+		if (padreId === null || tarea.padreId !== padreId) {
+			throw new ErrorDeRegla(
+				"padre_no_coincide",
+				`La tarea ${formatearId(tarea.id)} no es parte de ${datos.padre}: ese tablero no puede colocarla.`,
+			);
+		}
+		return { padreId };
+	}
+	if (datos.proyecto === "") {
 		return undefined;
 	}
-	const padreId = idONull(padre);
-	if (padreId === null || tarea.padreId !== padreId) {
+	const proyecto = buscarProyectoPorClave(db, datos.proyecto);
+	if (proyecto === undefined || proyecto.id !== tarea.proyectoId) {
 		throw new ErrorDeRegla(
-			"padre_no_coincide",
-			`La tarea ${formatearId(tarea.id)} no es parte de ${padre}: ese tablero no puede colocarla.`,
+			"otro_proyecto",
+			`La tarea ${formatearId(tarea.id)} no es del proyecto ${datos.proyecto}: ese tablero no puede colocarla.`,
 		);
 	}
-	return { padreId };
+	return { proyectoId: proyecto.id };
 }
 
 /**
@@ -400,7 +478,7 @@ function aplicarOrden(deps: DependenciasWeb, tareaId: number, usuarioId: number,
 	if (!Number.isSafeInteger(datos.orden) || datos.orden < 1) {
 		throw new ErrorDeRegla("orden_invalido", "La posición de destino tiene que ser un número a partir de 1.");
 	}
-	const entre = ambitoDe(tarea, datos.padre);
+	const entre = ambitoDe(deps.db, tarea, datos);
 	if (datos.estado !== tarea.estado) {
 		moverTareaHumano(deps.db, { tareaId, usuarioId, estado: datos.estado, nota: datos.nota });
 	}
@@ -416,9 +494,13 @@ function aplicarOrden(deps: DependenciasWeb, tareaId: number, usuarioId: number,
  */
 export function registrarRutasKanban(app: Hono, deps: DependenciasWeb): void {
 	app.get("/tareas/kanban", (c) => paginaKanban(c, deps));
+	app.get("/p/:clave/tareas/kanban", (c) => paginaKanban(c, deps));
 
 	// Solo el fragmento: el cliente sustituye `#tablero` sin repintar la página.
-	app.get("/tareas/kanban/tablero", (c) => c.html(tablero(deps.db, filtrosDe(c)), 200, { "Cache-Control": "no-store" }));
+	const fragmento = (c: Context): RespuestaHtml =>
+		c.html(tablero(deps.db, filtrosDe(c), proyectoActual(c)), 200, { "Cache-Control": "no-store" });
+	app.get("/tareas/kanban/tablero", fragmento);
+	app.get("/p/:clave/tareas/kanban/tablero", fragmento);
 
 	app.post("/tareas/:id/orden", async (c) => {
 		const tareaId = idDeRuta(c);

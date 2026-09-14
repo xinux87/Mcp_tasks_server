@@ -1,14 +1,24 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import { html } from "hono/html";
 import { revisionActual } from "../../db/consultas.ts";
 import { consumoDeTarea } from "../../db/consumo.ts";
+import { buscarProyectoPorClave, listarProyectos } from "../../db/proyectos.ts";
 import { buscarTarea, type ItemIndice, listarTareas, type Tarea } from "../../db/tareas.ts";
 import { formatearId } from "../../md/ids.ts";
-import { barraProgreso, buscadorDeCreador, etiqueta, type QuienCreo } from "../componentes.ts";
+import {
+	barraProgreso,
+	buscadorDeCreador,
+	chipProyecto,
+	etiqueta,
+	filtroSelect,
+	type QuienCreo,
+} from "../componentes.ts";
 import { fechaLegible, numeroLegible, SIN_DATO } from "../formatos.ts";
-import { type Html, insigniaEstado, pagina } from "../plantilla.ts";
+import { type Html, insigniaEstado, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
+import { opcionesProyecto } from "./kanban.ts";
+import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
 
 /**
  * `GET /funcionalidades`: en qué va cada evolutivo. Una fila por
@@ -39,7 +49,9 @@ type Fila = {
  * Las funcionalidades con sus cuentas. Las partes se agrupan de una sola
  * lectura del índice: una consulta por funcionalidad sería una por fila.
  */
-function filasDe(db: DatabaseSync): Fila[] {
+function filasDe(db: DatabaseSync, proyectoId: number | undefined): Fila[] {
+	// Las partes se agrupan sobre el índice entero aunque la vista esté acotada:
+	// una parte y su funcionalidad viven siempre en el mismo proyecto.
 	const items = listarTareas(db);
 	const porPadre = new Map<number, ItemIndice[]>();
 	for (const item of items) {
@@ -56,7 +68,7 @@ function filasDe(db: DatabaseSync): Fila[] {
 
 	const filas: Fila[] = [];
 	for (const item of items) {
-		if (item.tipo !== "funcionalidad") {
+		if (item.tipo !== "funcionalidad" || (proyectoId !== undefined && item.proyectoId !== proyectoId)) {
 			continue;
 		}
 		const tarea = buscarTarea(db, item.id);
@@ -84,15 +96,17 @@ function frenos(fila: Fila): Html {
 		${fila.esperando === 0 ? html`` : etiqueta(`${fila.esperando} esperando`, "naranja", "marca-esperando")}`;
 }
 
-function filaFuncionalidad(fila: Fila, creadorDe: Creador): Html {
+function filaFuncionalidad(fila: Fila, creadorDe: Creador, claves: Claves): Html {
 	const id = formatearId(fila.item.id);
 	const creador = creadorDe({
 		usuarioId: fila.tarea.creadaPorUsuarioId,
 		terminalId: fila.tarea.creadaPorTerminalId,
 	});
+	const clave = claves?.get(fila.item.proyectoId);
 	return html`<tr>
 			<td>
 				<a class="id-tarea" href="/tareas/${id}">${id}</a>
+				${clave === undefined ? html`` : chipProyecto(clave)}
 				<a href="/tareas/${id}">${fila.item.titulo}</a>
 			</td>
 			<td>${insigniaEstado(fila.item.estado)}</td>
@@ -105,7 +119,10 @@ function filaFuncionalidad(fila: Fila, creadorDe: Creador): Html {
 		</tr>`;
 }
 
-function tabla(filas: Fila[], creadorDe: Creador): Html {
+/** La clave de cada proyecto, solo en la vista cruzada: acotada sobraría. */
+type Claves = Map<number, string> | null;
+
+function tabla(filas: Fila[], creadorDe: Creador, claves: Claves): Html {
 	if (filas.length === 0) {
 		return html`<p class="silencio">Ninguna.</p>`;
 	}
@@ -117,27 +134,44 @@ function tabla(filas: Fila[], creadorDe: Creador): Html {
 						<th class="numero">Tokens</th><th>Rama</th><th>Creada por</th><th>Actualizada</th>
 					</tr>
 				</thead>
-				<tbody>${filas.map((fila) => filaFuncionalidad(fila, creadorDe))}</tbody>
+				<tbody>${filas.map((fila) => filaFuncionalidad(fila, creadorDe, claves))}</tbody>
 			</table>
 		</div>`;
 }
 
 /** Las funcionalidades: en marcha arriba y las cerradas plegadas al final. */
 export function registrarRutasFuncionalidades(app: Hono, deps: DependenciasWeb): void {
-	app.get("/funcionalidades", (c) => {
-		const filas = filasDe(deps.db);
+	const paginaFuncionalidades = (c: Context): RespuestaHtml => {
+		const acotado = proyectoActual(c);
+		// En la vista cruzada el proyecto se elige con el desplegable; acotada ya
+		// está en la URL y el filtro sobraría.
+		const elegida = acotado?.clave ?? c.req.query("proyecto") ?? "";
+		const proyectoId = elegida === "" ? undefined : (buscarProyectoPorClave(deps.db, elegida)?.id ?? 0);
+		const filas = filasDe(deps.db, proyectoId);
 		const abiertas = filas.filter((fila) => fila.item.estado !== "finished");
 		const cerradas = filas.filter((fila) => fila.item.estado === "finished");
 		const creadorDe = buscadorDeCreador(deps.db);
+		const claves = acotado === undefined ? new Map(listarProyectos(deps.db).map((cual) => [cual.id, cual.clave])) : null;
+		const base = prefijo(acotado);
 
-		const cuerpo = html`${tabla(abiertas, creadorDe)}
+		const filtros =
+			acotado !== undefined
+				? html``
+				: html`<form class="filtros" method="get" action="/funcionalidades">
+					${filtroSelect(opcionesProyecto(deps.db, elegida))}
+					<button type="submit" class="pequeno">Filtrar</button>
+					${elegida === "" ? html`` : html`<a class="quitar" href="/funcionalidades">Quitar filtros</a>`}
+				</form>`;
+
+		const cuerpo = html`${filtros}
+			${tabla(abiertas, creadorDe, claves)}
 			${
 				cerradas.length === 0
 					? html``
 					: html`<section class="grupo">
 						<details>
 							<summary>Cerradas <span class="contador">${cerradas.length}</span></summary>
-							${tabla(cerradas, creadorDe)}
+							${tabla(cerradas, creadorDe, claves)}
 						</details>
 					</section>`
 			}`;
@@ -146,13 +180,17 @@ export function registrarRutasFuncionalidades(app: Hono, deps: DependenciasWeb):
 		// entera, porque no tiene ningún formulario que se pueda perder.
 		return c.html(
 			pagina({
-				titulo: "Funcionalidades",
+				...navProyectos(c, deps.db),
+				titulo: acotado === undefined ? "Funcionalidades" : `Funcionalidades · ${acotado.clave}`,
 				usuario: usuarioActual(c),
 				vista: "funcionalidades",
 				revision: revisionActual(deps.db),
-				acciones: html`<a class="boton principal" href="/tareas/nueva?tipo=funcionalidad">Nueva funcionalidad</a>`,
+				acciones: html`<a class="boton principal" href="${base}/tareas/nueva?tipo=funcionalidad">Nueva funcionalidad</a>`,
 				cuerpo,
 			}),
 		);
-	});
+	};
+
+	app.get("/funcionalidades", paginaFuncionalidades);
+	app.get("/p/:clave/funcionalidades", paginaFuncionalidades);
 }

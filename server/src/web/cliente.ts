@@ -3,7 +3,7 @@
  * en disco: lo sirve `GET /static/app.js` como módulo ES. Es lo único que
  * corre en el navegador, aparte de SortableJS.
  *
- * Hace cinco cosas, y ninguna más:
+ * Hace seis cosas, y ninguna más:
  *
  * 1. Refresco en vivo: escucha `/eventos` (SSE con la revisión global) y,
  *    según la vista, recarga el fragmento del tablero, recarga la página o
@@ -14,6 +14,8 @@
  * 4. Despliega la barra lateral en móvil, alternando la clase
  *    `lateral-abierta` en el `<body>`.
  * 5. Copia al portapapeles los bloques de comandos del tutorial de conexión.
+ * 6. Navega al cambiar el selector de proyecto de la barra lateral, y esconde
+ *    su botón «Ir», que solo hace falta sin JavaScript.
  *
  * Escrito sin acentos graves ni interpolaciones para que quepa tal cual en
  * esta plantilla de TypeScript. Nunca escribe `innerHTML` con nada que no
@@ -198,6 +200,11 @@ async function enviarOrden(id, estado, orden, nota) {
 	if (padre !== "") {
 		datos.set("padre", padre);
 	}
+	// Lo mismo con el tablero de un proyecto: la posición es entre sus tareas.
+	const proyecto = tablero === null ? "" : tablero.dataset.proyecto || "";
+	if (proyecto !== "") {
+		datos.set("proyecto", proyecto);
+	}
 	let respuesta;
 	try {
 		respuesta = await fetch("/tareas/" + encodeURIComponent(id) + "/orden", {
@@ -320,6 +327,30 @@ function prepararLateral() {
 	});
 }
 
+// --- selector de proyecto ----------------------------------------------------
+
+/**
+ * El desplegable de la barra lateral ya lleva en cada opción su destino, así
+ * que sin JavaScript basta con enviar el formulario. Con él sobra el botón:
+ * cambiar la opción navega.
+ */
+function prepararSelectorProyecto() {
+	const select = document.getElementById("ir-proyecto");
+	if (select === null) {
+		return;
+	}
+	const formulario = select.closest("form");
+	const boton = formulario === null ? null : formulario.querySelector("button");
+	if (boton !== null) {
+		boton.hidden = true;
+	}
+	select.addEventListener("change", function () {
+		if (select.value !== "") {
+			window.location.assign(select.value);
+		}
+	});
+}
+
 // --- copiar bloques de comandos ----------------------------------------------
 
 /**
@@ -437,6 +468,7 @@ function escucharEventos() {
 // --- arranque ----------------------------------------------------------------
 
 prepararLateral();
+prepararSelectorProyecto();
 prepararCopias();
 escucharEventos();
 

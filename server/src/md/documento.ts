@@ -54,7 +54,9 @@ export function bloqueConsumo(consumo: ConsumoDeTarea): string {
 
 function frontmatter(completa: TareaCompleta): string {
 	const { tarea } = completa;
-	const lineas = ["---", `id: ${formatearId(tarea.id)}`];
+	// El proyecto va justo debajo del id: es lo primero que sitúa la tarea, y
+	// el agente solo ve tareas del suyo salvo cuando lee una dependencia ajena.
+	const lineas = ["---", `id: ${formatearId(tarea.id)}`, `proyecto: ${completa.proyecto}`];
 	// El título va siempre entre comillas dobles: es texto del humano y puede
 	// llevar dos puntos, comillas o almohadillas, que en YAML significan algo.
 	lineas.push(`titulo: ${JSON.stringify(tarea.titulo)}`);

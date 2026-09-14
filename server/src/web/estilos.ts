@@ -129,6 +129,21 @@ pre {
 	text-decoration: none;
 }
 
+/* El selector de proyecto, debajo del nombre: ocupa el ancho de la barra y el
+   botón «Ir» solo se ve sin JavaScript, que es quien lo esconde. */
+.selector-proyecto {
+	display: flex;
+	gap: 0.3rem;
+	margin: 0 0 1.1rem;
+	padding: 0 0.5rem;
+}
+
+.selector-proyecto select {
+	flex: 1;
+	min-width: 0;
+	font-size: 0.85rem;
+}
+
 .bloque {
 	margin-bottom: 1.1rem;
 }

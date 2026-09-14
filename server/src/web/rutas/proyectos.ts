@@ -1,0 +1,355 @@
+import type { DatabaseSync } from "node:sqlite";
+import type { Context, Hono, MiddlewareHandler } from "hono";
+import { html } from "hono/html";
+import { altaPor } from "../../db/actividad.ts";
+import { listarTerminales } from "../../db/admin.ts";
+import {
+	borrarProyecto,
+	buscarProyectoPorClave,
+	buscarProyectoPorId,
+	crearProyecto,
+	editarProyecto,
+	listarProyectos,
+	type Proyecto,
+} from "../../db/proyectos.ts";
+import { listarTareas } from "../../db/tareas.ts";
+import { buscadorDeColor, type Color, chipDeAlta, chipProyecto, type Miga } from "../componentes.ts";
+import { SIN_DATO } from "../formatos.ts";
+import { campo, campoOpcional, ESTADO_AVISO, leerFormulario, mensajeDeRegla } from "../formulario.ts";
+import { type Html, type NavProyectos, pagina, type RespuestaHtml } from "../plantilla.ts";
+import { type DependenciasWeb, destinoSeguro, usuarioActual } from "../sesion.ts";
+
+declare module "hono" {
+	interface ContextVariableMap {
+		/**
+		 * Proyecto del tablero acotado, o `undefined` en la vista cruzada. Lo deja
+		 * `exigeProyecto` leyendo la clave de la URL.
+		 */
+		proyecto: Proyecto | undefined;
+	}
+}
+
+// --- el proyecto de la URL ---------------------------------------------------
+
+/** El proyecto de la URL actual, o `undefined` si la vista es la cruzada. */
+export function proyectoActual(c: Context): Proyecto | undefined {
+	return c.get("proyecto");
+}
+
+/**
+ * El prefijo de las vistas acotadas: `/p/WEB`, o vacío en la vista cruzada. Es
+ * lo que antepone cada enlace interno para no salirse del proyecto.
+ */
+export function prefijo(proyecto: Proyecto | undefined): string {
+	return proyecto === undefined ? "" : `/p/${proyecto.clave}`;
+}
+
+/** Lo que la barra lateral necesita saber en cualquier página con sesión. */
+export function navProyectos(c: Context, db: DatabaseSync): NavProyectos {
+	return { proyectos: listarProyectos(db), proyecto: proyectoActual(c) };
+}
+
+function paginaSinProyecto(c: Context, db: DatabaseSync, clave: string): RespuestaHtml {
+	return c.html(
+		pagina({
+			...navProyectos(c, db),
+			titulo: "Proyecto no encontrado",
+			usuario: usuarioActual(c),
+			vista: "proyectos",
+			cuerpo: html`<section class="caja caja-estrecha">
+				<p>No existe ningún proyecto con la clave «${clave}».</p>
+				<p><a class="boton" href="/proyectos">Ver los proyectos</a></p>
+			</section>`,
+		}),
+		404,
+	);
+}
+
+/**
+ * Guardián de las vistas acotadas `/p/:clave/…`: deja el proyecto en el
+ * contexto, o responde la página de 404 si la clave no es de ninguno. Va
+ * detrás de la sesión, como el resto de la web.
+ */
+export function exigeProyecto(deps: DependenciasWeb): MiddlewareHandler {
+	return async (c, next) => {
+		const clave = c.req.param("clave") ?? "";
+		const proyecto = buscarProyectoPorClave(deps.db, clave);
+		if (proyecto === undefined) {
+			return paginaSinProyecto(c, deps.db, clave);
+		}
+		c.set("proyecto", proyecto);
+		await next();
+		return;
+	};
+}
+
+// --- la página de proyectos --------------------------------------------------
+
+/** Un proyecto con lo que cuelga de él: es lo que impide borrarlo. */
+type Fila = {
+	proyecto: Proyecto;
+	abiertas: number;
+	terminales: number;
+};
+
+function filasDe(db: DatabaseSync): Fila[] {
+	const tareas = listarTareas(db);
+	const terminales = listarTerminales(db);
+	return listarProyectos(db).map((proyecto) => ({
+		proyecto,
+		abiertas: tareas.filter((item) => item.proyectoId === proyecto.id && item.estado !== "finished").length,
+		terminales: terminales.filter((terminal) => terminal.proyectoId === proyecto.id).length,
+	}));
+}
+
+function textoOpcionalLegible(valor: string | null): Html {
+	return valor === null ? html`<span class="silencio">${SIN_DATO}</span>` : html`<code>${valor}</code>`;
+}
+
+/** Cómo se busca el color de cada usuario que aparece en la página. */
+type ColorDe = (nombre: string) => Color | null;
+
+function filaProyecto(db: DatabaseSync, fila: Fila, colorDe: ColorDe): Html {
+	const { proyecto } = fila;
+	return html`<tr>
+			<td>${chipProyecto(proyecto.clave)}</td>
+			<td>
+				<a href="${`/p/${proyecto.clave}/tareas`}">${proyecto.nombre}</a>
+				${proyecto.descripcion === "" ? html`` : html`<span class="pequeno silencio">${proyecto.descripcion}</span>`}
+			</td>
+			<td class="pequeno">${textoOpcionalLegible(proyecto.repositorio)}</td>
+			<td class="pequeno"><code>${proyecto.ramaPrincipal}</code></td>
+			<td class="numero pequeno">${fila.abiertas}</td>
+			<td class="numero pequeno">${fila.terminales}</td>
+			<td>${chipDeAlta(altaPor(db, "proyecto", proyecto.id), colorDe)}</td>
+			<td>
+				<span class="acciones-terminal">
+					<a class="accion-fila neutra" href="/proyectos/${proyecto.id}/editar">Editar</a>
+					<a class="accion-fila" href="/proyectos/${proyecto.id}/borrar">Borrar</a>
+				</span>
+			</td>
+		</tr>`;
+}
+
+/** Los campos que se editan de un proyecto. La clave no está: se fija al crear. */
+function camposProyecto(proyecto: Proyecto | null): Html {
+	return html`<label>
+			<span>Nombre</span>
+			<input type="text" name="nombre" value="${proyecto?.nombre ?? ""}" required>
+		</label>
+		<label>
+			<span>Descripción</span>
+			<textarea name="descripcion" rows="3">${proyecto?.descripcion ?? ""}</textarea>
+		</label>
+		<label>
+			<span>Repositorio</span>
+			<input type="text" name="repositorio" value="${proyecto?.repositorio ?? ""}" placeholder="https://github.com/xinux87/Mcp_tasks_server">
+			<span class="ayuda">Si lo pones, un terminal que trabaje en otro repositorio no podrá registrarse.</span>
+		</label>
+		<label>
+			<span>Rama principal</span>
+			<input type="text" name="ramaPrincipal" value="${proyecto?.ramaPrincipal ?? "main"}" required>
+		</label>
+		<label>
+			<span>Verificación</span>
+			<input type="text" name="verificacion" value="${proyecto?.verificacion ?? ""}" placeholder="cd server && npm test">
+			<span class="ayuda">El comando que tiene que pasar la parte que integra la rama.</span>
+		</label>`;
+}
+
+function tarjetaNuevoProyecto(): Html {
+	return html`<section class="caja" id="nuevo-proyecto">
+			<h2>Nuevo proyecto</h2>
+			<p>
+				Un proyecto es un repositorio. Sus tareas y sus terminales son suyos: un terminal trabaja para un
+				solo proyecto, y una tarea solo la toma un terminal de su proyecto.
+			</p>
+			<form method="post" action="/proyectos">
+				<label>
+					<span>Clave</span>
+					<input type="text" name="clave" placeholder="WEB" required>
+					<span class="ayuda">De dos a seis caracteres, mayúsculas y cifras, empezando por letra. Va en las URLs y no se cambia.</span>
+				</label>
+				${camposProyecto(null)}
+				<button type="submit" class="principal">Crear proyecto</button>
+			</form>
+		</section>`;
+}
+
+function paginaProyectos(c: Context, deps: DependenciasWeb, aviso: string | null): RespuestaHtml {
+	const filas = filasDe(deps.db);
+	const colorDe = buscadorDeColor(deps.db);
+	const cuerpo = html`<div class="tabla-envuelta">
+			<table class="tabla-proyectos">
+				<thead>
+					<tr>
+						<th>Clave</th><th>Nombre</th><th>Repositorio</th><th>Rama principal</th>
+						<th class="numero">Tareas abiertas</th><th class="numero">Terminales</th><th>Creado por</th><th></th>
+					</tr>
+				</thead>
+				<tbody>${filas.map((fila) => filaProyecto(deps.db, fila, colorDe))}</tbody>
+			</table>
+		</div>
+		${tarjetaNuevoProyecto()}`;
+
+	return c.html(
+		pagina({
+			...navProyectos(c, deps.db),
+			titulo: "Proyectos",
+			usuario: usuarioActual(c),
+			vista: "proyectos",
+			aviso,
+			acciones: html`<a class="boton principal" href="#nuevo-proyecto">Nuevo proyecto</a>`,
+			cuerpo,
+		}),
+		aviso === null ? 200 : ESTADO_AVISO,
+	);
+}
+
+/** Las migas de todo lo que cuelga de la lista de proyectos. */
+function migasDe(donde: string): Miga[] {
+	return [{ texto: "Proyectos", href: "/proyectos" }, { texto: donde }];
+}
+
+/** El proyecto de la ruta `/proyectos/:id/…`, o `undefined` si el id no es de ninguno. */
+function proyectoDeRuta(deps: DependenciasWeb, c: Context): Proyecto | undefined {
+	return buscarProyectoPorId(deps.db, Number.parseInt(c.req.param("id") ?? "", 10));
+}
+
+function paginaNoEncontrado(c: Context, deps: DependenciasWeb): RespuestaHtml {
+	return c.html(
+		pagina({
+			...navProyectos(c, deps.db),
+			titulo: "Proyecto no encontrado",
+			usuario: usuarioActual(c),
+			vista: "proyectos",
+			migas: migasDe("No encontrado"),
+			cuerpo: html`<section class="caja caja-estrecha">
+				<p>No existe ese proyecto.</p>
+				<p><a class="boton" href="/proyectos">Volver a proyectos</a></p>
+			</section>`,
+		}),
+		404,
+	);
+}
+
+function paginaEditar(c: Context, deps: DependenciasWeb, proyecto: Proyecto, aviso: string | null): RespuestaHtml {
+	const cuerpo = html`<form method="post" action="/proyectos/${proyecto.id}/editar">
+			<p class="nombre-campo">Clave</p>
+			<p>${chipProyecto(proyecto.clave)} <span class="silencio">se fija al crear el proyecto y no se cambia.</span></p>
+			${camposProyecto(proyecto)}
+			<div class="acciones">
+				<button type="submit" class="principal">Guardar cambios</button>
+				<a class="boton" href="/proyectos">Cancelar</a>
+			</div>
+		</form>`;
+	return c.html(
+		pagina({
+			...navProyectos(c, deps.db),
+			titulo: proyecto.nombre,
+			usuario: usuarioActual(c),
+			vista: "proyectos",
+			migas: migasDe(proyecto.clave),
+			aviso,
+			cuerpo,
+		}),
+		aviso === null ? 200 : ESTADO_AVISO,
+	);
+}
+
+/** Rutas de proyectos: la lista con su alta, la edición, el borrado y el salto de vista. */
+export function registrarRutasProyectos(app: Hono, deps: DependenciasWeb): void {
+	app.get("/proyectos", (c) => paginaProyectos(c, deps, null));
+
+	app.post("/proyectos", async (c) => {
+		const formulario = await leerFormulario(c);
+		try {
+			crearProyecto(deps.db, {
+				clave: campo(formulario, "clave"),
+				nombre: campo(formulario, "nombre"),
+				descripcion: campo(formulario, "descripcion"),
+				repositorio: campoOpcional(formulario, "repositorio"),
+				ramaPrincipal: campoOpcional(formulario, "ramaPrincipal"),
+				verificacion: campoOpcional(formulario, "verificacion"),
+				actor: { usuarioId: usuarioActual(c).id },
+			});
+			return c.redirect("/proyectos", 302);
+		} catch (error) {
+			return paginaProyectos(c, deps, mensajeDeRegla(error));
+		}
+	});
+
+	app.get("/proyectos/:id/editar", (c) => {
+		const proyecto = proyectoDeRuta(deps, c);
+		return proyecto === undefined ? paginaNoEncontrado(c, deps) : paginaEditar(c, deps, proyecto, null);
+	});
+
+	app.post("/proyectos/:id/editar", async (c) => {
+		const proyecto = proyectoDeRuta(deps, c);
+		if (proyecto === undefined) {
+			return paginaNoEncontrado(c, deps);
+		}
+		const formulario = await leerFormulario(c);
+		try {
+			editarProyecto(deps.db, {
+				proyectoId: proyecto.id,
+				nombre: campo(formulario, "nombre"),
+				descripcion: campo(formulario, "descripcion"),
+				repositorio: campoOpcional(formulario, "repositorio"),
+				ramaPrincipal: campoOpcional(formulario, "ramaPrincipal"),
+				verificacion: campoOpcional(formulario, "verificacion"),
+				actor: { usuarioId: usuarioActual(c).id },
+			});
+			return c.redirect("/proyectos", 302);
+		} catch (error) {
+			return paginaEditar(c, deps, proyecto, mensajeDeRegla(error));
+		}
+	});
+
+	// Sin JavaScript: el enlace de la tabla lleva aquí y aquí está el POST.
+	app.get("/proyectos/:id/borrar", (c) => {
+		const proyecto = proyectoDeRuta(deps, c);
+		if (proyecto === undefined) {
+			return paginaNoEncontrado(c, deps);
+		}
+		const cuerpo = html`<section class="caja caja-estrecha">
+			<p>
+				Se borra el proyecto ${chipProyecto(proyecto.clave)} <strong>${proyecto.nombre}</strong>. Solo se
+				puede si ya no le queda ninguna tarea ni ningún terminal.
+			</p>
+			<div class="acciones">
+				<form method="post" action="/proyectos/${proyecto.id}/borrar">
+					<button type="submit" class="peligro">Sí, borrar</button>
+				</form>
+				<a class="boton" href="/proyectos">Cancelar</a>
+			</div>
+		</section>`;
+		return c.html(
+			pagina({
+				...navProyectos(c, deps.db),
+				titulo: "Borrar proyecto",
+				usuario: usuarioActual(c),
+				vista: "proyectos",
+				migas: migasDe("Borrar proyecto"),
+				cuerpo,
+			}),
+		);
+	});
+
+	app.post("/proyectos/:id/borrar", (c) => {
+		const proyecto = proyectoDeRuta(deps, c);
+		if (proyecto === undefined) {
+			return paginaNoEncontrado(c, deps);
+		}
+		try {
+			borrarProyecto(deps.db, proyecto.id, { usuarioId: usuarioActual(c).id });
+			return c.redirect("/proyectos", 302);
+		} catch (error) {
+			return paginaProyectos(c, deps, mensajeDeRegla(error));
+		}
+	});
+
+	// El selector de la barra lateral, sin JavaScript: manda aquí el destino que
+	// lleva puesto cada opción. Solo se admite una ruta de este mismo servidor.
+	app.get("/ir", (c) => c.redirect(destinoSeguro(c.req.query("destino")), 302));
+}

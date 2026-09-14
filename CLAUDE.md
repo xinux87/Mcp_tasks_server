@@ -69,6 +69,7 @@ Cada encargo que se pasa a un subagente lleva, en este orden:
 - `autoejecucion`: activada por defecto. Con ella, la ejecución arranca sola cuando el análisis termina sin preguntas abiertas. Desactivada, la tarea espera en `prepared` a que el humano apruebe el análisis.
 - `ejecucionAprobada`: la pone el humano desde la web cuando `autoejecucion` está desactivada y el análisis le vale. Es lo que desbloquea la ejecución en ese caso.
 - `bloqueada`: hay una pregunta sin contestar.
+- `estadoDesde`: cuándo entró en su estado actual. Solo la web la enseña, como edad en columna. Ver «La web › Edad en columna».
 - `consumo`: tokens gastados en la tarea, desglosados por fase y por modelo. Ver «Consumo de tokens».
 - `comentarios[]`: el hilo de la tarea.
 
@@ -392,6 +393,40 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 - **Gestión simple de usuarios.** Cada usuario tiene un color y se enseña siempre como chip con su inicial.
 - **Terminales conectados** con su nombre, cuenta de origen, uso disponible y consumo acumulado del bucle.
 - **Toda acción humana deja rastro de quién la hizo**: las respuestas y notas en el hilo, y el resto (crear, editar, mover, aprobar, altas, bajas, cambios de color y contraseña) en la actividad, visible en la ficha y en `/actividad`.
+- **La página de inicio es la bandeja del humano**: lo que espera por él, de todos los proyectos. Ver «La bandeja del humano».
+
+### La bandeja del humano
+
+Por diseño el humano es el cuello de botella: es dueño de `backlog`, de `done`, de las aprobaciones y de las respuestas. La bandeja es la única pantalla que le dice qué espera por él, sin barrer el kanban buscando etiquetas. Es `GET /` y cruza todos los proyectos. Decidido el 14 de septiembre de 2026.
+
+Cuatro bloques, siempre los cuatro y en este orden, cada uno con su contador en el título y «Nada pendiente.» cuando está vacío:
+
+1. **Preguntas sin contestar.** Cada tarea con la marca `bloqueada`, y por cada pregunta abierta la misma tarjeta que en el hilo de la ficha: la pregunta en negrita, por qué importa, las opciones como tarjetas seleccionables con la recomendada marcada, la nota y el botón de responder. Se contesta desde aquí sin abrir la ficha. Una funcionalidad bloqueada sale igual.
+2. **Por aprobar.** Las tareas con la marca `análisis listo`. Cada una con el comentario `analisis` renderizado y el botón «Aprobar ejecución» o, en una funcionalidad, «Aprobar descomposición» con la lista de sus partes debajo.
+3. **Resultados por revisar.** Todo lo que está en `done`, funcionalidades incluidas. Cada una con su último comentario `resultado` renderizado y el botón «Finalizar»; devolverla a `doing` exige una nota y se hace desde la ficha, que va enlazada.
+4. **Backlog sin definir.** Las tareas que llevan más de siete días en `backlog`. Solo el enlace, la edad y el proyecto: es lo que el humano se debe a sí mismo.
+
+- **Cada línea lleva el chip de proyecto** y el enlace a la ficha. Dentro de cada bloque, el orden es de más antigua a más nueva en su estado (`estado_desde`): lo que más tiempo lleva esperando va primero.
+- **El contador de pendientes** es la suma de los tres primeros bloques; el backlog no cuenta, porque no bloquea a nadie. Sale en la barra lateral, en la entrada «Bandeja», como un número pequeño a la derecha, y en el título de todas las páginas con sesión: `(3) MCP Tareas`. Sin pendientes, ni número ni prefijo. Es una consulta por página: las marcas se calculan ya al listar.
+- **Los formularios de la bandeja llevan un campo oculto `volver`** con la ruta a la que redirigir al terminar (`/`). `POST /tareas/:id/responder/P1`, `POST /tareas/:id/aprobar` y `POST /tareas/:id/mover` lo respetan si es una ruta relativa que empieza por `/` y no por `//`; si no viene o no vale, redirigen a la ficha como siempre. Un `ErrorDeRegla` vuelve a pintar la bandeja con el mensaje y 422.
+- **Se refresca en vivo** como la lista: `data-revision` en el `<body>` y recarga con GET cuando la revisión sube. Como la lista, nunca se pinta como respuesta a un POST que haya salido bien: se redirige.
+- **La entrada «Bandeja»** es la primera del bloque «Tareas» de la navegación, encima de Lista. Es la vista activa cuando la URL es `/`.
+
+### Edad en columna
+
+Jira enseña cuántos días lleva una incidencia en su columna; aquí es lo que distingue una pregunta abierta de hace tres minutos de una de hace tres días, que hoy parecen iguales.
+
+- **Columna `tareas.estado_desde`**, `TEXT NOT NULL`: cuándo entró la tarea en su estado actual. La migración la rellena con `actualizada`, que es una aproximación solo para las tareas que ya existían. **Todo cambio de estado la pone a la hora actual**, por el camino que sea: mover desde la web, `tomar_tarea` en ejecución, `comentar_tarea` con estado, la aprobación de la descomposición (la funcionalidad y sus partes), el cierre automático de una funcionalidad, y la creación. Un comentario sin cambio de estado no la toca. Se escribe en un solo sitio, el que actualice `estado`; no en cada llamador.
+- **La edad** se enseña como `12 min`, `5 h` o `3 d` (`formatos.ts`), en texto suave, en la tarjeta del kanban (a la derecha del id) y en la lista, en la columna Actualizada, que pasa a llamarse «En columna» y a enseñar la edad en vez de la fecha; la fecha completa va en el `title`. En la ficha, la fila Estado del bloque de propiedades añade «desde hace 3 d».
+- **Se pinta en `--peligro` cuando duele**: una tarea `bloqueada` que lleva más de un día bloqueada (la edad se toma de la pregunta abierta más antigua, no del estado) y una tarea `done` con más de tres días. En `backlog` y `finished` no se enseña edad: no significa nada ahí.
+- **El MCP no la expone.** Los agentes no la necesitan: el humano es quien decide con ella.
+
+### La ficha como vista de incidencia
+
+- **Las preguntas abiertas van arriba**, justo debajo de la cabecera y antes de las propiedades, cada una con su formulario de respuesta. El hilo las sigue enseñando en su posición, sin formulario, con un enlace «Responder arriba». El humano llega a la ficha a contestar y no tiene que bajar hasta el final.
+- **A partir de 64 rem la ficha tiene dos columnas**: la principal con descripción, hijas, hilo, nota y actividad, y a la derecha un panel de 18 rem, fijo al hacer scroll, con las propiedades, el consumo y las acciones excepcionales (`<details>` de vueltas atrás, editar y borrar). Para eso la ficha pasa a `ancho: "completo"` como el kanban. En estrecho, el panel va encima de la descripción, como hasta ahora.
+- **El hilo se filtra** con tres enlaces encima: «Todo», «Preguntas y respuestas» y «Avances y resultados». Es un parámetro `?hilo=preguntas|avances` en la misma URL, sin JavaScript. El filtro no afecta a la nota ni a la actividad.
+- **Los ids enlazan.** Una regla de markdown-it convierte cualquier `T-0042` del hilo, la descripción y las notas en un enlace a su ficha. Es el «relates to» de Jira sin tabla nueva.
 
 ### Sesión y seguridad
 
@@ -405,7 +440,7 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 | Ruta | Qué es |
 |---|---|
 | `GET /login`, `POST /login`, `POST /logout` | Sesión |
-| `GET /` | Redirige a `/tareas` |
+| `GET /` | La bandeja del humano. Ver «La bandeja del humano» |
 | `GET /tareas` | Vista lista: tareas agrupadas por estado en el orden de las columnas, con filtros por estado, terminal y marca. Ocupa todo el ancho, como el kanban (`ancho: "completo"`): una tabla de seis columnas no cabe bien en 60 rem |
 | `GET /tareas/kanban` | Vista kanban con las cinco columnas y arrastre entre columnas y dentro de ellas |
 | `GET /tareas/nueva`, `POST /tareas` | Crear una tarea en `backlog` |
@@ -421,7 +456,8 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 | `POST /tareas/T-0042/orden` | Reordena dentro de la columna, o cambia de columna cuando la transición es del humano |
 | `GET /terminales`, `POST /terminales`, `POST /terminales/:id/revocar`, `POST /terminales/:id/rotar`, `POST /terminales/:id/borrar` | Terminales: lista con uso disponible y conexión; alta que enseña el token una sola vez junto con su enlace de conexión y el tutorial; revocación; rotación del token; borrado |
 | `GET /p/:clave/tareas`, `GET /p/:clave/tareas/kanban`, `GET /p/:clave/tareas/nueva`, `GET /p/:clave/funcionalidades` | Las mismas vistas acotadas a un proyecto. Ver «Proyectos › En la web» |
-| `GET /proyectos`, `POST /proyectos`, `POST /proyectos/:id/editar`, `POST /proyectos/:id/borrar` | Proyectos: lista, alta, edición y borrado con confirmación |
+| `GET /proyectos`, `POST /proyectos`, `GET /proyectos/:id/editar`, `POST /proyectos/:id/editar`, `GET /proyectos/:id/borrar`, `POST /proyectos/:id/borrar` | Proyectos: lista, alta, edición y borrado con confirmación en página aparte |
+| `GET /ir` | Redirige al destino que lleva el selector de proyecto de la barra lateral. Cada opción del `<select>` lleva su destino y la ruta lo valida con `destinoSeguro`: así el selector funciona sin JavaScript, dentro de un `<form method="get">` con botón «Ir» que el cliente esconde |
 | `POST /terminales/:id/agentes` | Cambia cuántos agentes en paralelo asume el terminal. Ver «Agentes en paralelo» |
 | `GET /terminales/conectar` | El tutorial de conexión. Con `?token=` lleva ese token puesto y no exige sesión; sin él, `<token>` como marcador y sesión como el resto de la web |
 | `GET /usuarios`, `POST /usuarios`, `POST /usuarios/:id/borrar`, `POST /usuarios/contrasena` | Usuarios: alta con color, baja (nunca el último) y cambio de la propia contraseña |
@@ -505,7 +541,8 @@ Tipografía `ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helve
 
 - **Lista**: los mismos grupos por estado, como tabla de Notion: sin borde exterior, cabecera en `--texto-suave`, mayúsculas pequeñas, filas con borde inferior y fondo `--fondo-hover` al pasar. Columnas: Id, Título (con las marcas como etiquetas), Análisis, Ejecución, Creada por (chip) y Actualizada. Los filtros son una fila de desplegables compactos encima, sin caja.
 - **Kanban**: columnas sin fondo; la cabecera de cada columna es la etiqueta de su estado con el contador al lado. Tarjetas con borde `--borde`, fondo `--fondo`, sombra suave al pasar y al arrastrar. Cada tarjeta: id y marcas en una línea, título, y las fases en texto suave.
-- **Ficha**: migas `Tareas › T-0042`, título, etiquetas de estado y marcas, y las acciones hacia delante a la derecha (Pasar a preparadas, Aprobar ejecución, Finalizar). Después el bloque de **propiedades**: filas de dos columnas con el nombre en `--texto-suave` y el valor al lado: Estado, Tipo, Análisis, Ejecución, Autoejecución, Padre, Orden, Creada (chip de quien la creó, o el terminal si fue una propuesta, y la fecha), Revisión. Después Descripción, Hijas (cada una con su etiqueta de estado), Consumo, Hilo, Nota, Actividad. Las **vueltas atrás** (volver a backlog, devolver a doing), **Editar** y **Borrar** van al final como `<details>`, porque son excepcionales.
+- **Ficha**: migas `PRI › Tareas › T-0042`, título, etiquetas de estado y marcas, y las acciones hacia delante a la derecha (Pasar a preparadas, Aprobar ejecución, Finalizar). Debajo, las preguntas abiertas con su formulario. Después el bloque de **propiedades**: filas de dos columnas con el nombre en `--texto-suave` y el valor al lado: Estado (con la edad), Proyecto, Tipo, Análisis, Ejecución, Autoejecución, Padre, Orden, Creada (chip de quien la creó, o el terminal si fue una propuesta, y la fecha), Revisión. Después Descripción, Hijas (cada una con su etiqueta de estado), Consumo, Hilo, Nota, Actividad. Las **vueltas atrás** (volver a backlog, devolver a doing), **Editar** y **Borrar** van al final como `<details>`, porque son excepcionales. En ancho, propiedades, consumo y `<details>` forman el panel de la derecha; ver «La ficha como vista de incidencia».
+- **Bandeja**: cuatro bloques con el contador en el título; en cada uno, líneas con chip de proyecto, id, título y edad, y debajo la tarjeta que toca (pregunta con formulario, análisis con botón de aprobar, resultado con botón de finalizar). Mismos componentes que la ficha: nada se pinta dos veces con dos plantillas.
 - **Hilo**: cada comentario es una tarjeta con cabecera de chip del autor, etiqueta del tipo, `P<n>` cuando toca y la fecha; debajo el cuerpo renderizado; el formulario de respuesta dentro de la tarjeta de la pregunta abierta, con las opciones como tarjetas seleccionables y la recomendada marcada.
 - **Nueva tarea** y **Editar**: una columna, etiquetas encima de los campos; Análisis y Ejecución como dos tarjetas lado a lado a partir de 48 rem.
 - **Terminales**: tabla con chip del dueño, columna «Creado por» y, si está revocado, «Revocado por». El uso disponible se enseña por ventana como barra fina (`data-nivel` de 0 a 10, en rojo con 2 o menos) con el porcentaje disponible y la hora de reinicio; `resets_at` se acepta en segundos desde la época o en ISO 8601. «Revocar» va como enlace rojo discreto en la fila, no como botón: con diez columnas el botón no cabía. La columna «Agentes» lleva el número en un formulario mínimo a `POST /terminales/:id/agentes` (un `<input type="number" min="1">` y un botón «Guardar»), y el alta pide el mismo valor con 1 preseleccionado.

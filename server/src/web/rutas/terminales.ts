@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Context, Hono } from "hono";
-import { html } from "hono/html";
+import { html, raw } from "hono/html";
 import { buscarTerminalPorToken } from "../../auth/tokens.ts";
 import type { Config } from "../../config.ts";
 import { actividadDe, altaPor } from "../../db/actividad.ts";
@@ -14,13 +14,23 @@ import {
 	type TerminalListado,
 } from "../../db/admin.ts";
 import type { Usuario } from "../../db/consultas.ts";
+import { listarProyectos, PROYECTO_PRINCIPAL, type Proyecto } from "../../db/proyectos.ts";
 import { direccionesDelServidor } from "../../direcciones.ts";
-import { buscadorDeColor, type Color, chipUsuario, etiqueta, type Miga } from "../componentes.ts";
+import {
+	buscadorDeColor,
+	type Color,
+	chipDeAlta,
+	chipProyecto,
+	chipUsuario,
+	etiqueta,
+	type Miga,
+} from "../componentes.ts";
 import { fechaLegible, SIN_DATO } from "../formatos.ts";
 import { campo, ESTADO_AVISO, leerFormulario, mensajeDeRegla } from "../formulario.ts";
 import { type Html, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, leerSesion, usuarioActual } from "../sesion.ts";
 import { enlaceDeConexion, type OpcionesTutorial, tutorialConexion } from "../tutorial.ts";
+import { navProyectos } from "./proyectos.ts";
 
 /** Cómo se busca el color de cada usuario que aparece en la página. */
 type ColorDe = (nombre: string) => Color | null;
@@ -36,12 +46,6 @@ const VENTANAS: readonly { clave: string; etiqueta: string }[] = [
 	{ clave: "spend_limit", etiqueta: "gasto" },
 ];
 
-/**
- * Nombres del rastro que no son personas: los deja el CLI y el primer arranque,
- * que no tienen sesión. No llevan chip porque no hay a quién enseñar.
- */
-const NO_SON_PERSONAS: readonly string[] = ["cli", "arranque"];
-
 function esObjeto(valor: unknown): valor is Record<string, unknown> {
 	return typeof valor === "object" && valor !== null && !Array.isArray(valor);
 }
@@ -52,21 +56,6 @@ function numeroDe(objeto: Record<string, unknown>, clave: string): number | null
 }
 
 const SIN_DATOS = html`<span class="silencio">sin datos</span>`;
-
-/**
- * Quién hizo algo, tal como lo guardó el rastro: una persona va como chip con
- * su color, y en gris si ya no existe; `cli` y `arranque` no son personas y van
- * en texto suave; sin dato, una raya.
- */
-function quien(nombre: string | null, colorDe: ColorDe): Html {
-	if (nombre === null) {
-		return html`<span class="silencio">${SIN_DATO}</span>`;
-	}
-	if (NO_SON_PERSONAS.includes(nombre)) {
-		return html`<span class="silencio">${nombre}</span>`;
-	}
-	return chipUsuario(nombre, colorDe(nombre));
-}
 
 /**
  * La decena que le toca a la barra, de 0 a 10. El ancho se pinta con una regla
@@ -193,7 +182,11 @@ function formularioAgentes(terminal: TerminalListado): Html {
 function filaTerminal(db: DatabaseSync, terminal: TerminalListado, colorDe: ColorDe): Html {
 	const revocado = terminal.revocadoEn !== null;
 	return html`<tr>
-			<td>${terminal.nombre}</td>
+			<td>
+				${terminal.nombre}
+				${terminal.ruta === null ? html`` : html`<span class="pequeno silencio">${terminal.ruta}</span>`}
+			</td>
+			<td>${chipProyecto(terminal.proyecto)}</td>
 			<td class="pequeno celda-cuenta">${terminal.cuenta}</td>
 			<td>${chipUsuario(terminal.usuario, colorDe(terminal.usuario))}</td>
 			<td>${insigniaTerminal(terminal)}</td>
@@ -201,8 +194,8 @@ function filaTerminal(db: DatabaseSync, terminal: TerminalListado, colorDe: Colo
 			<td class="pequeno">${terminal.conectadoEn === null ? "nunca" : fechaLegible(terminal.conectadoEn)}</td>
 			<td class="numero pequeno">${terminal.ultimaRevision === null ? SIN_DATO : terminal.ultimaRevision}</td>
 			<td class="celda-uso">${usoLegible(terminal.usoJson)}</td>
-			<td>${quien(altaPor(db, "terminal", terminal.id), colorDe)}</td>
-			<td>${revocado ? quien(revocadoPor(db, terminal.id), colorDe) : html``}</td>
+			<td>${chipDeAlta(altaPor(db, "terminal", terminal.id), colorDe)}</td>
+			<td>${revocado ? chipDeAlta(revocadoPor(db, terminal.id), colorDe) : html``}</td>
 			<td>
 				<span class="acciones-terminal">
 					${
@@ -222,7 +215,7 @@ function filaTerminal(db: DatabaseSync, terminal: TerminalListado, colorDe: Colo
  * Lleva la explicación de qué se está dando de alta: quien crea un terminal por
  * primera vez no tiene por qué saber qué es, y los dos campos no se adivinan.
  */
-function tarjetaNuevoTerminal(): Html {
+function tarjetaNuevoTerminal(proyectos: readonly Proyecto[]): Html {
 	return html`<section class="caja" id="nuevo-terminal">
 			<h2>Nuevo terminal</h2>
 			<p>
@@ -235,6 +228,16 @@ function tarjetaNuevoTerminal(): Html {
 					<span>Nombre</span>
 					<input type="text" name="nombre" placeholder="portatil-xinux" required>
 					<span class="ayuda">Con el que lo eliges en cada fase de una tarea y firma en el hilo: opus@portatil-xinux.</span>
+				</label>
+				<label>
+					<span>Proyecto</span>
+					<select name="proyecto">
+						${proyectos.map(
+							(proyecto) =>
+								html`<option value="${proyecto.id}"${proyecto.id === PROYECTO_PRINCIPAL ? raw(" selected") : ""}>${proyecto.clave} · ${proyecto.nombre}</option>`,
+						)}
+					</select>
+					<span class="ayuda">El repositorio en el que trabaja esa carpeta. No se cambia después: una máquina con dos repositorios tiene dos terminales.</span>
 				</label>
 				<label>
 					<span>Cuenta de origen</span>
@@ -264,7 +267,7 @@ function paginaTerminales(c: Context, deps: DependenciasWeb, aviso: string | nul
 					<table class="tabla-terminales">
 						<thead>
 							<tr>
-								<th>Nombre</th><th>Cuenta</th><th>Dueño</th><th>Estado</th><th>Agentes</th>
+								<th>Nombre</th><th>Proyecto</th><th>Cuenta</th><th>Dueño</th><th>Estado</th><th>Agentes</th>
 								<th>Conectado</th><th class="numero">Última revisión</th><th>Uso disponible</th>
 								<th>Creado por</th><th>Revocado por</th><th></th>
 							</tr>
@@ -277,13 +280,14 @@ function paginaTerminales(c: Context, deps: DependenciasWeb, aviso: string | nul
 		// Solo esta página se refresca sola: la del token recién creado no, que
 		// se perdería de vista lo único que no se vuelve a enseñar.
 		pagina({
+			...navProyectos(c, deps.db),
 			titulo: "Terminales",
 			usuario: usuarioActual(c),
 			vista: "terminales",
 			aviso,
 			acciones: html`<a class="boton" href="/terminales/conectar">Cómo conectar un terminal</a>
 				<a class="boton principal" href="#nuevo-terminal">Nuevo terminal</a>`,
-			cuerpo: html`${tabla}${tarjetaNuevoTerminal()}`,
+			cuerpo: html`${tabla}${tarjetaNuevoTerminal(listarProyectos(deps.db))}`,
 		}),
 		aviso === null ? 200 : ESTADO_AVISO,
 	);
@@ -355,6 +359,7 @@ function paginaToken(
 		${tutorialDe(c, deps.config, datos.token)}`;
 	return c.html(
 		pagina({
+			...navProyectos(c, deps.db),
 			titulo,
 			usuario: usuarioActual(c),
 			migas: migasDe(titulo),
@@ -388,6 +393,7 @@ function paginaConectar(
 				</p>`;
 	return c.html(
 		pagina({
+			...navProyectos(c, deps.db),
 			titulo: "Cómo conectar un terminal",
 			usuario,
 			// Vista propia y no «terminales»: esta página no se refresca por
@@ -428,9 +434,10 @@ function terminalDe(deps: DependenciasWeb, c: Context): TerminalListado | undefi
 }
 
 /** La página de un id que no es de ningún terminal. */
-function paginaSinTerminal(c: Context): RespuestaHtml {
+function paginaSinTerminal(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	return c.html(
 		pagina({
+			...navProyectos(c, deps.db),
 			titulo: "Terminal no encontrado",
 			usuario: usuarioActual(c),
 			vista: "terminales",
@@ -447,6 +454,7 @@ function paginaSinTerminal(c: Context): RespuestaHtml {
 /** Confirmación en página aparte: sin JavaScript, el POST está aquí. */
 function paginaConfirmacion(
 	c: Context,
+	deps: DependenciasWeb,
 	titulo: string,
 	explicacion: Html,
 	accion: string,
@@ -454,6 +462,7 @@ function paginaConfirmacion(
 ): RespuestaHtml {
 	return c.html(
 		pagina({
+			...navProyectos(c, deps.db),
 			titulo,
 			usuario: usuarioActual(c),
 			vista: "terminales",
@@ -478,11 +487,14 @@ export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void
 	app.post("/terminales", async (c) => {
 		const formulario = await leerFormulario(c);
 		try {
+			const proyectoId = Number.parseInt(campo(formulario, "proyecto"), 10);
 			const creado = altaTerminal(deps.db, {
 				usuarioId: usuarioActual(c).id,
 				nombre: campo(formulario, "nombre"),
 				cuenta: campo(formulario, "cuenta"),
 				agentes: campo(formulario, "agentes"),
+				// Sin proyecto elegido, el principal: es lo que hace la capa de datos.
+				...(Number.isSafeInteger(proyectoId) ? { proyectoId } : {}),
 			});
 			return paginaToken(c, deps, creado, "Terminal creado");
 		} catch (error) {
@@ -513,10 +525,11 @@ export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void
 	app.get("/terminales/:id/rotar", (c) => {
 		const terminal = terminalDe(deps, c);
 		if (terminal === undefined) {
-			return paginaSinTerminal(c);
+			return paginaSinTerminal(c, deps);
 		}
 		return paginaConfirmacion(
 			c,
+			deps,
 			"Rotar el token",
 			html`<p>
 				Rotar el token da uno nuevo a <strong>${terminal.nombre}</strong> y deja el anterior sin valor.
@@ -540,10 +553,11 @@ export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void
 	app.get("/terminales/:id/revocar", (c) => {
 		const terminal = terminalDe(deps, c);
 		if (terminal === undefined) {
-			return paginaSinTerminal(c);
+			return paginaSinTerminal(c, deps);
 		}
 		return paginaConfirmacion(
 			c,
+			deps,
 			"Revocar terminal",
 			html`<p>
 				Revocar el token desconecta <strong>${terminal.nombre}</strong> y solo ese. No se puede
@@ -568,10 +582,11 @@ export function registrarRutasTerminales(app: Hono, deps: DependenciasWeb): void
 	app.get("/terminales/:id/borrar", (c) => {
 		const terminal = terminalDe(deps, c);
 		if (terminal === undefined) {
-			return paginaSinTerminal(c);
+			return paginaSinTerminal(c, deps);
 		}
 		return paginaConfirmacion(
 			c,
+			deps,
 			"Borrar terminal",
 			html`<p>
 				Borrar quita <strong>${terminal.nombre}</strong> de la lista del todo, no solo lo desconecta.

@@ -6,6 +6,7 @@ import { buscadorDeColor, type Color, cabeceraPagina, chipUsuario, fraseDeAccion
 import { fechaLegible } from "../formatos.ts";
 import { type Html, pagina } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
+import { navProyectos } from "./proyectos.ts";
 
 /** Cuántas acciones se enseñan. Es una lista para mirar, no un archivo. */
 const CUANTAS = 100;
@@ -103,6 +104,8 @@ export function registrarRutasActividad(app: Hono, deps: DependenciasWeb): void 
 			</p>
 			${lista}`;
 
-		return c.html(pagina({ titulo: "Actividad", usuario: usuarioActual(c), vista: "actividad", cuerpo }));
+		return c.html(
+			pagina({ ...navProyectos(c, deps.db), titulo: "Actividad", usuario: usuarioActual(c), vista: "actividad", cuerpo }),
+		);
 	});
 }

@@ -8,6 +8,7 @@ import { hashPassword } from "../src/auth/passwords.ts";
 import { crearTerminalConToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
+import { crearProyecto } from "../src/db/proyectos.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 const BASE_URL = BASE_URL_PRUEBA;
@@ -16,6 +17,7 @@ const URL_MCP = new URL("/mcp", BASE_URL);
 type Montaje = {
 	db: DatabaseSync;
 	app: Hono;
+	usuarioId: number;
 	token: string;
 	nombreTerminal: string;
 	cuenta: string;
@@ -31,6 +33,7 @@ function montar(): Montaje {
 	return {
 		db,
 		app,
+		usuarioId: usuario.id,
 		token: valor.token,
 		nombreTerminal: valor.terminal.nombre,
 		cuenta: valor.terminal.cuenta,
@@ -128,7 +131,7 @@ test("con el bearer correcto el cliente MCP lista exactamente las nueve herramie
 	}
 });
 
-test("registrar_terminal devuelve nombre, cuenta y revisión, y marca el terminal conectado", async () => {
+test("registrar_terminal devuelve nombre, cuenta, proyecto y revisión, y marca el terminal conectado", async () => {
 	const montaje = montar();
 	const cliente = await conectar(montaje, montaje.token);
 	try {
@@ -137,19 +140,75 @@ test("registrar_terminal devuelve nombre, cuenta y revisión, y marca el termina
 		const antes = revisionActual(montaje.db);
 		assert.equal(antes, 2);
 
-		const resultado = await cliente.callTool({ name: "registrar_terminal", arguments: {} });
-		const texto = textoDe(resultado.content);
-		assert.match(texto, new RegExp(`^terminal: ${montaje.nombreTerminal}$`, "m"));
-		assert.match(texto, new RegExp(`^cuenta: ${montaje.cuenta}$`, "m"));
-		// Cuántos subagentes puede lanzar a la vez su bucle. Sin tocarlo, uno.
-		assert.match(texto, /^agentes: 1$/m);
-		assert.match(texto, /^revision: 2$/m);
+		const resultado = await cliente.callTool({
+			name: "registrar_terminal",
+			arguments: { ruta: "/Users/xinux/Proyectos/tareas" },
+		});
+		// Sin repositorio en el proyecto principal no se comprueba nada, y sin
+		// comando de verificación esa línea no se pinta.
+		assert.equal(
+			textoDe(resultado.content),
+			[
+				`terminal: ${montaje.nombreTerminal}`,
+				`cuenta: ${montaje.cuenta}`,
+				// Cuántos subagentes puede lanzar a la vez su bucle. Sin tocarlo, uno.
+				"agentes: 1",
+				"proyecto: PRI · Principal",
+				"rama principal: main",
+				"revision: 2",
+			].join("\n"),
+		);
 		assert.equal(revisionActual(montaje.db), antes);
 
 		const terminal = montaje.db
-			.prepare("SELECT conectado_en FROM terminales WHERE nombre = ?")
+			.prepare("SELECT conectado_en, ruta FROM terminales WHERE nombre = ?")
 			.get(montaje.nombreTerminal);
 		assert.equal(typeof terminal?.conectado_en, "string");
+		assert.equal(terminal?.ruta, "/Users/xinux/Proyectos/tareas");
+	} finally {
+		await cliente.close();
+		await montaje.cerrar();
+	}
+});
+
+test("registrar_terminal comprueba el repositorio del proyecto y para la sesión si no es el suyo", async () => {
+	const montaje = montar();
+	const web = crearProyecto(montaje.db, {
+		clave: "WEB",
+		nombre: "La web",
+		repositorio: "https://github.com/xinux87/web.git",
+		verificacion: "npm test",
+	});
+	const { valor } = crearTerminalConToken(
+		montaje.db,
+		montaje.usuarioId,
+		"portatil-web",
+		"xinux@ejemplo.com",
+		undefined,
+		undefined,
+		web.id,
+	);
+	const cliente = await conectar(montaje, valor.token);
+	const conectadoEn = (): unknown =>
+		montaje.db.prepare("SELECT conectado_en FROM terminales WHERE id = ?").get(valor.terminal.id)?.conectado_en;
+	try {
+		// Otro repositorio: error de regla y el terminal no queda conectado.
+		const otro = await cliente.callTool({
+			name: "registrar_terminal",
+			arguments: { ruta: "/Users/xinux/Proyectos/otra", repositorio: "https://github.com/xinux87/otra.git" },
+		});
+		assert.equal(otro.isError, true);
+		assert.match(textoDe(otro.content), /^proyecto_no_coincide: /);
+		assert.equal(conectadoEn(), null);
+
+		// El mismo, con y sin el sufijo `.git`: las dos formas son el mismo remote.
+		for (const repositorio of ["https://github.com/xinux87/web.git", "https://github.com/xinux87/web"]) {
+			const bien = await cliente.callTool({ name: "registrar_terminal", arguments: { repositorio } });
+			assert.notEqual(bien.isError, true);
+			assert.match(textoDe(bien.content), /^proyecto: WEB · La web$/m);
+			assert.match(textoDe(bien.content), /^rama principal: main\nverificacion: npm test$/m);
+		}
+		assert.equal(typeof conectadoEn(), "string");
 	} finally {
 		await cliente.close();
 		await montaje.cerrar();

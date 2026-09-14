@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { registrarConsumo } from "../src/db/consumo.ts";
 import { crearParte } from "../src/db/funcionalidades.ts";
 import { comentarAnalisis, comentarAvance, comentarResultado, preguntar, responder } from "../src/db/hilo.ts";
+import { crearProyecto } from "../src/db/proyectos.ts";
 import {
 	aprobarEjecucion,
 	crearHija,
@@ -139,6 +140,7 @@ function ejemplo(banco: Banco): { padre: number; hija: number } {
 
 const DOCUMENTO_ESPERADO = `---
 id: T-0001
+proyecto: PRI
 titulo: "Exportar el listado de clientes a CSV"
 tipo: tarea
 estado: done
@@ -256,6 +258,7 @@ test("el documento de una hija lleva su padre y el de una tarea nueva va vacío"
 			documentoNueva,
 			`---
 id: T-0004
+proyecto: PRI
 titulo: "Una nueva"
 tipo: tarea
 estado: backlog
@@ -283,6 +286,38 @@ Ninguna.
 ## Hilo
 
 Ninguno.`,
+		);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("el proyecto va en el frontmatter justo debajo del id, y no en la línea de índice", () => {
+	const banco = montar();
+	try {
+		const web = crearProyecto(banco.db, { clave: "WEB", nombre: "La web" });
+		const suya = crearTareaHumana(banco.db, {
+			titulo: "Pintar el tablero",
+			descripcion: "d",
+			usuarioId: banco.xinux,
+			proyectoId: web.id,
+		});
+		assert.match(
+			sinFechas(documentoTarea(leerTarea(banco.db, suya.id) ?? assert.fail("sin tarea"))),
+			/^id: T-0001\nproyecto: WEB\ntitulo: "Pintar el tablero"$/m,
+		);
+
+		// Sin decir proyecto, la tarea nace en el principal.
+		const principal = crearTareaHumana(banco.db, { titulo: "Otra", descripcion: "d", usuarioId: banco.xinux });
+		assert.match(
+			sinFechas(documentoTarea(leerTarea(banco.db, principal.id) ?? assert.fail("sin tarea"))),
+			/^id: T-0002\nproyecto: PRI\n/m,
+		);
+
+		// El índice no lo lleva: el agente solo ve tareas de su proyecto.
+		assert.equal(
+			lineaIndice(itemIndiceDe(banco.db, suya.id)),
+			"- T-0001 · backlog · Pintar el tablero · analisis: sin asignar · ejecucion: sin asignar",
 		);
 	} finally {
 		banco.cerrar();
@@ -420,6 +455,7 @@ test("una funcionalidad enseña su rama, su progreso y sus partes; una parte, su
 			sinFechas(documentoTarea(leerTarea(banco.db, evolutivo.id) ?? assert.fail("sin funcionalidad"))),
 			`---
 id: T-0001
+proyecto: PRI
 titulo: "Que los comerciales se bajen sus listados"
 tipo: funcionalidad
 estado: doing

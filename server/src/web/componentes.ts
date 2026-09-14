@@ -5,7 +5,7 @@ import { COLORES_USUARIO } from "../db/colores.ts";
 import type { TipoComentario } from "../db/hilo.ts";
 import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
 import { formatearId } from "../md/ids.ts";
-import { abreviar } from "./formatos.ts";
+import { abreviar, SIN_DATO } from "./formatos.ts";
 import type { Html } from "./plantilla.ts";
 
 /**
@@ -127,6 +127,35 @@ export function chipAutor(autor: string, colorDe: (nombre: string) => Color | nu
 }
 
 /**
+ * Un proyecto: su clave en una etiqueta gris. No hay color por proyecto, que
+ * los colores son de los usuarios; la clave sola ya lo distingue.
+ */
+export function chipProyecto(clave: string): Html {
+	return etiqueta(clave, "gris", "proyecto");
+}
+
+/**
+ * Nombres del rastro que no son personas: los deja el CLI y el primer arranque,
+ * que no tienen sesión. No llevan chip porque no hay a quién enseñar.
+ */
+const NO_SON_PERSONAS: readonly string[] = ["cli", "arranque"];
+
+/**
+ * Quién dio de alta algo, tal como lo guardó el rastro: una persona va como
+ * chip con su color, y en gris si ya no existe; `cli` y `arranque` van en texto
+ * suave; sin dato, una raya. Lo enseñan igual usuarios, terminales y proyectos.
+ */
+export function chipDeAlta(nombre: string | null, colorDe: (nombre: string) => Color | null): Html {
+	if (nombre === null) {
+		return html`<span class="silencio">${SIN_DATO}</span>`;
+	}
+	if (NO_SON_PERSONAS.includes(nombre)) {
+		return html`<span class="silencio">${nombre}</span>`;
+	}
+	return chipUsuario(nombre, colorDe(nombre));
+}
+
+/**
  * Cómo se busca el color de un usuario al pintar. El hilo y la actividad
  * guardan el autor como texto (`humano:xinux`) y el color se resuelve ahora,
  * no cuando se escribió. Se lee la tabla una vez por página; un usuario que ya
@@ -159,6 +188,9 @@ const FRASE_ACCION: Record<string, string | undefined> = {
 	cambiar_agentes: "cambió los agentes en paralelo del terminal",
 	revocar_terminal: "revocó el terminal",
 	baja_terminal: "borró el terminal",
+	alta_proyecto: "creó el proyecto",
+	editar_proyecto: "editó el proyecto",
+	baja_proyecto: "borró el proyecto",
 };
 
 export function fraseDeAccion(accion: string): string {
@@ -270,9 +302,13 @@ export function rotuloColumna(insignia: Html, titulo: string, total: number): Ht
 	return html`${insignia} ${titulo} <span class="contador">${total}</span>`;
 }
 
-/** El alta de tarea: la acción principal de la lista y del kanban. */
-export function accionNuevaTarea(): Html {
-	return html`<a class="boton principal" href="/tareas/nueva">Nueva tarea</a>`;
+/**
+ * El alta de tarea: la acción principal de la lista y del kanban. En un
+ * tablero acotado lleva el prefijo del proyecto, para que la tarea nazca donde
+ * se está mirando.
+ */
+export function accionNuevaTarea(prefijo = ""): Html {
+	return html`<a class="boton principal" href="${prefijo}/tareas/nueva">Nueva tarea</a>`;
 }
 
 /**
