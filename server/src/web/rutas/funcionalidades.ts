@@ -110,7 +110,7 @@ function filaFuncionalidad(fila: Fila, creadorDe: Creador, claves: Claves): Html
 				<a href="/tareas/${id}">${fila.item.titulo}</a>
 			</td>
 			<td>${insigniaEstado(fila.item.estado)}</td>
-			<td>${barraProgreso(fila.item.partesCerradas ?? 0, fila.item.partes ?? 0)}</td>
+			<td>${barraProgreso(fila.item.partesCerradas ?? 0, fila.item.partes ?? 0, "partes")}</td>
 			<td>${frenos(fila)}</td>
 			<td class="numero pequeno">${numeroLegible(fila.tokens)}</td>
 			<td class="pequeno">${fila.tarea.rama === null ? html`<span class="silencio">${SIN_DATO}</span>` : html`<code>${fila.tarea.rama}</code>`}</td>

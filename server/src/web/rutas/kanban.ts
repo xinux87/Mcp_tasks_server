@@ -10,6 +10,7 @@ import {
 	buscarTarea,
 	type Estado,
 	esEstado,
+	esRapido,
 	type FiltroIndice,
 	type ItemIndice,
 	listarTareas,
@@ -22,14 +23,16 @@ import { ErrorDeRegla, esErrorDeRegla } from "../../errores.ts";
 import { formatearId, idONull, parsearId } from "../../md/ids.ts";
 import {
 	accionNuevaTarea,
+	barraProgreso,
 	chipProyecto,
 	edadEnColumna,
 	enlaceFuncionalidad,
 	filtroSelect,
+	filtrosRapidos,
 	type OpcionesFiltro,
 	rotuloColumna,
 } from "../componentes.ts";
-import { abreviar, faseLegible } from "../formatos.ts";
+import { abreviar, faseLegible, tokensAbreviados } from "../formatos.ts";
 import { campo, ESTADO_AVISO, leerFormulario } from "../formulario.ts";
 import {
 	COLUMNAS,
@@ -76,6 +79,10 @@ export type Filtros = {
 	padre: string;
 	/** Clave del proyecto: la de la URL en una vista acotada, la elegida en la cruzada. */
 	proyecto: string;
+	/** El conmutador de un clic: `espera`, `en-marcha` o `sin-terminal`. */
+	rapido: string;
+	/** Lo que se busca en el título y en la descripción. */
+	q: string;
 };
 
 /**
@@ -89,7 +96,24 @@ export function filtrosDe(c: Context): Filtros {
 		marca: c.req.query("marca") ?? "",
 		padre: c.req.query("padre") ?? "",
 		proyecto: proyectoActual(c)?.clave ?? c.req.query("proyecto") ?? "",
+		rapido: c.req.query("rapido") ?? "",
+		q: c.req.query("q") ?? "",
 	};
+}
+
+/**
+ * Los filtros como parámetros de una dirección: los vacíos no viajan, y el
+ * proyecto tampoco cuando ya va en la ruta. Con ellos se compone el enlace de
+ * cada conmutador y la dirección con la que el tablero se vuelve a pedir.
+ */
+export function consultaDe(filtros: Filtros, acotado: Proyecto | undefined): URLSearchParams {
+	const consulta = new URLSearchParams();
+	for (const [nombre, valor] of Object.entries(filtros)) {
+		if (valor !== "" && !(nombre === "proyecto" && acotado !== undefined)) {
+			consulta.set(nombre, valor);
+		}
+	}
+	return consulta;
 }
 
 /** Solo las partes de esa funcionalidad. Sin filtro pasan todas. */
@@ -106,12 +130,14 @@ function esDeLaFuncionalidad(item: ItemIndice, padre: string): boolean {
  * base. Una clave que no es de ningún proyecto no selecciona ninguna tarea,
  * igual que un identificador de funcionalidad que no encaja.
  */
-function filtroDeIndice(db: DatabaseSync, filtros: Filtros): FiltroIndice {
+export function filtroDeIndice(db: DatabaseSync, filtros: Filtros): FiltroIndice {
 	const terminalId = Number.parseInt(filtros.terminal, 10);
 	const proyectoId = filtros.proyecto === "" ? undefined : (buscarProyectoPorClave(db, filtros.proyecto)?.id ?? 0);
 	return {
 		...(Number.isSafeInteger(terminalId) ? { terminalId } : {}),
 		...(proyectoId === undefined ? {} : { proyectoId }),
+		...(esRapido(filtros.rapido) ? { rapido: filtros.rapido } : {}),
+		...(filtros.q === "" ? {} : { q: filtros.q }),
 	};
 }
 
@@ -135,14 +161,8 @@ export function funcionalidadesAbiertas(db: DatabaseSync): ItemIndice[] {
  * query.
  */
 function fuenteDe(filtros: Filtros, acotado: Proyecto | undefined): string {
-	const consulta = new URLSearchParams();
-	for (const [nombre, valor] of Object.entries(filtros)) {
-		if (valor !== "" && !(nombre === "proyecto" && acotado !== undefined)) {
-			consulta.set(nombre, valor);
-		}
-	}
 	const base = `${prefijo(acotado)}/tareas/kanban/tablero`;
-	const texto = consulta.toString();
+	const texto = consultaDe(filtros, acotado).toString();
 	return texto === "" ? base : `${base}?${texto}`;
 }
 
@@ -158,9 +178,14 @@ function formularioFiltros(
 	filtros: Filtros,
 	acotado: Proyecto | undefined,
 ): Html {
-	const hayFiltro = filtros.terminal !== "" || filtros.marca !== "" || filtros.padre !== "";
+	const hayFiltro =
+		filtros.terminal !== "" || filtros.marca !== "" || filtros.padre !== "" || filtros.rapido !== "" || filtros.q !== "";
 	const base = `${prefijo(acotado)}/tareas/kanban`;
-	return html`<form class="filtros" method="get" action="${base}">
+	return html`<div class="fila-filtros">
+		${filtrosRapidos(filtros.rapido, base, consultaDe(filtros, acotado))}
+		<form class="filtros" method="get" action="${base}">
+			${filtros.rapido === "" ? html`` : html`<input type="hidden" name="rapido" value="${filtros.rapido}">`}
+			<input type="search" name="q" value="${filtros.q}" placeholder="Buscar">
 			${acotado !== undefined ? html`` : filtroSelect(opcionesProyecto(db, filtros.proyecto))}
 			${filtroSelect({
 				nombre: "terminal",
@@ -179,7 +204,8 @@ function formularioFiltros(
 			${filtroSelect(opcionesFuncionalidad(db, filtros.padre))}
 			<button type="submit" class="pequeno">Filtrar</button>
 			${hayFiltro || (acotado === undefined && filtros.proyecto !== "") ? html`<a class="quitar" href="${base}">Quitar filtros</a>` : html``}
-		</form>`;
+		</form>
+	</div>`;
 }
 
 /**
@@ -280,6 +306,17 @@ function dependenciasLegibles(dependeDe: number[] | undefined): Html {
 }
 
 /**
+ * El progreso de una tarea con hijas. En una funcionalidad son sus partes, y
+ * una parte solo cuenta cuando el humano la acepta: es la cuenta que ya lleva
+ * su etiqueta.
+ */
+export function progresoDe(item: ItemIndice): Html {
+	return item.tipo === "funcionalidad"
+		? barraProgreso(item.partesCerradas ?? 0, item.partes ?? 0, "partes")
+		: barraProgreso(item.hijasCerradas, item.hijas);
+}
+
+/**
  * Una tarjeta. `data-id` y `data-estado` son lo que lee el cliente al soltar:
  * el id para la ruta y el estado para saber si cambió de columna.
  */
@@ -296,13 +333,17 @@ function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
 				${edadEnColumna(item)}
 			</div>
 			<p class="titulo">${item.titulo}</p>
+			${progresoDe(item)}
 			${
 				funcionalidad === undefined || item.padreId === null
 					? html``
 					: html`<p class="pequeno">${enlaceFuncionalidad(item.padreId, funcionalidad)}</p>`
 			}
 			${dependenciasLegibles(vecindad.dependencias.get(item.id))}
-			<p class="pequeno silencio">${fasesLegibles(item)}</p>
+			<p class="pequeno silencio pie">
+				<span>${fasesLegibles(item)}</span>
+				${item.tokensConHijas === 0 ? html`` : html`<span class="tokens">${tokensAbreviados(item.tokensConHijas)}</span>`}
+			</p>
 		</article>`;
 }
 

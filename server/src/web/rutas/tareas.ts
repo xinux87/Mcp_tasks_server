@@ -8,13 +8,7 @@ import type { ConsumoDeTarea } from "../../db/consumo.ts";
 import { dependenciasPendientes, dependientesDe } from "../../db/dependencias.ts";
 import { editarTareaBacklog, exigirTitulo } from "../../db/edicion.ts";
 import { type Comentario, notaHumana, responder, type TipoComentario } from "../../db/hilo.ts";
-import {
-	buscarProyectoPorClave,
-	buscarProyectoPorId,
-	listarProyectos,
-	PROYECTO_PRINCIPAL,
-	type Proyecto,
-} from "../../db/proyectos.ts";
+import { buscarProyectoPorId, listarProyectos, PROYECTO_PRINCIPAL, type Proyecto } from "../../db/proyectos.ts";
 import {
 	aprobarEjecucion,
 	borrarTarea,
@@ -45,6 +39,7 @@ import {
 	enlaceFuncionalidad,
 	etiqueta,
 	filtroSelect,
+	filtrosRapidos,
 	fraseDeAccion,
 	type Miga,
 	muestraEdad,
@@ -53,7 +48,7 @@ import {
 	type QuienCreo,
 	rotuloColumna,
 } from "../componentes.ts";
-import { duracionLegible, faseLegible, fechaLegible, numeroLegible, SIN_DATO } from "../formatos.ts";
+import { duracionLegible, faseLegible, fechaLegible, numeroLegible, SIN_DATO, tokensAbreviados } from "../formatos.ts";
 import {
 	campo,
 	campoLista,
@@ -79,7 +74,17 @@ import {
 } from "../plantilla.ts";
 import { type DependenciasWeb, destinoSeguro, usuarioActual } from "../sesion.ts";
 import { paginaBandeja } from "./bandeja.ts";
-import { type Filtros, filtrosDe, MARCAS, opcionesFuncionalidad, opcionesProyecto, tablero } from "./kanban.ts";
+import {
+	consultaDe,
+	type Filtros,
+	filtroDeIndice,
+	filtrosDe,
+	MARCAS,
+	opcionesFuncionalidad,
+	opcionesProyecto,
+	progresoDe,
+	tablero,
+} from "./kanban.ts";
 import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
 
 const ESTADOS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
@@ -461,7 +466,7 @@ function filaTarea(
 	return html`<tr>
 			<td>${enlaceTarea(item.id)} ${clave === undefined ? html`` : chipProyecto(clave)}</td>
 			<td>
-				${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas)}${item.titulo}
+				${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas)}${progresoDe(item)}${item.titulo}
 				${
 					funcionalidad === undefined || item.padreId === null
 						? html``
@@ -470,6 +475,7 @@ function filaTarea(
 			</td>
 			<td class="pequeno">${faseLegible(item.analisisModelo, item.analisisTerminal)}</td>
 			<td class="pequeno">${ejecucionLegible(item.tipo, item.ejecucionModelo, item.ejecucionTerminal)}</td>
+			<td class="numero pequeno">${item.tokensConHijas === 0 ? html`` : tokensAbreviados(item.tokensConHijas)}</td>
 			<td>${creador ?? SIN_DATO}</td>
 			<td class="pequeno">${edadEnColumna(item)}</td>
 		</tr>`;
@@ -492,7 +498,8 @@ function tablaLista(
 			<table>
 				<thead>
 					<tr>
-						<th>Id</th><th>Título</th><th>Análisis</th><th>Ejecución</th><th>Creada por</th><th>En columna</th>
+						<th>Id</th><th>Título</th><th>Análisis</th><th>Ejecución</th>
+						<th class="numero">Tokens</th><th>Creada por</th><th>En columna</th>
 					</tr>
 				</thead>
 				<tbody>${items.map((item) => filaTarea(db, item, creadorDe, deQuien, claves))}</tbody>
@@ -564,8 +571,14 @@ function formularioFiltros(
 		terminal !== "" ||
 		marca !== "" ||
 		padre !== "" ||
+		filtros.rapido !== "" ||
+		filtros.q !== "" ||
 		(acotado === undefined && filtros.proyecto !== "");
-	return html`<form class="filtros" method="get" action="${base}">
+	return html`<div class="fila-filtros">
+		${filtrosRapidos(filtros.rapido, base, consultaDe(filtros, acotado))}
+		<form class="filtros" method="get" action="${base}">
+			${filtros.rapido === "" ? html`` : html`<input type="hidden" name="rapido" value="${filtros.rapido}">`}
+			<input type="search" name="q" value="${filtros.q}" placeholder="Buscar">
 			${acotado !== undefined ? html`` : filtroSelect(opcionesProyecto(db, filtros.proyecto))}
 			${filtroSelect({
 				nombre: "estado",
@@ -591,7 +604,8 @@ function formularioFiltros(
 			${filtroSelect(opcionesFuncionalidad(db, padre))}
 			<button type="submit" class="pequeno">Filtrar</button>
 			${hayFiltro ? html`<a class="quitar" href="${base}">Quitar filtros</a>` : html``}
-		</form>`;
+		</form>
+	</div>`;
 }
 
 // --- la ficha ----------------------------------------------------------------
@@ -714,7 +728,14 @@ function propiedadesDeFuncionalidad(db: DatabaseSync, completa: TareaCompleta, c
 		{ nombre: "Proyecto", valor: proyectoLegible(db, tarea.proyectoId) },
 		{ nombre: "Tipo", valor: insigniaTipoTarea(tarea.tipo) },
 		{ nombre: "Rama", valor: ramaLegible(tarea.rama) },
-		{ nombre: "Partes", valor: barraProgreso(completa.partesCerradas ?? 0, completa.partes ?? 0) },
+		{
+			nombre: "Partes",
+			// Sin partes no hay barra que pintar: todavía no está descompuesta.
+			valor:
+				completa.partes === 0
+					? html`<span class="silencio">ninguna</span>`
+					: barraProgreso(completa.partesCerradas ?? 0, completa.partes ?? 0, "partes"),
+		},
 		{ nombre: "Análisis", valor: faseLegible(tarea.analisisModelo, completa.analisisTerminal) },
 		{ nombre: "Ejecución de las partes", valor: faseLegible(tarea.ejecucionModelo, completa.ejecucionTerminal) },
 	];
@@ -1002,17 +1023,14 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	const acotado = proyectoActual(c);
 	const filtros: FiltrosLista = { ...filtrosDe(c), estado: c.req.query("estado") ?? "" };
 	const padreId = idONull(filtros.padre);
-	const proyectoId = filtros.proyecto === "" ? null : (buscarProyectoPorClave(db, filtros.proyecto)?.id ?? 0);
 
-	const terminalId = Number.parseInt(filtros.terminal, 10);
-	const items = listarTareas(db, Number.isSafeInteger(terminalId) ? { terminalId } : {}).filter((item) => {
+	// Terminal, proyecto, conmutador y búsqueda los resuelve el índice; aquí
+	// quedan los que son de esta vista.
+	const items = listarTareas(db, filtroDeIndice(db, filtros)).filter((item) => {
 		if (esEstado(filtros.estado) && item.estado !== filtros.estado) {
 			return false;
 		}
 		if (esMarca(filtros.marca) && !item.marcas.includes(filtros.marca)) {
-			return false;
-		}
-		if (proyectoId !== null && item.proyectoId !== proyectoId) {
 			return false;
 		}
 		// Un identificador que no encaja no es un error del que avisar: no
@@ -1141,7 +1159,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 				<div class="acciones acciones-partes">
 					<a class="boton" href="/tareas/nueva?padre=${id}">Nueva parte</a>
 				</div>
-				${tablero(deps.db, { terminal: "", marca: "", padre: id, proyecto: "" })}
+				${tablero(deps.db, { terminal: "", marca: "", padre: id, proyecto: "", rapido: "", q: "" })}
 
 				${actividad}`
 			: html`${descripcion}

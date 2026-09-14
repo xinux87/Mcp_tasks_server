@@ -77,6 +77,23 @@ export function numeroLegible(valor: number): string {
 }
 
 /**
+ * Tokens para donde solo caben tres o cuatro caracteres: `980`, `184 k`,
+ * `1,2 M`. Entero por debajo de mil, miles sin decimales hasta el millón y
+ * millones con una decimal. Siempre hacia abajo: 999.999 son 999 k, no un
+ * millón que todavía no se ha gastado.
+ */
+export function tokensAbreviados(valor: number): string {
+	const tokens = Math.max(0, Math.trunc(valor));
+	if (tokens < 1_000) {
+		return String(tokens);
+	}
+	if (tokens < 1_000_000) {
+		return `${Math.floor(tokens / 1_000)} k`;
+	}
+	return `${(Math.floor(tokens / 100_000) / 10).toFixed(1).replace(".", ",")} M`;
+}
+
+/**
  * Título recortado para donde no cabe entero, con puntos suspensivos al final.
  * Se cuenta por caracteres y no por unidades UTF-16, para no partir un emoji.
  */

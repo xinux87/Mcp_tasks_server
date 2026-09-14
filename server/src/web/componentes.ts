@@ -312,20 +312,47 @@ export function accionNuevaTarea(prefijo = ""): Html {
 }
 
 /**
- * Lo que ha avanzado una funcionalidad: barra fina y `3/7` al lado, partes
- * cerradas sobre partes totales.
+ * Lo que ha avanzado una tarea: barra fina y `hijas 2/5` al lado, hijas
+ * cerradas sobre hijas totales. En una funcionalidad son sus partes, y el
+ * rótulo lo dice.
  *
- * La barra es la misma idea que la del uso de un terminal, pero con su propia
- * clase: allí quedarse corto es una alarma y la barra se pinta en rojo, y aquí
- * empezar por cero es lo normal. El ancho sale de la decena, en un atributo,
- * porque en las plantillas no hay estilos en línea.
+ * Es un `<progress>` y no una barra dibujada a mano: el navegador ya sabe
+ * pintarla y contarla a quien no la ve. Sin nada que contar no se pinta:
+ * una tarea sin hijas no tiene progreso, tiene trabajo.
  */
-export function barraProgreso(cerradas: number, total: number): Html {
-	const nivel = total === 0 ? 0 : Math.round((cerradas / total) * 10);
-	return html`<span class="progreso">
-			<span class="barra"><span class="relleno" data-nivel="${nivel}"></span></span>
-			<span class="cifra">${cerradas}/${total}</span>
-		</span>`;
+export function barraProgreso(cerradas: number, total: number, rotulo = "hijas"): Html {
+	if (total === 0) {
+		return html``;
+	}
+	return html`<progress class="progreso" value="${cerradas}" max="${total}"></progress><span class="progreso-texto">${rotulo} ${cerradas}/${total}</span>`;
+}
+
+/** Los tres conmutadores de un clic, con el texto que se lee en cada uno. */
+const FILTROS_RAPIDOS: readonly { valor: string; texto: string }[] = [
+	{ valor: "espera", texto: "Espera por mí" },
+	{ valor: "en-marcha", texto: "En marcha" },
+	{ valor: "sin-terminal", texto: "Sin terminal" },
+];
+
+/**
+ * Los tres conmutadores, a la izquierda de los desplegables. Son enlaces con
+ * aspecto de botón: uno cada vez, el activo lleva `aria-current` y pulsarlo lo
+ * quita. El resto de filtros viaja con ellos, así que se combinan con los
+ * desplegables y con la búsqueda.
+ */
+export function filtrosRapidos(activo: string, urlBase: string, parametros: URLSearchParams): Html {
+	return html`<nav class="filtros-rapidos" aria-label="Filtros rápidos">
+			${FILTROS_RAPIDOS.map((filtro) => {
+				const puesto = filtro.valor === activo;
+				const consulta = new URLSearchParams(parametros);
+				consulta.delete("rapido");
+				if (!puesto) {
+					consulta.set("rapido", filtro.valor);
+				}
+				const texto = consulta.toString();
+				return html`<a class="boton-filtro" href="${texto === "" ? urlBase : `${urlBase}?${texto}`}"${puesto ? raw(' aria-current="true"') : ""}>${filtro.texto}</a>`;
+			})}
+		</nav>`;
 }
 
 /** Un día bloqueada ya es una pregunta que nadie ha visto. */

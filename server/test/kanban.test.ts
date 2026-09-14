@@ -7,8 +7,9 @@ import { hashPassword } from "../src/auth/passwords.ts";
 import { crearTerminalConToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
+import { registrarConsumo } from "../src/db/consumo.ts";
 import { comentarAnalisis, comentarResultado } from "../src/db/hilo.ts";
-import { buscarTarea, crearTareaHumana, leerTarea, moverTareaHumano, tomarTarea } from "../src/db/tareas.ts";
+import { buscarTarea, crearHija, crearTareaHumana, leerTarea, moverTareaHumano, tomarTarea } from "../src/db/tareas.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 type Montaje = {
@@ -462,6 +463,100 @@ test("la tarjeta lleva su edad en columna, a la derecha del identificador y de l
 		assert.match(linea, /<span class="edad" title="[^"]+">4 d<\/span>\s*$/);
 		// Y va después del identificador, no delante.
 		assert.ok(linea.indexOf("id-tarea") < linea.indexOf('class="edad"'), "la edad va antes del identificador");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("la tarjeta enseña el progreso de sus hijas y los tokens de todo su árbol", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const terminalId = valor.terminal.id;
+		const padre = crearTareaHumana(montaje.db, {
+			titulo: "Exportar el listado a CSV",
+			descripcion: "Hoy lo copian a mano.",
+			usuarioId: 1,
+			analisisTerminalId: terminalId,
+			ejecucionTerminalId: terminalId,
+		});
+		moverTareaHumano(montaje.db, { tareaId: padre.id, usuarioId: 1, estado: "prepared" });
+		tomarTarea(montaje.db, { tareaId: padre.id, fase: "analisis", terminalId, modelo: "sonnet" });
+		comentarAnalisis(montaje.db, { tareaId: padre.id, terminalId, texto: "Plan." });
+		tomarTarea(montaje.db, { tareaId: padre.id, fase: "ejecucion", terminalId, modelo: "opus" });
+		const hecha = crearHija(montaje.db, {
+			titulo: "Generar el fichero",
+			descripcion: "d",
+			padreId: padre.id,
+			terminalId,
+		});
+		crearHija(montaje.db, { titulo: "Tests de la exportación", descripcion: "d", padreId: padre.id, terminalId });
+		comentarResultado(montaje.db, { tareaId: hecha.id, terminalId, texto: "Hecho. Commit: a1b2c3d" });
+		registrarConsumo(montaje.db, {
+			tareaId: padre.id,
+			fase: "ejecucion",
+			modelo: "opus",
+			terminalId,
+			tokens: 184_600,
+			herramientas: 41,
+			duracionMs: 1_520_000,
+		});
+
+		const cuerpo = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
+		// La barra va debajo del título, con las hijas cerradas sobre el total.
+		assert.match(
+			cuerpo,
+			/<progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto">hijas 1\/2<\/span>/,
+		);
+		// Y los tokens, abreviados, al final de la tarjeta.
+		assert.match(cuerpo, /<span class="tokens">184 k<\/span>/);
+		// Una hija sin hijas ni consumo no lleva ni barra ni cifra.
+		const tarjetaHija = cuerpo.split('data-id="T-0003"')[1] ?? "";
+		assert.ok(!tarjetaHija.startsWith("</article>"), "la tarjeta de la hija tiene que existir");
+		assert.ok(!(tarjetaHija.split("</article>")[0] ?? "").includes("progreso"), "sin hijas no hay barra");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("los conmutadores y la búsqueda filtran el tablero y se combinan con el proyecto", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		await crearTarea(montaje, cookie, "Exportar el listado a CSV");
+		await crearTarea(montaje, cookie, "Migrar el envío de correos");
+
+		// La búsqueda mira el título: la otra tarea se queda fuera.
+		const buscado = await (await pedir(montaje, "/tareas/kanban?q=correos", { cookie })).text();
+		assert.match(buscado, /data-id="T-0002"/);
+		assert.ok(!buscado.includes('data-id="T-0001"'), "la búsqueda deja fuera lo que no encaja");
+		// Lo que se buscó se queda escrito y viaja en la dirección del refresco.
+		assert.match(buscado, /<input type="search" name="q" value="correos" placeholder="Buscar">/);
+		assert.match(buscado, /data-fuente="\/tareas\/kanban\/tablero\?q=correos"/);
+
+		// Los tres conmutadores, con el resto de filtros puesto en cada enlace.
+		assert.match(
+			buscado,
+			/<a class="boton-filtro" href="\/tareas\/kanban\?q=correos&amp;rapido=espera">Espera por mí<\/a>/,
+		);
+
+		// Puesto, el activo lo quita al pulsarlo y viaja como campo oculto.
+		const enMarcha = await (await pedir(montaje, "/tareas/kanban?rapido=en-marcha", { cookie })).text();
+		assert.match(enMarcha, /<a class="boton-filtro" href="\/tareas\/kanban" aria-current="true">En marcha<\/a>/);
+		assert.match(enMarcha, /<input type="hidden" name="rapido" value="en-marcha">/);
+		// Ninguna está en marcha: el tablero sale vacío.
+		assert.ok(!enMarcha.includes("data-id="), "ninguna tarea está en marcha");
+
+		// Acotado a un proyecto, los conmutadores conservan su ruta y sus filtros.
+		const delProyecto = await (await pedir(montaje, "/p/PRI/tareas/kanban?q=csv", { cookie })).text();
+		assert.match(delProyecto, /data-id="T-0001"/);
+		assert.ok(!delProyecto.includes('data-id="T-0002"'));
+		assert.match(
+			delProyecto,
+			/<a class="boton-filtro" href="\/p\/PRI\/tareas\/kanban\?q=csv&amp;rapido=espera">Espera por mí<\/a>/,
+		);
+		assert.match(delProyecto, /data-fuente="\/p\/PRI\/tareas\/kanban\/tablero\?q=csv"/);
 	} finally {
 		await montaje.cerrar();
 	}

@@ -17,8 +17,11 @@ import { ahora, entero, escribirContenido, sentencia, texto } from "./base.ts";
  * de la tabla de tareas cabe en una línea.
  */
 
-/** Las dos columnas en las que una dependencia está satisfecha. */
-const CERRADAS = "('done', 'finished')";
+/**
+ * Las dos columnas en las que una tarea cuenta como cerrada: una dependencia
+ * satisfecha, y una hija hecha en el progreso de su padre.
+ */
+export const CERRADAS = "('done', 'finished')";
 
 /** De qué depende la tarea, en orden de id. */
 export function dependenciasDe(db: DatabaseSync, tareaId: number): number[] {

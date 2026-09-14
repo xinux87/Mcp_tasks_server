@@ -70,6 +70,7 @@ Cada encargo que se pasa a un subagente lleva, en este orden:
 - `ejecucionAprobada`: la pone el humano desde la web cuando `autoejecucion` está desactivada y el análisis le vale. Es lo que desbloquea la ejecución en ese caso.
 - `bloqueada`: hay una pregunta sin contestar.
 - `estadoDesde`: cuándo entró en su estado actual. Solo la web la enseña, como edad en columna. Ver «La web › Edad en columna».
+- `presupuesto`: tope de tokens, opcional. Superarlo pone la marca `sobre presupuesto`. Ver «La web › Saber qué cuesta y qué rinde».
 - `consumo`: tokens gastados en la tarea, desglosados por fase y por modelo. Ver «Consumo de tokens».
 - `comentarios[]`: el hilo de la tarea.
 
@@ -94,6 +95,7 @@ No son columnas ni se guardan: se derivan del estado de la tarea al leerla. Se m
 - **`en marcha`**: un terminal la ha tomado con `tomar_tarea` y todavía no ha escrito el comentario que cierra esa fase.
 - **`análisis listo`**: está en `prepared`, el análisis está hecho, no hay preguntas abiertas, `autoejecucion` está desactivada y el humano aún no ha aprobado. En una funcionalidad significa que la descomposición está lista para revisar.
 - **`esperando`**: solo en `prepared`. Tiene alguna dependencia que todavía no está `done` ni `finished`. Ningún terminal puede tomarla y `novedades` no la ofrece.
+- **`sobre presupuesto`**: tiene `presupuesto` y su consumo con hijas lo supera. Es un aviso al humano; no frena a nadie.
 
 La fase que toca en una tarea es «análisis» mientras está en `prepared` sin comentario `analisis`, y «ejecución» desde que lo tiene. El análisis se da por hecho con el primer comentario `analisis`.
 
@@ -428,6 +430,77 @@ Jira enseña cuántos días lleva una incidencia en su columna; aquí es lo que 
 - **El hilo se filtra** con tres enlaces encima: «Todo», «Preguntas y respuestas» y «Avances y resultados». Es un parámetro `?hilo=preguntas|avances` en la misma URL, sin JavaScript. El filtro no afecta a la nota ni a la actividad.
 - **Los ids enlazan.** Una regla de markdown-it convierte cualquier `T-0042` del hilo, la descripción y las notas en un enlace a su ficha. Es el «relates to» de Jira sin tabla nueva.
 
+### Un tablero que se lee de un vistazo
+
+Jira pone en cada tarjeta el progreso de las subtareas y agrupa el tablero en carriles por épica. Aquí los datos ya existen; lo que falta es enseñarlos donde se decide. Decidido el 14 de septiembre de 2026.
+
+**La tarjeta y la fila**
+
+- **Progreso de hijas.** Una tarea con hijas enseña `hijas 2/5`: hijas en `done` o `finished` sobre el total, con una barra fina debajo del título. Es un `<progress class="progreso" value="2" max="5">` estilizado, nunca un ancho en línea: la plantilla no lleva estilos en línea. Una funcionalidad ya enseña `funcionalidad 3/7` en su etiqueta; la barra es la misma y cuenta partes `finished`.
+- **Consumo.** Cuando la tarea o sus hijas tienen consumo, la tarjeta y la fila enseñan los tokens totales con hijas, abreviados: `980`, `184 k`, `1,2 M` (`tokensAbreviados` en `formatos.ts`: entero por debajo de mil; miles con `k` y sin decimales hasta un millón; millones con una decimal y coma). Es la cifra que dice si una tarea se ha ido de madre.
+- **Esos dos datos van en el índice** (`ItemIndice.hijas`, `hijasCerradas`, `tokensConHijas`), calculados en la misma consulta que el resto con una expresión de tabla recursiva para los descendientes: una consulta por vista, nunca una por tarjeta. El MCP no los enseña en la línea de índice: al agente le basta el frontmatter de `leer_tarea`.
+- **En la lista** el progreso va en la columna Título, tras las marcas, y el consumo en una columna nueva «Tokens» alineada a la derecha, con `tabular-nums`.
+
+**Filtros de un clic y búsqueda**
+
+- **Tres conmutadores** a la izquierda de los desplegables de la lista y del kanban, como enlaces con aspecto de botón: «Espera por mí» (tareas `bloqueadas`, con `análisis listo` o en `done`), «En marcha» y «Sin terminal». Van en el parámetro `?rapido=espera|en-marcha|sin-terminal`, uno cada vez; el activo lleva `aria-current="true"` y pulsarlo lo quita. Se combinan con los desplegables y con el ámbito del proyecto.
+- **Búsqueda por texto** en la misma fila: un `<input type="search" name="q">` dentro del formulario de filtros. Busca en título y descripción con `LIKE` sobre `lower()`, que en SQLite solo pliega ASCII: «Métrica» no encuentra «métrica» si se escribe con mayúscula acentuada. Es una limitación conocida y aceptada hasta que la cantidad de tareas o las quejas la hagan notar; el salto sería FTS5 con un tokenizador `unicode61`, que Node trae compilado. `ponytail: LIKE sobre lower(), FTS5 unicode61 cuando la búsqueda se quede corta.`
+- **Los filtros viven en `listarTareas`**: el filtro recibe `rapido` y `q` y la web no vuelve a filtrar en memoria.
+
+**Carriles por funcionalidad**
+
+- **Un conmutador «Agrupar por funcionalidad»** en la fila de filtros del kanban, global y acotado por proyecto, como enlace que añade `?agrupar=funcionalidad` y, activo, «Sin agrupar» que lo quita. Es un parámetro de la URL, así que el refresco en vivo lo conserva.
+- **Agrupado, el tablero es una franja por funcionalidad** más una última franja «Sueltas». Cada franja tiene una cabecera de ancho completo con el chip de proyecto (en la vista cruzada), el id, el título enlazado a su ficha, su etiqueta de estado y su progreso; debajo, las cinco columnas con solo sus tareas. Una tarea va a la franja de su antepasada funcionalidad más cercana (una parte, y también las hijas de trabajo de una parte); sin ninguna, a «Sueltas». Las funcionalidades mismas no se pintan como tarjetas en este modo: son las cabeceras.
+- **Salen las funcionalidades que tienen alguna tarea visible** con los filtros activos, en este orden: primero las que están en `doing`, luego `prepared`, `backlog` y `done`, y dentro por `orden`. Una funcionalidad `finished` no tiene franja: sus partes están cerradas. «Sueltas» va siempre la última y siempre se pinta, aunque esté vacía.
+- **Arrastrar dentro de una franja** reordena entre hermanas, con `entre: { padreId }` como en el tablero de la ficha de la funcionalidad; en «Sueltas», con `entre: { proyectoId }` si el tablero está acotado o global si no. **Entre franjas no se arrastra**: SortableJS lleva un grupo por franja, así que la tarjeta no se suelta en otra. Mover una tarea de funcionalidad no es una prioridad, es una edición, y va por la ficha.
+- **Las columnas de cada franja llevan `data-padre`** con el id de la funcionalidad, o nada en «Sueltas», y el cliente lo manda como ya manda `padre` en el tablero de una funcionalidad; el servidor no distingue de dónde viene.
+- **La columna Cerradas** dentro de cada franja enseña todas las de esa funcionalidad, no diez: son pocas. En «Sueltas» siguen siendo las diez más recientes con el enlace a la lista.
+
+### Saber qué cuesta y qué rinde
+
+Jira mide velocidad y tiempo de ciclo de personas. Aquí lo que cuesta dinero es el token y lo que cuesta tiempo es el humano, y las dos cosas ya se guardan. Los informes responden a cuatro preguntas que cambian decisiones: qué modelo poner por defecto en cada fase, cuánto interrumpe cada modelo, dónde se atasca el flujo y qué modelo entrega resultados que no valen. Decidido el 14 de septiembre de 2026.
+
+**Transiciones de estado**
+
+Para medir tiempos hace falta saber cuándo cambió de estado cada tarea, y hoy solo queda el último cambio (`estado_desde`).
+
+```sql
+CREATE TABLE transiciones (
+  id INTEGER PRIMARY KEY,
+  tarea_id INTEGER NOT NULL REFERENCES tareas(id),
+  de TEXT,
+  a TEXT NOT NULL,
+  creado TEXT NOT NULL
+) STRICT;
+CREATE INDEX transiciones_por_tarea ON transiciones (tarea_id, id);
+CREATE INDEX transiciones_por_fecha ON transiciones (a, creado);
+```
+
+- **La escribe `cambiarEstado`**, el único sitio que cambia `estado`, y la creación con `de` a nulo. Nada más la escribe. Borrar una tarea se lleva sus transiciones.
+- **Empieza vacía**: no se reconstruye el pasado, porque no está. Los informes dicen desde qué fecha tienen datos (la transición más antigua).
+- **El MCP no la expone** y la web no la enseña como lista: solo la resume en los informes.
+
+**Informes**
+
+- **`GET /informes`** y **`GET /p/:clave/informes`**, entrada «Informes» al final del bloque «Tareas» de la navegación. Un selector de periodo `?dias=7|30|90|todo`, 30 por defecto, como enlaces con el activo marcado. El periodo acota por la fecha del dato de cada tabla: `consumo.creado` en tokens, `comentarios.creado` en preguntas, `transiciones.creado` en ciclo y devolución.
+- **Cuatro tablas**, en este orden, cada una con su pregunta como título:
+  1. **¿Qué cuesta cada modelo?** Por fase y modelo: tareas trabajadas (distintas), tokens totales, tokens por tarea (media), llamadas a herramientas por tarea y duración media. De `consumo`. Ordenada por fase y después por tokens totales descendentes.
+  2. **¿Cuánto interrumpe cada modelo?** Por modelo: preguntas hechas (comentarios `pregunta` cuyo autor empieza por ese modelo), tareas en las que trabajó (distintas en `consumo`) y preguntas por tarea. Un modelo que pregunta mucho entiende mal las descripciones o las descripciones son malas; las dos cosas se ven aquí.
+  3. **¿Dónde se atasca el flujo?** Por modelo de ejecución: tareas que llegaron a `done` en el periodo, tiempo de ciclo mediano (de la primera entrada en `prepared` a la entrada en `done`) y tiempo de revisión mediano (de `done` a `finished`, solo las que ya están `finished`). El primero es del agente; el segundo, del humano. Se enseñan como `edad` (`3 d`, `5 h`).
+  4. **¿Qué modelo entrega resultados que no valen?** Por modelo de ejecución: entradas en `done` en el periodo, devoluciones (`done → doing`) y la tasa. Una tarea devuelta dos veces cuenta dos.
+- **Debajo, el ritmo**: tareas que llegaron a `done` por semana en el periodo, como tabla de dos columnas (semana, tareas) con la barra de progreso de la tarjeta como gráfico, con el máximo como `max`. Sin librería de gráficos.
+- **Acotado por proyecto**, cada tabla mira solo sus tareas; en la vista cruzada, todas. El tipo `funcionalidad` queda fuera de todas las tablas: no se ejecuta ni consume, y la 3 y la 4 son de partes y tareas.
+- **Las consultas viven en `src/db/informes.ts`**, una función por tabla, cada una una sola sentencia SQL; la web no agrega en memoria. Las medianas se calculan en SQL con `ORDER BY` y `LIMIT/OFFSET` sobre el recuento, o en la función si SQLite lo hace incómodo; en ningún caso en la ruta.
+- **Vacío**: cada tabla dice «Sin datos en este periodo.» y el pie de página dice desde cuándo hay transiciones.
+
+**Presupuesto**
+
+- **`tareas.presupuesto INTEGER`** opcional, en tokens. Se edita en `backlog` como el resto de campos, en tareas y funcionalidades; una funcionalidad no lo hereda a sus partes: es el tope del conjunto y se compara con su consumo con hijas.
+- **Marca derivada `sobre presupuesto`**, en naranja: hay presupuesto y `tokensConHijas` lo supera. Sale en tarjeta, fila, ficha, bandeja y en el frontmatter (`marcas: [sobre presupuesto]`), como las demás. No frena a nadie: el humano decide qué hacer con el aviso.
+- **Donde se enseña**: la tarjeta y la fila pintan `184 k / 200 k` en vez de solo los tokens cuando hay presupuesto; la ficha añade la fila Presupuesto a las propiedades y el consumo enseña «184 600 de 200 000». Los formularios de alta y edición llevan un `<input type="number" min="0" step="1000">` «Presupuesto en tokens», vacío por defecto.
+- **En el frontmatter** aparece `presupuesto: 200000` tras `autoejecucion` solo cuando lo hay. `editar_tarea` deja `presupuesto: — → 200 k` en el rastro (o `200 k → —` al quitarlo). Cambiarlo es contenido y sube la revisión como cualquier edición.
+- **`marcasDe` recibe los tokens** con hijas y el presupuesto; el índice ya trae `tokensConHijas` y `leerTarea` ya calcula el total con hijas para la ficha.
+
 ### Sesión y seguridad
 
 - **Login con usuario y contraseña** contra la tabla `usuarios`; contraseñas con scrypt. Cookie de sesión firmada con `SESSION_SECRET`, `HttpOnly`, `SameSite=Lax`, treinta días.
@@ -463,6 +536,7 @@ Jira enseña cuántos días lleva una incidencia en su columna; aquí es lo que 
 | `GET /usuarios`, `POST /usuarios`, `POST /usuarios/:id/borrar`, `POST /usuarios/contrasena` | Usuarios: alta con color, baja (nunca el último) y cambio de la propia contraseña |
 | `POST /usuarios/:id/color` | Cambia el color de un usuario |
 | `GET /actividad` | Las últimas cien acciones humanas, con quién hizo cada una |
+| `GET /informes`, `GET /p/:clave/informes` | Los cuatro informes y el ritmo, con selector de periodo. Ver «Saber qué cuesta y qué rinde» |
 | `GET /eventos` | SSE con la revisión actual, para que la lista y el kanban se refresquen |
 
 Las acciones del humano sobre tareas llaman a las funciones de `src/db/`; la web no reimplementa reglas. Un `ErrorDeRegla` en un POST vuelve a pintar la página de origen con el mensaje tal cual y estado 422; una acción que sale bien redirige (POST, redirección, GET). El error de login responde 401 con el formulario.
@@ -525,7 +599,7 @@ Tipografía `ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helve
 **Qué color lleva cada cosa**
 
 - Estados: `backlog` gris, `prepared` azul, `doing` amarillo, `done` verde, `finished` marrón.
-- Marcas: `bloqueada` rojo, `sin terminal` naranja, `en marcha` morado, `análisis listo` rosa.
+- Marcas: `bloqueada` rojo, `sin terminal` naranja, `en marcha` morado, `análisis listo` rosa, `esperando` naranja, `sobre presupuesto` naranja.
 - Tipos de comentario: `analisis` azul, `pregunta` rojo, `respuesta` verde, `avance` amarillo, `resultado` morado, `nota` gris.
 - Tipo de tarea `pregunta`: rosa.
 - Los usuarios eligen entre los ocho que no son gris. El gris es de quien no tiene color: agentes y usuarios borrados.
@@ -539,8 +613,8 @@ Tipografía `ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helve
 
 **Pantallas**
 
-- **Lista**: los mismos grupos por estado, como tabla de Notion: sin borde exterior, cabecera en `--texto-suave`, mayúsculas pequeñas, filas con borde inferior y fondo `--fondo-hover` al pasar. Columnas: Id, Título (con las marcas como etiquetas), Análisis, Ejecución, Creada por (chip) y Actualizada. Los filtros son una fila de desplegables compactos encima, sin caja.
-- **Kanban**: columnas sin fondo; la cabecera de cada columna es la etiqueta de su estado con el contador al lado. Tarjetas con borde `--borde`, fondo `--fondo`, sombra suave al pasar y al arrastrar. Cada tarjeta: id y marcas en una línea, título, y las fases en texto suave.
+- **Lista**: los mismos grupos por estado, como tabla de Notion: sin borde exterior, cabecera en `--texto-suave`, mayúsculas pequeñas, filas con borde inferior y fondo `--fondo-hover` al pasar. Columnas: Id, Título (con las marcas como etiquetas y el progreso de hijas), Análisis, Ejecución, Tokens, Creada por (chip) y En columna. Los filtros son una fila encima, sin caja: los tres conmutadores, la búsqueda y los desplegables compactos.
+- **Kanban**: columnas sin fondo; la cabecera de cada columna es la etiqueta de su estado con el contador al lado. Tarjetas con borde `--borde`, fondo `--fondo`, sombra suave al pasar y al arrastrar. Cada tarjeta: id, marcas y edad en una línea, título, la barra de progreso cuando hay hijas, y una última línea en texto suave con las fases a la izquierda y los tokens a la derecha. Agrupado por funcionalidad, cada franja lleva su cabecera de ancho completo con borde inferior `--borde` y las columnas debajo; ver «Un tablero que se lee de un vistazo».
 - **Ficha**: migas `PRI › Tareas › T-0042`, título, etiquetas de estado y marcas, y las acciones hacia delante a la derecha (Pasar a preparadas, Aprobar ejecución, Finalizar). Debajo, las preguntas abiertas con su formulario. Después el bloque de **propiedades**: filas de dos columnas con el nombre en `--texto-suave` y el valor al lado: Estado (con la edad), Proyecto, Tipo, Análisis, Ejecución, Autoejecución, Padre, Orden, Creada (chip de quien la creó, o el terminal si fue una propuesta, y la fecha), Revisión. Después Descripción, Hijas (cada una con su etiqueta de estado), Consumo, Hilo, Nota, Actividad. Las **vueltas atrás** (volver a backlog, devolver a doing), **Editar** y **Borrar** van al final como `<details>`, porque son excepcionales. En ancho, propiedades, consumo y `<details>` forman el panel de la derecha; ver «La ficha como vista de incidencia».
 - **Bandeja**: cuatro bloques con el contador en el título; en cada uno, líneas con chip de proyecto, id, título y edad, y debajo la tarjeta que toca (pregunta con formulario, análisis con botón de aprobar, resultado con botón de finalizar). Mismos componentes que la ficha: nada se pinta dos veces con dos plantillas.
 - **Hilo**: cada comentario es una tarjeta con cabecera de chip del autor, etiqueta del tipo, `P<n>` cuando toca y la fecha; debajo el cuerpo renderizado; el formulario de respuesta dentro de la tarjeta de la pregunta abierta, con las opciones como tarjetas seleccionables y la recomendada marcada.
@@ -549,6 +623,7 @@ Tipografía `ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helve
 - **La pestaña de la ficha** lleva el título de la tarea; el id se lee en las migas.
 - **Usuarios**: tabla con chip, fecha de alta, «Alta por» y acciones. El alta lleva un selector de color con las ocho muestras como botones de radio, con la automática preseleccionada. Cada fila lleva el mismo selector en un formulario a `POST /usuarios/:id/color`.
 - **Actividad**: las últimas cien acciones, agrupadas por día; cada línea es chip, frase de la acción, enlace al objeto y hora.
+- **Informes**: el selector de periodo como enlaces encima; cuatro tablas de Notion con la pregunta como `<h2>`, cifras con `tabular-nums` alineadas a la derecha; el ritmo debajo con la barra de progreso por semana.
 - **Confirmaciones** (borrar usuario, revocar terminal), la página del token, 404 y 500 usan el mismo esqueleto con una tarjeta.
 
 ### Color de usuario

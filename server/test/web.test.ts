@@ -12,8 +12,9 @@ import { listarTerminales, listarUsuarios } from "../src/db/admin.ts";
 import { COLORES_USUARIO } from "../src/db/colores.ts";
 import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { registrarConsumo } from "../src/db/consumo.ts";
-import { comentarAnalisis, comentarAvance, preguntar } from "../src/db/hilo.ts";
+import { comentarAnalisis, comentarAvance, comentarResultado, preguntar } from "../src/db/hilo.ts";
 import {
+	crearHija,
 	crearPropuesta,
 	crearTareaHumana,
 	exigirTarea,
@@ -22,7 +23,7 @@ import {
 	tomarTarea,
 } from "../src/db/tareas.ts";
 import { type ConEdad, edadEnColumna } from "../src/web/componentes.ts";
-import { edad } from "../src/web/formatos.ts";
+import { edad, tokensAbreviados } from "../src/web/formatos.ts";
 import { tarjetaPreguntaAbierta } from "../src/web/hilo.ts";
 import { renderMarkdown } from "../src/web/markdown.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
@@ -1337,6 +1338,92 @@ test("la tarjeta de una pregunta abierta se contesta fuera de la ficha y vuelve 
 		assert.match(tarjeta, /<span class="recomendada">recomendada<\/span>/);
 		// Sin destino de vuelta no se manda el campo: es lo que hace la ficha.
 		assert.doesNotMatch(String(await tarjetaPreguntaAbierta({ id: 1, titulo: "T" }, pregunta)), /name="volver"/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+// --- el progreso, los tokens y los filtros de un clic ------------------------
+
+test("los tokens se abrevian: entero, miles con k y millones con una decimal", () => {
+	assert.equal(tokensAbreviados(0), "0");
+	assert.equal(tokensAbreviados(980), "980");
+	assert.equal(tokensAbreviados(999), "999");
+	assert.equal(tokensAbreviados(1_000), "1 k");
+	assert.equal(tokensAbreviados(184_600), "184 k");
+	// Siempre hacia abajo: lo que no se ha gastado no se enseña.
+	assert.equal(tokensAbreviados(999_999), "999 k");
+	assert.equal(tokensAbreviados(1_200_000), "1,2 M");
+});
+
+test("la lista enseña el progreso y los tokens, y filtra por conmutador y por texto", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const terminalId = valor.terminal.id;
+		const padre = crearTareaHumana(montaje.db, {
+			titulo: "Exportar el listado a CSV",
+			descripcion: "Los comerciales lo copian a mano.",
+			usuarioId: 1,
+			analisisTerminalId: terminalId,
+			ejecucionTerminalId: terminalId,
+		});
+		moverTareaHumano(montaje.db, { tareaId: padre.id, usuarioId: 1, estado: "prepared" });
+		tomarTarea(montaje.db, { tareaId: padre.id, fase: "analisis", terminalId, modelo: "sonnet" });
+		comentarAnalisis(montaje.db, { tareaId: padre.id, terminalId, texto: "Plan." });
+		tomarTarea(montaje.db, { tareaId: padre.id, fase: "ejecucion", terminalId, modelo: "opus" });
+		const hecha = crearHija(montaje.db, {
+			titulo: "Generar el fichero",
+			descripcion: "d",
+			padreId: padre.id,
+			terminalId,
+		});
+		crearHija(montaje.db, { titulo: "Tests de la exportación", descripcion: "d", padreId: padre.id, terminalId });
+		comentarResultado(montaje.db, { tareaId: hecha.id, terminalId, texto: "Hecho. Commit: a1b2c3d" });
+		registrarConsumo(montaje.db, {
+			tareaId: padre.id,
+			fase: "ejecucion",
+			modelo: "opus",
+			terminalId,
+			tokens: 184_600,
+			herramientas: 41,
+			duracionMs: 1_520_000,
+		});
+		// Una tarea suelta que no espera por nadie ni tiene consumo.
+		const suelta = crearTareaHumana(montaje.db, {
+			titulo: "Migrar el envío de correos",
+			descripcion: "Se manda todo por una cola.",
+			usuarioId: 1,
+			analisisTerminalId: terminalId,
+			ejecucionTerminalId: terminalId,
+		});
+		moverTareaHumano(montaje.db, { tareaId: suelta.id, usuarioId: 1, estado: "prepared" });
+
+		const lista = await (await pedir(montaje, "/tareas", { cookie })).text();
+		assert.match(lista, /<th class="numero">Tokens<\/th>/);
+		assert.match(
+			lista,
+			/<progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto">hijas 1\/2<\/span>/,
+		);
+		assert.match(lista, /<td class="numero pequeno">184 k<\/td>/);
+		// Sin consumo la celda se queda vacía: un cero no dice nada.
+		assert.match(lista, /<td class="numero pequeno"><\/td>/);
+
+		// «Espera por mí»: la hija en done entra; la preparada sin nada pendiente, no.
+		const espera = await (await pedir(montaje, "/tareas?rapido=espera", { cookie })).text();
+		assert.match(espera, /Generar el fichero/);
+		assert.ok(!espera.includes("Migrar el envío de correos"), "una preparada tranquila no espera por nadie");
+		// El conmutador puesto se marca y su enlace lo quita.
+		assert.match(espera, /<a class="boton-filtro" href="\/tareas" aria-current="true">Espera por mí<\/a>/);
+		assert.match(espera, /<input type="hidden" name="rapido" value="espera">/);
+
+		// La búsqueda mira también la descripción.
+		const buscado = await (await pedir(montaje, "/tareas?q=cola", { cookie })).text();
+		assert.match(buscado, /Migrar el envío de correos/);
+		assert.ok(!buscado.includes("Exportar el listado a CSV"), "la búsqueda deja fuera lo que no encaja");
+		// Y se combina con el conmutador, que conserva lo buscado.
+		assert.match(buscado, /<a class="boton-filtro" href="\/tareas\?q=cola&amp;rapido=espera">Espera por mí<\/a>/);
 	} finally {
 		await montaje.cerrar();
 	}

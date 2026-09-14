@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { revisionActual } from "../src/db/consultas.ts";
+import { registrarConsumo } from "../src/db/consumo.ts";
 import { crearParte } from "../src/db/funcionalidades.ts";
 import { comentarAnalisis, comentarAvance, comentarResultado, preguntar } from "../src/db/hilo.ts";
 import {
@@ -900,6 +901,178 @@ test("el índice trae la edad en columna y desde cuándo está bloqueada", () =>
 
 		// La más antigua de las dos abiertas: es desde cuándo espera por el humano.
 		assert.equal(itemIndiceDe(banco.db, tarea.id).bloqueadaDesde, primera.creada);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+// --- lo que el índice enseña en la tarjeta y en la fila -----------------------
+
+test("el índice cuenta las hijas cerradas y suma los tokens de todo el árbol", () => {
+	const banco = montar();
+	try {
+		const padre = tareaPreparada(banco);
+		tomarTarea(banco.db, { tareaId: padre.id, fase: "analisis", terminalId: banco.portatil });
+		comentarAnalisis(banco.db, { tareaId: padre.id, terminalId: banco.portatil, texto: "Plan." });
+		tomarTarea(banco.db, { tareaId: padre.id, fase: "ejecucion", terminalId: banco.portatil });
+		const hija = (titulo: string): Tarea =>
+			crearHija(banco.db, { titulo, descripcion: "d", padreId: padre.id, terminalId: banco.portatil });
+
+		const hecha = hija("La que se cierra");
+		comentarResultado(banco.db, { tareaId: hecha.id, terminalId: banco.portatil, texto: "Hecho. Commit: a1b2c3d" });
+		const aceptada = hija("La que se acepta");
+		comentarResultado(banco.db, { tareaId: aceptada.id, terminalId: banco.portatil, texto: "Hecho. Commit: b2c3d4e" });
+		moverTareaHumano(banco.db, { tareaId: aceptada.id, usuarioId: banco.xinux, estado: "finished" });
+		const enCurso = hija("La que sigue");
+
+		// Una nieta: el consumo sube por todo el árbol, no solo por las hijas.
+		const nieta = crearHija(banco.db, {
+			titulo: "Lo que hace un subagente",
+			descripcion: "d",
+			padreId: enCurso.id,
+			terminalId: banco.portatil,
+		});
+		registrarConsumo(banco.db, {
+			tareaId: padre.id,
+			fase: "ejecucion",
+			modelo: "opus",
+			terminalId: banco.portatil,
+			tokens: 1_000,
+			herramientas: 3,
+			duracionMs: 1_000,
+		});
+		registrarConsumo(banco.db, {
+			tareaId: enCurso.id,
+			fase: "ejecucion",
+			modelo: "opus",
+			terminalId: banco.portatil,
+			tokens: 200,
+			herramientas: 1,
+			duracionMs: 500,
+		});
+		registrarConsumo(banco.db, {
+			tareaId: nieta.id,
+			fase: "ejecucion",
+			modelo: "opus",
+			terminalId: banco.portatil,
+			tokens: 30,
+			herramientas: 1,
+			duracionMs: 500,
+		});
+
+		const item = itemIndiceDe(banco.db, padre.id);
+		assert.equal(item.hijas, 3);
+		// `done` y `finished` cuentan como cerradas; la que sigue en `doing`, no.
+		assert.equal(item.hijasCerradas, 2);
+		assert.equal(item.tokensConHijas, 1_230);
+		// La hija intermedia lleva lo suyo y lo de su nieta.
+		assert.equal(itemIndiceDe(banco.db, enCurso.id).tokensConHijas, 230);
+
+		const suelta = crearTareaHumana(banco.db, { titulo: "Sin nada", descripcion: "d", usuarioId: banco.xinux });
+		const sola = itemIndiceDe(banco.db, suelta.id);
+		assert.equal(sola.hijas, 0);
+		assert.equal(sola.hijasCerradas, 0);
+		assert.equal(sola.tokensConHijas, 0);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("los conmutadores de un clic filtran por lo que espera, lo que está en marcha y lo huérfano", () => {
+	const banco = montar();
+	try {
+		// Con las dos fases asignadas: así la única «sin terminal» es la que lo está.
+		const preparada = (titulo: string, autoejecucion = true): Tarea => {
+			const tarea = crearTareaHumana(banco.db, {
+				titulo,
+				descripcion: "d",
+				usuarioId: banco.xinux,
+				autoejecucion,
+				analisisModelo: "sonnet",
+				analisisTerminalId: banco.portatil,
+				ejecucionModelo: "opus",
+				ejecucionTerminalId: banco.portatil,
+			});
+			return moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		};
+
+		// Bloqueada: una pregunta sin contestar.
+		const bloqueada = preparada("La que pregunta");
+		tomarTarea(banco.db, { tareaId: bloqueada.id, fase: "analisis", terminalId: banco.portatil });
+		preguntar(banco.db, {
+			tareaId: bloqueada.id,
+			terminalId: banco.portatil,
+			pregunta: "¿Coma o punto y coma?",
+			porQueImporta: "La hoja de cálculo está en español.",
+			opciones: OPCIONES,
+			recomendacion: "Sí",
+		});
+
+		// Análisis listo: sin autoejecución, con el análisis escrito.
+		const porAprobar = preparada("La que espera el visto bueno", false);
+		tomarTarea(banco.db, { tareaId: porAprobar.id, fase: "analisis", terminalId: banco.portatil });
+		comentarAnalisis(banco.db, { tareaId: porAprobar.id, terminalId: banco.portatil, texto: "Plan." });
+
+		// Hecha: espera a que el humano la revise.
+		const hecha = preparada("La que ya está");
+		tomarTarea(banco.db, { tareaId: hecha.id, fase: "analisis", terminalId: banco.portatil });
+		comentarAnalisis(banco.db, { tareaId: hecha.id, terminalId: banco.portatil, texto: "Plan." });
+		tomarTarea(banco.db, { tareaId: hecha.id, fase: "ejecucion", terminalId: banco.portatil });
+		comentarResultado(banco.db, { tareaId: hecha.id, terminalId: banco.portatil, texto: "Hecho. Commit: a1b2c3d" });
+
+		// En prepared, con terminal y sin nada que espere: no sale en ninguno.
+		const tranquila = preparada("La que sigue su curso");
+		tomarTarea(banco.db, { tareaId: tranquila.id, fase: "analisis", terminalId: banco.portatil });
+		comentarAnalisis(banco.db, { tareaId: tranquila.id, terminalId: banco.portatil, texto: "Plan." });
+
+		// Sin terminal: cualquiera puede tomarla.
+		const huerfana = tareaSinModelos(banco);
+
+		const ids = (rapido: "espera" | "en-marcha" | "sin-terminal"): number[] =>
+			listarTareas(banco.db, { rapido }).map((item) => item.id);
+
+		assert.deepEqual(ids("espera").sort(), [bloqueada.id, porAprobar.id, hecha.id].sort());
+		// «En marcha» es la que un terminal tiene tomada ahora mismo.
+		assert.deepEqual(ids("en-marcha"), [bloqueada.id]);
+		assert.deepEqual(ids("sin-terminal"), [huerfana.id]);
+		// Sin conmutador salen todas.
+		assert.equal(listarTareas(banco.db, {}).length, 5);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("la búsqueda mira el título y la descripción, no distingue mayúsculas y no toma el porcentaje por comodín", () => {
+	const banco = montar();
+	try {
+		const csv = crearTareaHumana(banco.db, {
+			titulo: "Exportar el listado a CSV",
+			descripcion: "Los comerciales lo copian a mano.",
+			usuarioId: banco.xinux,
+		});
+		const cola = crearTareaHumana(banco.db, {
+			titulo: "Migrar el envío de correos",
+			descripcion: "Se manda todo por una cola.",
+			usuarioId: banco.xinux,
+		});
+		const descuento = crearTareaHumana(banco.db, {
+			titulo: "Aplicar un 100% de descuento",
+			descripcion: "Solo para el primer pedido.",
+			usuarioId: banco.xinux,
+		});
+
+		const ids = (q: string): number[] => listarTareas(banco.db, { q }).map((item) => item.id);
+
+		// En el título, con otras mayúsculas.
+		assert.deepEqual(ids("csv"), [csv.id]);
+		// En la descripción.
+		assert.deepEqual(ids("COLA"), [cola.id]);
+		// Sin resultado no es un error: no hay ninguna.
+		assert.deepEqual(ids("nada de nada"), []);
+		// El porcentaje se busca tal cual, no como «cualquier cosa».
+		assert.deepEqual(ids("100%"), [descuento.id]);
+		assert.deepEqual(ids("100% de descuento"), [descuento.id]);
+		assert.deepEqual(ids("%de%"), []);
 	} finally {
 		banco.cerrar();
 	}

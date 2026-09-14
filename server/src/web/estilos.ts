@@ -921,6 +921,20 @@ button.enlace:hover {
 	margin-left: auto;
 }
 
+/* La última línea: las fases a la izquierda y los tokens al otro extremo, que
+   es la cifra que dice si la tarea se ha ido de madre. */
+.tarjeta .pie {
+	display: flex;
+	align-items: baseline;
+	gap: 0.4rem;
+}
+
+.tarjeta .pie .tokens {
+	margin-left: auto;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
 /* El hueco que SortableJS deja donde caería la tarjeta. */
 .tarjeta.arrastrando {
 	border-style: dashed;
@@ -1311,6 +1325,47 @@ button.pequeno, .boton.pequeno {
 	flex: 0 1 10rem;
 }
 
+/* Los conmutadores de un clic van a la izquierda de los desplegables, en la
+   misma fila mientras quepan. */
+.fila-filtros {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 0.5rem 0.8rem;
+	margin-bottom: 1.6rem;
+}
+
+.fila-filtros .filtros {
+	margin-bottom: 0;
+}
+
+.filtros-rapidos {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+	padding-bottom: 0.1rem;
+}
+
+.boton-filtro {
+	padding: 0.3rem 0.7rem;
+	color: var(--texto);
+	font-size: 0.85rem;
+	text-decoration: none;
+	border: 1px solid var(--borde);
+	border-radius: var(--radio);
+}
+
+.boton-filtro:hover {
+	background: var(--fondo-hover);
+}
+
+/* El activo se ve puesto: pulsarlo otra vez lo quita. */
+.boton-filtro[aria-current="true"] {
+	background: var(--fondo-hover);
+	border-color: var(--acento);
+	font-weight: 600;
+}
+
 .filtros button {
 	padding: 0.3rem 0.7rem;
 }
@@ -1447,47 +1502,38 @@ details.caja[open] > summary {
 
 /* --- funcionalidades, partes y dependencias ------------------------------ */
 
-/* El progreso de una funcionalidad: barra fina y las partes cerradas sobre el
-   total al lado. Es la misma idea que el uso de un terminal, pero con su
-   propia clase: allí quedarse corto es una alarma y la barra se pinta en rojo,
-   y aquí empezar por cero es lo normal. */
+/* El progreso de una tarea con hijas: barra fina y la cuenta al lado. Es un
+   elemento progress, así que el navegador la pinta y la cuenta él solo; hay
+   que quitarle su aspecto en cada motor para que sea la misma raya en todos. */
 .progreso {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.5rem;
-}
-
-.progreso .barra {
-	display: block;
 	width: 4.5rem;
 	height: 4px;
-	border-radius: 999px;
+	vertical-align: middle;
+	border: none;
+	border-radius: 2px;
 	background: var(--fondo-hover);
-	overflow: hidden;
+	appearance: none;
 }
 
-/* El ancho sale de la decena que calcula el servidor: una regla por valor, y
-   así ninguna plantilla lleva estilos en línea. */
-.progreso .relleno {
-	display: block;
-	height: 100%;
-	border-radius: 999px;
+.progreso::-webkit-progress-bar {
+	border-radius: 2px;
+	background: var(--fondo-hover);
+}
+
+.progreso::-webkit-progress-value {
+	border-radius: 2px;
 	background: var(--acento);
 }
 
-.progreso .relleno[data-nivel="0"] { width: 0; }
-.progreso .relleno[data-nivel="1"] { width: 10%; }
-.progreso .relleno[data-nivel="2"] { width: 20%; }
-.progreso .relleno[data-nivel="3"] { width: 30%; }
-.progreso .relleno[data-nivel="4"] { width: 40%; }
-.progreso .relleno[data-nivel="5"] { width: 50%; }
-.progreso .relleno[data-nivel="6"] { width: 60%; }
-.progreso .relleno[data-nivel="7"] { width: 70%; }
-.progreso .relleno[data-nivel="8"] { width: 80%; }
-.progreso .relleno[data-nivel="9"] { width: 90%; }
-.progreso .relleno[data-nivel="10"] { width: 100%; }
+.progreso::-moz-progress-bar {
+	border-radius: 2px;
+	background: var(--acento);
+}
 
-.progreso .cifra {
+/* Los márgenes van aquí y no en el hueco de la plantilla: en la fila el texto
+   queda pegado al título de la tarea si no los lleva. */
+.progreso-texto {
+	margin: 0 0.4rem 0 0.5rem;
 	color: var(--texto-suave);
 	font-size: 0.85rem;
 	font-variant-numeric: tabular-nums;

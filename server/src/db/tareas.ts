@@ -17,6 +17,7 @@ import {
 import { type ConsumoDeTarea, consumoDeTarea } from "./consumo.ts";
 import {
 	borrarDependenciasDe,
+	CERRADAS,
 	CUENTA_DEPENDENCIAS_PENDIENTES,
 	contarDependenciasPendientes,
 	dependenciasDe,
@@ -119,6 +120,11 @@ export type ItemIndice = {
 	/** Solo en una funcionalidad: cuántas partes tiene y cuántas están cerradas. */
 	partes: number | null;
 	partesCerradas: number | null;
+	/** Hijas directas y cuántas de ellas están `done` o `finished`: el progreso de la tarjeta. */
+	hijas: number;
+	hijasCerradas: number;
+	/** Tokens de la tarea más los de todas sus descendientes. */
+	tokensConHijas: number;
 	analisisModelo: string | null;
 	analisisTerminal: string | null;
 	ejecucionModelo: string | null;
@@ -226,10 +232,13 @@ function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
 		marcas: marcasDe(tarea, entero(fila, "preguntas_abiertas"), entero(fila, "dependencias_pendientes")),
 		estadoDesde: tarea.estadoDesde,
 		bloqueadaDesde: textoOpcional(fila, "bloqueada_desde"),
-		// El progreso solo dice algo en una funcionalidad: en el resto, las
-		// hijas son trabajo suelto y no se cuentan.
-		partes: esFuncionalidad ? entero(fila, "partes") : null,
+		// Una parte cerrada es una hija `finished`: en una funcionalidad la
+		// entrega la da por buena el humano, no basta con que esté construida.
+		partes: esFuncionalidad ? entero(fila, "hijas") : null,
 		partesCerradas: esFuncionalidad ? entero(fila, "partes_cerradas") : null,
+		hijas: entero(fila, "hijas"),
+		hijasCerradas: entero(fila, "hijas_cerradas"),
+		tokensConHijas: entero(fila, "tokens_con_hijas"),
 		analisisModelo: tarea.analisisModelo,
 		analisisTerminal: textoOpcional(fila, "analisis_terminal"),
 		ejecucionModelo: tarea.ejecucionModelo,
@@ -242,19 +251,36 @@ function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
  * preguntas abiertas, que es lo que necesitan las marcas. El `t.*` trae todas
  * las columnas de la tarea, `tipo` incluido: el índice lo necesita para pintar
  * `pregunta` y para saltarse el segmento de ejecución.
+ *
+ * El árbol de cada tarea se arma una sola vez para toda la consulta y de él
+ * sale el consumo con hijas: el kanban pinta muchas tarjetas y no puede hacer
+ * una consulta por cada una. `UNION` y no `UNION ALL` porque así un ciclo de
+ * padres, si alguna vez se colara, deja de recorrerse en vez de no acabar.
  */
 const SELECT_INDICE = `
+	WITH RECURSIVE arbol(raiz, id) AS (
+		SELECT id, id FROM tareas
+		UNION
+		SELECT a.raiz, h.id FROM tareas h JOIN arbol a ON h.padre_id = a.id
+	)
 	SELECT t.*,
 		ta.nombre AS analisis_terminal,
 		te.nombre AS ejecucion_terminal,
 		(SELECT COUNT(*) FROM preguntas p WHERE p.tarea_id = t.id AND p.respuesta_opcion IS NULL) AS preguntas_abiertas,
 		(SELECT MIN(p.creada) FROM preguntas p WHERE p.tarea_id = t.id AND p.respuesta_opcion IS NULL) AS bloqueada_desde,
 		${CUENTA_DEPENDENCIAS_PENDIENTES} AS dependencias_pendientes,
-		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id) AS partes,
-		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id AND h.estado = 'finished') AS partes_cerradas
+		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id) AS hijas,
+		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id AND h.estado IN ${CERRADAS}) AS hijas_cerradas,
+		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id AND h.estado = 'finished') AS partes_cerradas,
+		COALESCE(tk.tokens, 0) AS tokens_con_hijas
 	FROM tareas t
 	LEFT JOIN terminales ta ON ta.id = t.analisis_terminal_id
-	LEFT JOIN terminales te ON te.id = t.ejecucion_terminal_id`;
+	LEFT JOIN terminales te ON te.id = t.ejecucion_terminal_id
+	LEFT JOIN (
+		SELECT a.raiz AS id, SUM(c.tokens) AS tokens
+		FROM arbol a JOIN consumo c ON c.tarea_id = a.id
+		GROUP BY a.raiz
+	) tk ON tk.id = t.id`;
 
 /** Orden de las columnas del kanban dentro de un `ORDER BY`. */
 const ORDEN_COLUMNAS =
@@ -421,13 +447,48 @@ export function itemIndiceDe(db: DatabaseSync, tareaId: number): ItemIndice {
 	return comoItemIndice(fila);
 }
 
+/** Los tres conmutadores de un clic de la lista y del kanban. */
+export type Rapido = "espera" | "en-marcha" | "sin-terminal";
+
+const RAPIDOS: readonly Rapido[] = ["espera", "en-marcha", "sin-terminal"];
+
+export function esRapido(valor: string): valor is Rapido {
+	const nombres: readonly string[] = RAPIDOS;
+	return nombres.includes(valor);
+}
+
+/**
+ * Qué deja pasar cada conmutador. Se corta sobre las marcas ya calculadas y no
+ * en SQL: «análisis listo» y «sin terminal» son cinco condiciones cada una y
+ * repetirlas en la consulta las dejaría divergir de `marcasDe` en cuanto una
+ * cambiara. «Espera por mí» añade `done`, que es lo que espera revisión.
+ */
+const PASA_RAPIDO: Record<Rapido, (item: ItemIndice) => boolean> = {
+	espera: (item) =>
+		item.estado === "done" || item.marcas.includes("bloqueada") || item.marcas.includes("análisis listo"),
+	"en-marcha": (item) => item.marcas.includes("en marcha"),
+	"sin-terminal": (item) => item.marcas.includes("sin terminal"),
+};
+
 export type FiltroIndice = {
 	estado?: Estado;
 	/** Tareas en las que este terminal es el de análisis o el de ejecución. */
 	terminalId?: number;
 	/** El tablero de un proyecto. Sin él, la vista cruzada: todos los proyectos. */
 	proyectoId?: number;
+	/** El conmutador de un clic: lo que espera por el humano, lo que está en marcha, lo huérfano. */
+	rapido?: Rapido;
+	/** Búsqueda por texto en el título y en la descripción. */
+	q?: string;
 };
+
+/**
+ * Escapa lo que en un `LIKE` es comodín, para que buscar `100%` busque `100%`
+ * y no «cualquier cosa detrás de 100».
+ */
+function patronLike(texto: string): string {
+	return `%${texto.toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
+}
 
 /** Índice ligero, ordenado por columna del kanban y por orden dentro de ella. */
 export function listarTareas(db: DatabaseSync, filtro: FiltroIndice = {}): ItemIndice[] {
@@ -445,11 +506,20 @@ export function listarTareas(db: DatabaseSync, filtro: FiltroIndice = {}): ItemI
 		condiciones.push("t.proyecto_id = ?");
 		parametros.push(filtro.proyectoId);
 	}
+	if (filtro.q !== undefined && filtro.q.trim() !== "") {
+		// `lower()` de SQLite solo pliega ASCII: «Métrica» no encuentra
+		// «métrica» escrita con mayúscula acentuada. Es una limitación conocida.
+		// ponytail: LIKE sobre lower(), FTS5 unicode61 cuando se quede corta.
+		condiciones.push("(lower(t.titulo) LIKE ? ESCAPE '\\' OR lower(t.descripcion) LIKE ? ESCAPE '\\')");
+		const patron = patronLike(filtro.q.trim());
+		parametros.push(patron, patron);
+	}
 	const donde = condiciones.length === 0 ? "" : ` WHERE ${condiciones.join(" AND ")}`;
 	const sql = `${SELECT_INDICE}${donde} ORDER BY ${ORDEN_COLUMNAS}, t.orden, t.id`;
-	return sentencia(db, sql)
+	const items = sentencia(db, sql)
 		.all(...parametros)
 		.map(comoItemIndice);
+	return filtro.rapido === undefined ? items : items.filter(PASA_RAPIDO[filtro.rapido]);
 }
 
 export type Desde = {
