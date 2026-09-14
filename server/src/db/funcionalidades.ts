@@ -1,10 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
 import { formatearId } from "../md/ids.ts";
-import { ahora, entero, escribirContenido, sentencia, texto } from "./base.ts";
+import { entero, escribirContenido, sentencia, texto } from "./base.ts";
 import { escribirDependencias } from "./dependencias.ts";
 import { insertarComentario } from "./hilo.ts";
-import { comoTarea, exigirTarea, insertarTarea, siguienteOrden, type Tarea } from "./tareas.ts";
+import { cambiarEstado, comoTarea, exigirTarea, insertarTarea, type Tarea } from "./tareas.ts";
 
 /**
  * Funcionalidades: lo que pide el humano en lenguaje de negocio. Su
@@ -163,26 +163,15 @@ export function aprobarDescomposicion(conexion: DatabaseSync, revision: number, 
 		);
 	}
 
-	const marca = ahora();
-	sentencia(
-		conexion,
-		`UPDATE tareas
-			SET estado = 'doing', orden = ?, ejecucion_aprobada = 1, en_marcha_terminal_id = NULL,
-				actualizada = ?, revision = ?
-			WHERE id = ?`,
-	).run(siguienteOrden(conexion, "doing"), marca, revision, funcionalidad.id);
+	cambiarEstado(conexion, revision, funcionalidad.id, "doing", ", ejecucion_aprobada = 1, en_marcha_terminal_id = NULL");
 
 	// Las partes salen a `prepared` en el orden que traían, detrás de lo que ya
-	// hubiera en esa columna.
+	// hubiera en esa columna: cada una entra al final, que es lo que hace
+	// `cambiarEstado`, y así conservan su orden relativo.
 	const enBacklog = hijasDirectas(conexion, funcionalidad.id).filter((parte) => parte.estado === "backlog");
 	const ordenados = [...enBacklog].sort((uno, otro) => uno.orden - otro.orden || uno.id - otro.id);
-	let siguiente = siguienteOrden(conexion, "prepared");
 	for (const parte of ordenados) {
-		sentencia(
-			conexion,
-			"UPDATE tareas SET estado = 'prepared', orden = ?, actualizada = ?, revision = ? WHERE id = ?",
-		).run(siguiente, marca, revision, parte.id);
-		siguiente += 1;
+		cambiarEstado(conexion, revision, parte.id, "prepared");
 	}
 
 	if (funcionalidad.rama !== null) {
@@ -286,10 +275,5 @@ export function cerrarPadreSiProcede(conexion: DatabaseSync, revision: number, p
 			.join("\n"),
 		preguntaId: null,
 	});
-	sentencia(conexion, "UPDATE tareas SET estado = 'done', orden = ?, actualizada = ?, revision = ? WHERE id = ?").run(
-		siguienteOrden(conexion, "done"),
-		ahora(),
-		revision,
-		funcionalidad.id,
-	);
+	cambiarEstado(conexion, revision, funcionalidad.id, "done");
 }

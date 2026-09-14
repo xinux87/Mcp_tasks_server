@@ -7,7 +7,7 @@ import { buscarTerminalPorId, revisionActual } from "../../db/consultas.ts";
 import type { ConsumoDeTarea } from "../../db/consumo.ts";
 import { dependenciasPendientes, dependientesDe } from "../../db/dependencias.ts";
 import { editarTareaBacklog, exigirTitulo } from "../../db/edicion.ts";
-import { type Comentario, notaHumana, type Pregunta, responder } from "../../db/hilo.ts";
+import { type Comentario, notaHumana, responder } from "../../db/hilo.ts";
 import {
 	buscarProyectoPorClave,
 	buscarProyectoPorId,
@@ -39,15 +39,15 @@ import {
 	buscadorDeColor,
 	buscadorDeCreador,
 	COLOR_ESTADO,
-	type Color,
-	chipAutor,
 	chipProyecto,
 	chipUsuario,
+	edadEnColumna,
 	enlaceFuncionalidad,
 	etiqueta,
 	filtroSelect,
 	fraseDeAccion,
 	type Miga,
+	muestraEdad,
 	type Propiedad,
 	propiedades,
 	type QuienCreo,
@@ -64,20 +64,20 @@ import {
 	marcado,
 	mensajeDeRegla,
 } from "../formulario.ts";
+import { type ColorDe, formularioRespuesta, tarjetaComentario } from "../hilo.ts";
 import { renderMarkdown } from "../markdown.ts";
 import {
 	COLUMNAS,
 	type Html,
 	insigniaEstado,
 	insigniasMarcas,
-	insigniaTipo,
 	insigniaTipoDeItem,
 	insigniaTipoTarea,
 	MODELOS_SUGERIDOS,
 	pagina,
 	type RespuestaHtml,
 } from "../plantilla.ts";
-import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
+import { type DependenciasWeb, destinoSeguro, usuarioActual } from "../sesion.ts";
 import { type Filtros, filtrosDe, MARCAS, opcionesFuncionalidad, opcionesProyecto, tablero } from "./kanban.ts";
 import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
 
@@ -92,9 +92,6 @@ const TIPOS: readonly { valor: TipoTarea; texto: string }[] = [
 
 /** Cómo se resuelve quién creó una tarea. Se construye una vez por página. */
 type Creador = (quien: QuienCreo) => Html | null;
-
-/** Cómo se resuelve el color de un usuario al pintar. Una vez por página. */
-type ColorDe = (nombre: string) => Color | null;
 
 /** Lo que se puede filtrar en la lista. Vacío es no filtrar por ese campo. */
 type FiltrosLista = Filtros & {
@@ -473,7 +470,7 @@ function filaTarea(
 			<td class="pequeno">${faseLegible(item.analisisModelo, item.analisisTerminal)}</td>
 			<td class="pequeno">${ejecucionLegible(item.tipo, item.ejecucionModelo, item.ejecucionTerminal)}</td>
 			<td>${creador ?? SIN_DATO}</td>
-			<td class="pequeno">${tarea === undefined ? SIN_DATO : fechaLegible(tarea.actualizada)}</td>
+			<td class="pequeno">${edadEnColumna(item)}</td>
 		</tr>`;
 }
 
@@ -494,7 +491,7 @@ function tablaLista(
 			<table>
 				<thead>
 					<tr>
-						<th>Id</th><th>Título</th><th>Análisis</th><th>Ejecución</th><th>Creada por</th><th>Actualizada</th>
+						<th>Id</th><th>Título</th><th>Análisis</th><th>Ejecución</th><th>Creada por</th><th>En columna</th>
 					</tr>
 				</thead>
 				<tbody>${items.map((item) => filaTarea(db, item, creadorDe, deQuien, claves))}</tbody>
@@ -614,6 +611,27 @@ function proyectoLegible(db: DatabaseSync, proyectoId: number): Html {
 	return html`<a href="/p/${proyecto.clave}/tareas">${chipProyecto(proyecto.clave)}</a> ${proyecto.nombre}`;
 }
 
+/**
+ * El estado de la tarea con cuánto lleva en él. La edad se cuenta desde la
+ * pregunta abierta más antigua cuando la tarea está bloqueada, que es lo que
+ * hace la lista y el kanban: aquí se compone con lo que ya trae la ficha.
+ */
+function estadoLegible(completa: TareaCompleta): Html {
+	const { tarea } = completa;
+	const insignia = insigniaEstado(tarea.estado);
+	if (!muestraEdad(tarea.estado)) {
+		return insignia;
+	}
+	const abiertas = completa.preguntas.filter((pregunta) => pregunta.respuestaOpcion === null);
+	const edad = edadEnColumna({
+		estado: tarea.estado,
+		marcas: completa.marcas,
+		estadoDesde: tarea.estadoDesde,
+		bloqueadaDesde: abiertas.map((pregunta) => pregunta.creada).sort()[0] ?? null,
+	});
+	return html`${insignia} <span class="silencio">desde hace ${edad}</span>`;
+}
+
 /** La rama en la que se trabaja la tarea, o que no hay ninguna. */
 function ramaLegible(rama: string | null): Html {
 	return rama === null ? html`<span class="silencio">ninguna</span>` : html`<code>${rama}</code>`;
@@ -664,7 +682,7 @@ function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe
 		return propiedadesDeFuncionalidad(db, completa, creadorDe);
 	}
 	const filas: Propiedad[] = [
-		{ nombre: "Estado", valor: insigniaEstado(tarea.estado) },
+		{ nombre: "Estado", valor: estadoLegible(completa) },
 		{ nombre: "Proyecto", valor: proyectoLegible(db, tarea.proyectoId) },
 	];
 	if (tarea.tipo === "pregunta") {
@@ -691,7 +709,7 @@ function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe
 function propiedadesDeFuncionalidad(db: DatabaseSync, completa: TareaCompleta, creadorDe: Creador): Html {
 	const { tarea } = completa;
 	const filas: Propiedad[] = [
-		{ nombre: "Estado", valor: insigniaEstado(tarea.estado) },
+		{ nombre: "Estado", valor: estadoLegible(completa) },
 		{ nombre: "Proyecto", valor: proyectoLegible(db, tarea.proyectoId) },
 		{ nombre: "Tipo", valor: insigniaTipoTarea(tarea.tipo) },
 		{ nombre: "Rama", valor: ramaLegible(tarea.rama) },
@@ -748,48 +766,17 @@ function tablaConsumo(consumo: ConsumoDeTarea): Html {
 
 // --- el hilo -----------------------------------------------------------------
 
-/** Una opción de una pregunta abierta: tarjeta seleccionable con su consecuencia. */
-function opcionDePregunta(texto: string, consecuencia: string, recomendada: boolean): Html {
-	return html`<label class="opcion">
-			<input type="radio" name="opcion" value="${texto}" required>
-			<span class="que">${texto}${recomendada ? html`<span class="recomendada">recomendada</span>` : html``}</span>
-			<span class="consecuencia">${consecuencia}</span>
-		</label>`;
-}
-
-/** El formulario de respuesta, dentro de la tarjeta de la pregunta abierta. */
-function formularioRespuesta(tareaId: number, pregunta: Pregunta): Html {
-	return html`<form class="responder" method="post" action="/tareas/${formatearId(tareaId)}/responder/P${pregunta.numero}">
-			<fieldset>
-				<legend>Responder a P${pregunta.numero}</legend>
-				${pregunta.opciones.map((opcion) =>
-					opcionDePregunta(opcion.texto, opcion.consecuencia, opcion.texto === pregunta.recomendacion),
-				)}
-				<label>
-					<span>Nota (opcional)</span>
-					<textarea name="nota" rows="3"></textarea>
-				</label>
-				<button type="submit" class="principal">Responder</button>
-			</fieldset>
-		</form>`;
-}
-
-function tarjetaComentario(completa: TareaCompleta, comentario: Comentario, colorDe: ColorDe): Html {
+/** Un comentario del hilo de la ficha, con el formulario si es una pregunta abierta. */
+function comentarioDeLaFicha(completa: TareaCompleta, comentario: Comentario, colorDe: ColorDe): Html {
 	const pregunta =
 		comentario.tipo === "pregunta" && comentario.preguntaId !== null
 			? completa.preguntas.find((candidata) => candidata.id === comentario.preguntaId)
 			: undefined;
 	const abierta = pregunta !== undefined && pregunta.respuestaOpcion === null;
-	return html`<article class="comentario">
-			<header>
-				${chipAutor(comentario.autor, colorDe)}
-				${insigniaTipo(comentario.tipo)}
-				${pregunta === undefined ? html`` : html`<span>P${pregunta.numero}</span>`}
-				<span>${fechaLegible(comentario.creado)}</span>
-			</header>
-			<div class="cuerpo">${raw(renderMarkdown(comentario.texto))}</div>
-			${abierta && pregunta !== undefined ? formularioRespuesta(completa.tarea.id, pregunta) : html``}
-		</article>`;
+	return tarjetaComentario(comentario, colorDe, {
+		numero: pregunta?.numero ?? null,
+		extra: abierta && pregunta !== undefined ? formularioRespuesta(completa.tarea.id, pregunta) : html``,
+	});
 }
 
 function hilo(completa: TareaCompleta, colorDe: ColorDe): Html {
@@ -797,7 +784,7 @@ function hilo(completa: TareaCompleta, colorDe: ColorDe): Html {
 		return html`<p class="silencio">Ninguno.</p>`;
 	}
 	return html`<div class="hilo">
-			${completa.comentarios.map((comentario) => tarjetaComentario(completa, comentario, colorDe))}
+			${completa.comentarios.map((comentario) => comentarioDeLaFicha(completa, comentario, colorDe))}
 		</div>`;
 }
 
@@ -1232,6 +1219,16 @@ function paginaBorrar(c: Context, deps: DependenciasWeb, tareaId: number): Respu
 
 // --- rutas -------------------------------------------------------------------
 
+/**
+ * A dónde vuelve una acción que ha salido bien. La bandeja del humano manda un
+ * campo oculto `volver` porque contesta y aprueba sin abrir la ficha; desde la
+ * propia ficha no viene ninguno y se vuelve a ella, como siempre. Solo se
+ * acepta una ruta del propio servidor: lo valida `destinoSeguro`.
+ */
+function vuelta(formulario: Formulario, tareaId: number): string {
+	return destinoSeguro(campo(formulario, "volver"), `/tareas/${formatearId(tareaId)}`);
+}
+
 /** Todas las rutas de tareas: lista, alta, ficha y las acciones del humano. */
 export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 	app.get("/tareas", (c) => paginaLista(c, deps));
@@ -1331,20 +1328,21 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 				estado,
 				nota: campo(formulario, "nota"),
 			});
-			return c.redirect(`/tareas/${formatearId(tareaId)}`, 302);
+			return c.redirect(vuelta(formulario, tareaId), 302);
 		} catch (error) {
 			return paginaFicha(c, deps, tareaId, mensajeDeRegla(error));
 		}
 	});
 
-	app.post("/tareas/:id/aprobar", (c) => {
+	app.post("/tareas/:id/aprobar", async (c) => {
 		const tareaId = idDeRuta(c);
 		if (tareaId === null) {
 			return paginaNoEncontrada(c, deps, "Eso no es un identificador de tarea; tiene la forma T-0042.");
 		}
+		const formulario = await leerFormulario(c);
 		try {
 			aprobarEjecucion(deps.db, { tareaId, usuarioId: usuarioActual(c).id });
-			return c.redirect(`/tareas/${formatearId(tareaId)}`, 302);
+			return c.redirect(vuelta(formulario, tareaId), 302);
 		} catch (error) {
 			return paginaFicha(c, deps, tareaId, mensajeDeRegla(error));
 		}
@@ -1388,7 +1386,7 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 				opcion: campo(formulario, "opcion"),
 				nota: campo(formulario, "nota"),
 			});
-			return c.redirect(`/tareas/${formatearId(tareaId)}`, 302);
+			return c.redirect(vuelta(formulario, tareaId), 302);
 		} catch (error) {
 			return paginaFicha(c, deps, tareaId, mensajeDeRegla(error));
 		}

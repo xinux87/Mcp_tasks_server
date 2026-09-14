@@ -23,6 +23,36 @@ export function fechaLegible(valor: string | Date | null): string {
 	return `${dia} ${dosCifras(fecha.getHours())}:${dosCifras(fecha.getMinutes())}`;
 }
 
+const MINUTO = 60_000;
+const HORA = 60 * MINUTO;
+const DIA = 24 * HORA;
+
+/**
+ * Cuánto tiempo lleva algo, en una sola unidad: `12 min` por debajo de una
+ * hora, `5 h` por debajo de un día, `3 d` a partir de ahí. Siempre entero y
+ * hacia abajo, que es como se lee una edad: 23 horas y media son 23 h.
+ *
+ * Es la edad en columna de una tarea. Una fecha futura o ilegible es `0 min`:
+ * en una edad no hay nada que decir por debajo de cero.
+ */
+export function edad(desde: string, ahora: Date = new Date()): string {
+	const transcurrido = ahora.getTime() - new Date(desde).getTime();
+	const ms = Number.isFinite(transcurrido) ? Math.max(0, transcurrido) : 0;
+	if (ms < HORA) {
+		return `${Math.floor(ms / MINUTO)} min`;
+	}
+	if (ms < DIA) {
+		return `${Math.floor(ms / HORA)} h`;
+	}
+	return `${Math.floor(ms / DIA)} d`;
+}
+
+/** Las mismas horas, para decidir si una edad duele. */
+export function horasDesde(desde: string, ahora: Date = new Date()): number {
+	const transcurrido = ahora.getTime() - new Date(desde).getTime();
+	return Number.isFinite(transcurrido) ? transcurrido / HORA : 0;
+}
+
 /**
  * Duración en milisegundos como texto: `1 m 25 s`, `2 h 5 m 3 s`, `40 s`. El
  * consumo se reporta en milisegundos y nadie lee milisegundos.

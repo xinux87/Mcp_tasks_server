@@ -406,6 +406,20 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 	color: var(--texto-suave);
 }
 
+/*
+ * Cuánto lleva una tarea en su columna. Va en texto suave salvo cuando duele:
+ * un día bloqueada o tres días esperando revisión.
+ */
+.edad {
+	color: var(--texto-suave);
+	font-size: 0.85rem;
+	white-space: nowrap;
+}
+
+.edad-peligro {
+	color: var(--peligro);
+}
+
 .pequeno {
 	font-size: 0.85rem;
 }
@@ -900,6 +914,11 @@ button.enlace:hover {
 
 .tarjeta .titulo {
 	line-height: 1.35;
+}
+
+/* La edad se va al borde derecho de la línea, lejos del identificador. */
+.tarjeta .linea .edad {
+	margin-left: auto;
 }
 
 /* El hueco que SortableJS deja donde caería la tarjeta. */

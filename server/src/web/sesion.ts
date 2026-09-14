@@ -113,12 +113,14 @@ export function sinCrossSite(): MiddlewareHandler {
 }
 
 /**
- * Destino de la vuelta tras el login. Solo se acepta una ruta relativa del
- * propio servidor: `//otro.sitio` o una URL absoluta serían un salto abierto.
+ * Destino de una vuelta: tras el login, o tras una acción lanzada desde la
+ * bandeja. Solo se acepta una ruta relativa del propio servidor: `//otro.sitio`
+ * o una URL absoluta serían un salto abierto. Lo que no valga cae en el destino
+ * por defecto de quien pregunta.
  */
-export function destinoSeguro(volver: string | undefined): string {
+export function destinoSeguro(volver: string | undefined, porDefecto = "/tareas"): string {
 	if (volver === undefined || !volver.startsWith("/") || volver.startsWith("//")) {
-		return "/tareas";
+		return porDefecto;
 	}
 	return volver;
 }

@@ -14,7 +14,7 @@ import {
 } from "./base.ts";
 import { buscarTerminalPorId, buscarUsuarioPorId } from "./consultas.ts";
 import { exigirPartes } from "./funcionalidades.ts";
-import { contarPreguntasAbiertas, exigirTarea, faseQueToca, type Tarea, tocarTarea } from "./tareas.ts";
+import { cambiarEstado, contarPreguntasAbiertas, exigirTarea, faseQueToca, type Tarea, tocarTarea } from "./tareas.ts";
 
 /** Los seis tipos de comentario del hilo. Se añaden, nunca se editan ni se borran. */
 export type TipoComentario = "analisis" | "pregunta" | "respuesta" | "avance" | "resultado" | "nota";
@@ -215,12 +215,8 @@ const CERRAR_ANALISIS = `
 		SET analisis_hecho = 1, en_marcha_terminal_id = NULL, actualizada = ?, revision = ?
 		WHERE id = ?`;
 
-const CERRAR_PREGUNTA = `
-	UPDATE tareas
-		SET analisis_hecho = 1, en_marcha_terminal_id = NULL, estado = 'done',
-			orden = (SELECT COALESCE(MAX(orden), 0) + 1 FROM tareas WHERE estado = 'done'),
-			actualizada = ?, revision = ?
-		WHERE id = ?`;
+/** Lo que una pregunta escribe además de irse a `done`: el estado lo mueve `cambiarEstado`. */
+const CERRAR_PREGUNTA = ", analisis_hecho = 1, en_marcha_terminal_id = NULL";
 
 /**
  * Comentario `analisis`: qué hay que hacer, plan y riesgos. Es el que da el
@@ -257,7 +253,11 @@ export function comentarAnalisis(db: DatabaseSync, datos: ComentarioDeAgente): C
 			texto: datos.texto,
 			preguntaId: null,
 		});
-		sentencia(conexion, tarea.tipo === "pregunta" ? CERRAR_PREGUNTA : CERRAR_ANALISIS).run(ahora(), revision, tarea.id);
+		if (tarea.tipo === "pregunta") {
+			cambiarEstado(conexion, revision, tarea.id, "done", CERRAR_PREGUNTA);
+		} else {
+			sentencia(conexion, CERRAR_ANALISIS).run(ahora(), revision, tarea.id);
+		}
 		return comentario;
 	});
 }
@@ -302,13 +302,7 @@ export function comentarResultado(db: DatabaseSync, datos: ComentarioDeAgente): 
 			texto: datos.texto,
 			preguntaId: null,
 		});
-		sentencia(
-			conexion,
-			`UPDATE tareas
-				SET estado = 'done', orden = (SELECT COALESCE(MAX(orden), 0) + 1 FROM tareas WHERE estado = 'done'),
-					en_marcha_terminal_id = NULL, actualizada = ?, revision = ?
-				WHERE id = ?`,
-		).run(ahora(), revision, tarea.id);
+		cambiarEstado(conexion, revision, tarea.id, "done", ", en_marcha_terminal_id = NULL");
 		return comentario;
 	});
 }

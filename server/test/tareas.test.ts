@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { revisionActual } from "../src/db/consultas.ts";
-import { comentarAnalisis, comentarResultado, preguntar } from "../src/db/hilo.ts";
+import { crearParte } from "../src/db/funcionalidades.ts";
+import { comentarAnalisis, comentarAvance, comentarResultado, preguntar } from "../src/db/hilo.ts";
 import {
 	aprobarEjecucion,
 	borrarTarea,
@@ -10,6 +11,7 @@ import {
 	crearTareaHumana,
 	exigirTarea,
 	faseQueToca,
+	itemIndiceDe,
 	leerTarea,
 	listarTareas,
 	marcasDe,
@@ -734,6 +736,170 @@ test("las tareas inexistentes se rechazan con tarea_inexistente", () => {
 			codigoDe(() => tomarTarea(banco.db, { tareaId: 404, fase: "analisis", terminalId: banco.portatil })),
 			"tarea_inexistente",
 		);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+// --- estado_desde: la edad en columna ---------------------------------------
+
+/** Una fecha vieja: se escribe a mano para ver si el cambio de estado la refresca. */
+const ANTIGUA = "2020-01-01T00:00:00.000Z";
+
+function envejecerEstado(banco: ReturnType<typeof montar>, tareaId: number): void {
+	banco.db.prepare("UPDATE tareas SET estado_desde = ? WHERE id = ?").run(ANTIGUA, tareaId);
+}
+
+/** Que el estado de la tarea se haya refrescado ahora, y no siga en la fecha vieja. */
+function exigirRefrescada(banco: ReturnType<typeof montar>, tareaId: number, camino: string): void {
+	const desde = exigirTarea(banco.db, tareaId).estadoDesde;
+	assert.notEqual(desde, ANTIGUA, `${camino} no refrescó estado_desde`);
+	assert.ok(desde > "2026-01-01", `${camino} dejó estado_desde en ${desde}`);
+}
+
+test("una tarea nace con estado_desde puesto, y es su misma fecha de creación", () => {
+	const banco = montar();
+	try {
+		const tarea = crearTareaHumana(banco.db, { titulo: "Una", descripcion: "d", usuarioId: banco.xinux });
+		assert.equal(tarea.estadoDesde, tarea.creada);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("todo camino que cambia el estado refresca estado_desde, y un avance no lo toca", () => {
+	const banco = montar();
+	try {
+		// Mover desde la web.
+		const tarea = crearTareaHumana(banco.db, {
+			titulo: "Exportar el listado",
+			descripcion: "d",
+			usuarioId: banco.xinux,
+			analisisModelo: "sonnet",
+			ejecucionModelo: "opus",
+		});
+		envejecerEstado(banco, tarea.id);
+		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		exigirRefrescada(banco, tarea.id, "mover desde la web");
+
+		// Tomar la ejecución, que es lo que la lleva a `doing`.
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
+		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "plan" });
+		envejecerEstado(banco, tarea.id);
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil });
+		exigirRefrescada(banco, tarea.id, "tomar la ejecución");
+
+		// Un avance no cambia de columna: la edad en columna sigue siendo la misma.
+		envejecerEstado(banco, tarea.id);
+		comentarAvance(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "a medias" });
+		assert.equal(exigirTarea(banco.db, tarea.id).estadoDesde, ANTIGUA);
+
+		// El comentario que cierra la ejecución sí.
+		comentarResultado(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "hecho" });
+		exigirRefrescada(banco, tarea.id, "el comentario de resultado");
+
+		// Y la aceptación del humano.
+		envejecerEstado(banco, tarea.id);
+		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "finished" });
+		exigirRefrescada(banco, tarea.id, "finalizar desde la web");
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("el análisis de una pregunta la cierra y refresca su estado_desde", () => {
+	const banco = montar();
+	try {
+		const creada = crearTareaHumana(banco.db, {
+			titulo: "¿Cuánto cuesta una tarea?",
+			descripcion: "d",
+			usuarioId: banco.xinux,
+			tipo: "pregunta",
+		});
+		moverTareaHumano(banco.db, { tareaId: creada.id, usuarioId: banco.xinux, estado: "prepared" });
+		tomarTarea(banco.db, { tareaId: creada.id, fase: "analisis", terminalId: banco.portatil, modelo: "sonnet" });
+		envejecerEstado(banco, creada.id);
+		comentarAnalisis(banco.db, { tareaId: creada.id, terminalId: banco.portatil, texto: "unos 200.000 tokens." });
+
+		assert.equal(exigirTarea(banco.db, creada.id).estado, "done");
+		exigirRefrescada(banco, creada.id, "el análisis de una pregunta");
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("aprobar la descomposición refresca la funcionalidad y sus partes, y cerrarla también", () => {
+	const banco = montar();
+	try {
+		const creada = crearTareaHumana(banco.db, {
+			titulo: "Que los comerciales se bajen sus listados",
+			descripcion: "d",
+			usuarioId: banco.xinux,
+			tipo: "funcionalidad",
+			analisisModelo: "sonnet",
+			analisisTerminalId: banco.portatil,
+			ejecucionModelo: "opus",
+			ejecucionTerminalId: banco.portatil,
+		});
+		moverTareaHumano(banco.db, { tareaId: creada.id, usuarioId: banco.xinux, estado: "prepared" });
+		tomarTarea(banco.db, { tareaId: creada.id, fase: "analisis", terminalId: banco.portatil });
+		const parte = crearParte(banco.db, {
+			titulo: "Sacar los datos",
+			descripcion: "d",
+			padreId: creada.id,
+			terminalId: banco.portatil,
+		});
+		comentarAnalisis(banco.db, { tareaId: creada.id, terminalId: banco.portatil, texto: "una parte basta" });
+
+		envejecerEstado(banco, creada.id);
+		envejecerEstado(banco, parte.id);
+		aprobarEjecucion(banco.db, { tareaId: creada.id, usuarioId: banco.xinux });
+		exigirRefrescada(banco, creada.id, "aprobar la descomposición");
+		exigirRefrescada(banco, parte.id, "sacar la parte del backlog");
+
+		// La última parte aceptada cierra la funcionalidad: la mueve el servidor.
+		tomarTarea(banco.db, { tareaId: parte.id, fase: "analisis", terminalId: banco.portatil });
+		comentarAnalisis(banco.db, { tareaId: parte.id, terminalId: banco.portatil, texto: "plan" });
+		tomarTarea(banco.db, { tareaId: parte.id, fase: "ejecucion", terminalId: banco.portatil });
+		comentarResultado(banco.db, { tareaId: parte.id, terminalId: banco.portatil, texto: "hecho" });
+		envejecerEstado(banco, creada.id);
+		moverTareaHumano(banco.db, { tareaId: parte.id, usuarioId: banco.xinux, estado: "finished" });
+
+		assert.equal(exigirTarea(banco.db, creada.id).estado, "done");
+		exigirRefrescada(banco, creada.id, "el cierre automático de la funcionalidad");
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("el índice trae la edad en columna y desde cuándo está bloqueada", () => {
+	const banco = montar();
+	try {
+		const tarea = tareaPreparada(banco);
+		const item = itemIndiceDe(banco.db, tarea.id);
+		assert.equal(item.estadoDesde, exigirTarea(banco.db, tarea.id).estadoDesde);
+		assert.equal(item.bloqueadaDesde, null);
+
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
+		const primera = preguntar(banco.db, {
+			tareaId: tarea.id,
+			terminalId: banco.portatil,
+			pregunta: "¿Coma o punto y coma?",
+			porQueImporta: "La hoja de cálculo está en español.",
+			opciones: OPCIONES,
+			recomendacion: "Sí",
+		});
+		preguntar(banco.db, {
+			tareaId: tarea.id,
+			terminalId: banco.portatil,
+			pregunta: "¿Y la cabecera?",
+			porQueImporta: "Se abre sola en la hoja de cálculo.",
+			opciones: OPCIONES,
+			recomendacion: "Sí",
+		});
+
+		// La más antigua de las dos abiertas: es desde cuándo espera por el humano.
+		assert.equal(itemIndiceDe(banco.db, tarea.id).bloqueadaDesde, primera.creada);
 	} finally {
 		banco.cerrar();
 	}

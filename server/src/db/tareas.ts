@@ -84,6 +84,8 @@ export type Tarea = {
 	creadaPorTerminalId: number | null;
 	creada: string;
 	actualizada: string;
+	/** Cuándo entró en el estado en el que está. Solo la web la enseña, como edad en columna. */
+	estadoDesde: string;
 	/** Revisión global con la que se escribió esta fila por última vez. */
 	revision: number;
 };
@@ -107,6 +109,13 @@ export type ItemIndice = {
 	titulo: string;
 	padreId: number | null;
 	marcas: Marca[];
+	/** Cuándo entró en su estado actual: la edad en columna sale de aquí. */
+	estadoDesde: string;
+	/**
+	 * Cuándo se hizo la pregunta abierta más antigua, o `null` si no hay ninguna.
+	 * La edad de una tarea bloqueada se cuenta desde aquí, no desde `estadoDesde`.
+	 */
+	bloqueadaDesde: string | null;
 	/** Solo en una funcionalidad: cuántas partes tiene y cuántas están cerradas. */
 	partes: number | null;
 	partesCerradas: number | null;
@@ -198,6 +207,7 @@ export function comoTarea(fila: Record<string, unknown>): Tarea {
 		creadaPorTerminalId: enteroOpcional(fila, "creada_por_terminal_id"),
 		creada: texto(fila, "creada"),
 		actualizada: texto(fila, "actualizada"),
+		estadoDesde: texto(fila, "estado_desde"),
 		revision: entero(fila, "revision"),
 	};
 }
@@ -214,6 +224,8 @@ function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
 		titulo: tarea.titulo,
 		padreId: tarea.padreId,
 		marcas: marcasDe(tarea, entero(fila, "preguntas_abiertas"), entero(fila, "dependencias_pendientes")),
+		estadoDesde: tarea.estadoDesde,
+		bloqueadaDesde: textoOpcional(fila, "bloqueada_desde"),
 		// El progreso solo dice algo en una funcionalidad: en el resto, las
 		// hijas son trabajo suelto y no se cuentan.
 		partes: esFuncionalidad ? entero(fila, "partes") : null,
@@ -236,6 +248,7 @@ const SELECT_INDICE = `
 		ta.nombre AS analisis_terminal,
 		te.nombre AS ejecucion_terminal,
 		(SELECT COUNT(*) FROM preguntas p WHERE p.tarea_id = t.id AND p.respuesta_opcion IS NULL) AS preguntas_abiertas,
+		(SELECT MIN(p.creada) FROM preguntas p WHERE p.tarea_id = t.id AND p.respuesta_opcion IS NULL) AS bloqueada_desde,
 		${CUENTA_DEPENDENCIAS_PENDIENTES} AS dependencias_pendientes,
 		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id) AS partes,
 		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id AND h.estado = 'finished') AS partes_cerradas
@@ -518,8 +531,8 @@ const INSERTAR_TAREA = `
 	INSERT INTO tareas (
 		proyecto_id, titulo, descripcion, tipo, rama, estado, orden, padre_id, autoejecucion, ejecucion_aprobada,
 		analisis_hecho, analisis_modelo, analisis_terminal_id, ejecucion_modelo, ejecucion_terminal_id,
-		en_marcha_terminal_id, creada_por_usuario_id, creada_por_terminal_id, creada, actualizada, revision
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+		en_marcha_terminal_id, creada_por_usuario_id, creada_por_terminal_id, creada, actualizada, estado_desde, revision
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /** Los campos con los que nace una tarea. Lo comparte `funcionalidades.ts`. */
 export type FilaNueva = {
@@ -564,9 +577,39 @@ export function insertarTarea(conexion: DatabaseSync, revision: number, nueva: F
 		nueva.creadaPorTerminalId,
 		marca,
 		marca,
+		marca,
 		revision,
 	);
 	return exigirTarea(conexion, idInsertado(cambios.lastInsertRowid));
+}
+
+/**
+ * El único sitio que cambia el estado de una tarea. Todo camino pasa por aquí
+ * —mover desde la web, tomar la ejecución, el comentario que cierra una fase,
+ * la aprobación de una descomposición, el cierre de una funcionalidad— y así
+ * `estado_desde` se pone a la hora actual sin que ningún llamador tenga que
+ * acordarse. La tarea va al final de su columna nueva, que es donde entra
+ * cualquier tarea que llega a un estado.
+ *
+ * `extra` son las columnas que ese camino escribe además del estado, como
+ * fragmento de SQL con sus parámetros: son constantes de este módulo y de
+ * `hilo.ts`, nunca texto que venga de fuera.
+ */
+export function cambiarEstado(
+	conexion: DatabaseSync,
+	revision: number,
+	tareaId: number,
+	estado: Estado,
+	extra = "",
+	parametros: readonly (string | number | null)[] = [],
+): void {
+	const marca = ahora();
+	sentencia(
+		conexion,
+		`UPDATE tareas
+			SET estado = ?, orden = ?, estado_desde = ?, actualizada = ?, revision = ?${extra}
+			WHERE id = ?`,
+	).run(estado, siguienteOrden(conexion, estado), marca, marca, revision, ...parametros, tareaId);
 }
 
 /**
@@ -798,12 +841,7 @@ export function moverTareaHumano(db: DatabaseSync, datos: MovimientoHumano): Tar
 		}
 		// Al volver a `doing` nadie la tiene tomada todavía: la marca «en
 		// marcha» la vuelve a poner el agente con `tomar_tarea`.
-		sentencia(
-			conexion,
-			`UPDATE tareas
-				SET estado = ?, orden = ?, en_marcha_terminal_id = NULL, actualizada = ?, revision = ?
-				WHERE id = ?`,
-		).run(datos.estado, siguienteOrden(conexion, datos.estado), ahora(), revision, tarea.id);
+		cambiarEstado(conexion, revision, tarea.id, datos.estado, ", en_marcha_terminal_id = NULL");
 		// Volver a `backlog` es repensar la tarea: la descripción puede cambiar,
 		// así que el análisis y la aprobación se repiten al salir de nuevo. El
 		// comentario de análisis se queda en el hilo, que no se edita nunca.
@@ -1137,13 +1175,14 @@ function tomarEjecucion(
 			"La tarea tiene la autoejecución desactivada y el humano todavía no ha aprobado el análisis.",
 		);
 	}
-	sentencia(
+	cambiarEstado(
 		conexion,
-		`UPDATE tareas
-			SET estado = 'doing', orden = ?, ejecucion_modelo = ?, ejecucion_terminal_id = ?, en_marcha_terminal_id = ?,
-				actualizada = ?, revision = ?
-			WHERE id = ?`,
-	).run(siguienteOrden(conexion, "doing"), ejecucionModelo, terminalId, terminalId, ahora(), revision, tarea.id);
+		revision,
+		tarea.id,
+		"doing",
+		", ejecucion_modelo = ?, ejecucion_terminal_id = ?, en_marcha_terminal_id = ?",
+		[ejecucionModelo, terminalId, terminalId],
+	);
 }
 
 export type BorradoDeTarea = {

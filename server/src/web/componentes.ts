@@ -5,7 +5,7 @@ import { COLORES_USUARIO } from "../db/colores.ts";
 import type { TipoComentario } from "../db/hilo.ts";
 import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
 import { formatearId } from "../md/ids.ts";
-import { abreviar, SIN_DATO } from "./formatos.ts";
+import { abreviar, edad, horasDesde, SIN_DATO } from "./formatos.ts";
 import type { Html } from "./plantilla.ts";
 
 /**
@@ -326,6 +326,47 @@ export function barraProgreso(cerradas: number, total: number): Html {
 			<span class="barra"><span class="relleno" data-nivel="${nivel}"></span></span>
 			<span class="cifra">${cerradas}/${total}</span>
 		</span>`;
+}
+
+/** Un día bloqueada ya es una pregunta que nadie ha visto. */
+const HORAS_BLOQUEADA = 24;
+
+/** Tres días en `done` es un resultado que nadie ha revisado. */
+const HORAS_DONE = 72;
+
+/**
+ * Dónde significa algo la edad en columna. En `backlog` la tarea todavía no es
+ * de nadie y en `finished` está archivada: ahí el tiempo no dice nada.
+ */
+export function muestraEdad(estado: Estado): boolean {
+	return estado !== "backlog" && estado !== "finished";
+}
+
+/** Lo que hace falta para contar la edad de una tarea. Un `ItemIndice` lo cumple. */
+export type ConEdad = {
+	estado: Estado;
+	marcas: readonly Marca[];
+	estadoDesde: string;
+	/** Cuándo se hizo la pregunta abierta más antigua, si hay alguna. */
+	bloqueadaDesde: string | null;
+};
+
+/**
+ * La edad en columna: cuánto lleva la tarea donde está. En una bloqueada se
+ * cuenta desde la pregunta abierta más antigua y no desde el estado, que es lo
+ * que de verdad espera por el humano.
+ *
+ * Se pinta en `--peligro` cuando duele: un día bloqueada o tres días en `done`.
+ */
+export function edadEnColumna(item: ConEdad, ahora: Date = new Date()): Html {
+	if (!muestraEdad(item.estado)) {
+		return html``;
+	}
+	const bloqueada = item.marcas.includes("bloqueada") ? item.bloqueadaDesde : null;
+	const desde = bloqueada ?? item.estadoDesde;
+	const horas = horasDesde(desde, ahora);
+	const duele = bloqueada === null ? item.estado === "done" && horas > HORAS_DONE : horas > HORAS_BLOQUEADA;
+	return html`<span class="edad${duele ? " edad-peligro" : ""}" title="${desde}">${edad(desde, ahora)}</span>`;
 }
 
 /** Cuánto título de la funcionalidad cabe en una fila o en una tarjeta. */

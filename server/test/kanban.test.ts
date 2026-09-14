@@ -445,3 +445,24 @@ test("el JavaScript del cliente y SortableJS se sirven como estáticos", async (
 		await montaje.cerrar();
 	}
 });
+
+test("la tarjeta lleva su edad en columna, a la derecha del identificador y de las marcas", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const id = await crearTarea(montaje, cookie, "Exportar clientes a CSV");
+		await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "prepared" } });
+
+		// Una tarea que lleva cuatro días en su columna: la edad sale de ahí.
+		const hace = new Date(Date.now() - 4 * 24 * 3_600_000).toISOString();
+		montaje.db.prepare("UPDATE tareas SET estado_desde = ? WHERE id = 1").run(hace);
+
+		const cuerpo = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
+		const linea = cuerpo.split('<div class="linea">')[1]?.split("</div>")[0] ?? "";
+		assert.match(linea, /<span class="edad" title="[^"]+">4 d<\/span>\s*$/);
+		// Y va después del identificador, no delante.
+		assert.ok(linea.indexOf("id-tarea") < linea.indexOf('class="edad"'), "la edad va antes del identificador");
+	} finally {
+		await montaje.cerrar();
+	}
+});

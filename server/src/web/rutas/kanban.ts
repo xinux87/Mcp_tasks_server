@@ -23,6 +23,7 @@ import { formatearId, idONull, parsearId } from "../../md/ids.ts";
 import {
 	accionNuevaTarea,
 	chipProyecto,
+	edadEnColumna,
 	enlaceFuncionalidad,
 	filtroSelect,
 	type OpcionesFiltro,
@@ -292,6 +293,7 @@ function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
 				${clave === undefined ? html`` : chipProyecto(clave)}
 				${insigniaTipoDeItem(item)}
 				${insigniasMarcas(item.marcas)}
+				${edadEnColumna(item)}
 			</div>
 			<p class="titulo">${item.titulo}</p>
 			${

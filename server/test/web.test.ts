@@ -21,6 +21,10 @@ import {
 	moverTareaHumano,
 	tomarTarea,
 } from "../src/db/tareas.ts";
+import { type ConEdad, edadEnColumna } from "../src/web/componentes.ts";
+import { edad } from "../src/web/formatos.ts";
+import { tarjetaPreguntaAbierta } from "../src/web/hilo.ts";
+import { renderMarkdown } from "../src/web/markdown.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 type Montaje = {
@@ -1062,6 +1066,223 @@ test("un terminal revocado se puede borrar, y borrar uno que no existe avisa sin
 		const tarde = await pedir(montaje, `/terminales/${id}/borrar`, { cookie, formulario: {} });
 		assert.equal(tarde.status, 422);
 		assert.match(await tarde.text(), new RegExp(`No existe el terminal ${id}\\.`));
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+// --- la edad en columna ------------------------------------------------------
+
+test("la edad se lee en una sola unidad y cambia en los bordes de la hora y del día", () => {
+	const ahora = new Date("2026-09-14T12:00:00.000Z");
+	const hace = (ms: number): string => new Date(ahora.getTime() - ms).toISOString();
+	const MINUTO = 60_000;
+	const HORA = 60 * MINUTO;
+
+	assert.equal(edad(hace(0), ahora), "0 min");
+	assert.equal(edad(hace(12 * MINUTO), ahora), "12 min");
+	assert.equal(edad(hace(59 * MINUTO), ahora), "59 min");
+	assert.equal(edad(hace(60 * MINUTO), ahora), "1 h");
+	assert.equal(edad(hace(5 * HORA), ahora), "5 h");
+	assert.equal(edad(hace(23 * HORA), ahora), "23 h");
+	assert.equal(edad(hace(24 * HORA), ahora), "1 d");
+	assert.equal(edad(hace(3 * 24 * HORA), ahora), "3 d");
+	// Una fecha futura no cuenta hacia atrás.
+	assert.equal(edad(new Date(ahora.getTime() + HORA).toISOString(), ahora), "0 min");
+});
+
+test("la edad en columna se calla en backlog y se pinta en peligro cuando duele", async () => {
+	const ahora = new Date("2026-09-14T12:00:00.000Z");
+	const hace = (horas: number): string => new Date(ahora.getTime() - horas * 3_600_000).toISOString();
+	const como = async (item: ConEdad): Promise<string> => String(await edadEnColumna(item, ahora));
+
+	// En backlog y en finished el tiempo no dice nada: no se enseña.
+	assert.equal(await como({ estado: "backlog", marcas: [], estadoDesde: hace(200), bloqueadaDesde: null }), "");
+	assert.equal(await como({ estado: "finished", marcas: [], estadoDesde: hace(200), bloqueadaDesde: null }), "");
+
+	// En prepared, la edad normal: en texto suave y con su fecha en el title.
+	const normal = await como({ estado: "prepared", marcas: [], estadoDesde: hace(5), bloqueadaDesde: null });
+	assert.match(normal, /<span class="edad" title="[^"]+">5 h<\/span>/);
+
+	// Bloqueada desde hace más de un día: se cuenta desde la pregunta, no desde
+	// el estado, y duele.
+	const bloqueada = await como({
+		estado: "doing",
+		marcas: ["bloqueada"],
+		estadoDesde: hace(2),
+		bloqueadaDesde: hace(30),
+	});
+	assert.match(bloqueada, /class="edad edad-peligro"/);
+	assert.match(bloqueada, />1 d</);
+
+	// Bloqueada hace un rato: la misma cuenta, pero todavía no duele.
+	const reciente = await como({
+		estado: "doing",
+		marcas: ["bloqueada"],
+		estadoDesde: hace(200),
+		bloqueadaDesde: hace(2),
+	});
+	assert.match(reciente, /<span class="edad" title/);
+	assert.match(reciente, />2 h</);
+
+	// Tres días en done es un resultado que nadie ha revisado.
+	const revisar = await como({ estado: "done", marcas: [], estadoDesde: hace(80), bloqueadaDesde: null });
+	assert.match(revisar, /class="edad edad-peligro"/);
+	assert.match(revisar, />3 d</);
+	const fresca = await como({ estado: "done", marcas: [], estadoDesde: hace(5), bloqueadaDesde: null });
+	assert.match(fresca, /<span class="edad" title/);
+});
+
+test("la lista y el kanban enseñan la edad en columna, y la ficha desde cuándo", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const id = await crearTarea(montaje, cookie, "Exportar clientes", "Hace falta un CSV.");
+
+		// En backlog no hay edad que enseñar, pero la columna ya se llama así.
+		const enBacklog = await (await pedir(montaje, "/tareas", { cookie })).text();
+		assert.match(enBacklog, /<th>En columna<\/th>/);
+		assert.doesNotMatch(enBacklog, /class="edad"/);
+
+		await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "prepared" } });
+		assert.match(
+			await (await pedir(montaje, "/tareas", { cookie })).text(),
+			/<span class="edad" title="[^"]+">0 min<\/span>/,
+		);
+		assert.match(await (await pedir(montaje, "/tareas/kanban", { cookie })).text(), /<span class="edad" title/);
+
+		// En la ficha va detrás del estado, en texto suave.
+		const ficha = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		assert.match(
+			ficha,
+			/estado-prepared color-azul">prepared<\/span> <span class="silencio">desde hace <span class="edad"/,
+		);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+// --- los identificadores enlazan --------------------------------------------
+
+test("un identificador de tarea del hilo enlaza a su ficha, salvo en código o en otro enlace", () => {
+	assert.equal(
+		renderMarkdown("Depende de T-0042 para empezar."),
+		'<p>Depende de <a href="/tareas/T-0042">T-0042</a> para empezar.</p>\n',
+	);
+	// Dentro de código no se toca: ahí el identificador es texto literal.
+	assert.equal(renderMarkdown("El literal `T-0042` no enlaza."), "<p>El literal <code>T-0042</code> no enlaza.</p>\n");
+	assert.equal(renderMarkdown("```\nT-0042\n```"), "<pre><code>T-0042\n</code></pre>\n");
+	// Ni dentro de un enlace que ya existe: no se anidan dos <a>.
+	assert.equal(
+		renderMarkdown("Mira [T-0042](https://ejemplo/otro)."),
+		'<p>Mira <a href="https://ejemplo/otro">T-0042</a>.</p>\n',
+	);
+	// Cinco cifras también, y lo que no tiene cuatro no es un identificador.
+	assert.match(renderMarkdown("T-10042"), /href="\/tareas\/T-10042"/);
+	assert.equal(renderMarkdown("T-42 no lo es."), "<p>T-42 no lo es.</p>\n");
+});
+
+test("los identificadores de la descripción y del hilo enlazan en la ficha", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		await crearTarea(montaje, cookie, "La primera", "Nada.");
+		const segunda = await crearTarea(montaje, cookie, "La segunda", "Va después de T-0001.");
+
+		const ficha = await (await pedir(montaje, `/tareas/${segunda}`, { cookie })).text();
+		assert.match(ficha, /Va después de <a href="\/tareas\/T-0001">T-0001<\/a>\./);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+// --- volver: lo que la bandeja del humano necesita ---------------------------
+
+test("responder, aprobar y mover vuelven a donde diga el campo volver, y a la ficha si no vale", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const id = await crearTarea(montaje, cookie, "Exportar clientes", "Hace falta un CSV.");
+
+		// Mover, con y sin destino de vuelta.
+		const conVolver = await pedir(montaje, `/tareas/${id}/mover`, {
+			cookie,
+			formulario: { estado: "prepared", volver: "/" },
+		});
+		assert.equal(conVolver.headers.get("location"), "/");
+
+		// El análisis deja la tarea lista para aprobar y con una pregunta que contestar.
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const terminalId = valor.terminal.id;
+		montaje.db.prepare("UPDATE tareas SET autoejecucion = 0 WHERE id = 1").run();
+		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId });
+		preguntar(montaje.db, {
+			tareaId: 1,
+			terminalId,
+			pregunta: "¿Qué separador usamos?",
+			porQueImporta: "La hoja de cálculo está en español.",
+			opciones: [
+				{ texto: "Punto y coma", consecuencia: "Se abre directamente." },
+				{ texto: "No hacer nada", consecuencia: "Siguen copiando a mano." },
+			],
+			recomendacion: "Punto y coma",
+		});
+
+		// Un destino que no es una ruta del propio servidor no se sigue.
+		const mal = await pedir(montaje, `/tareas/${id}/responder/P1`, {
+			cookie,
+			formulario: { opcion: "Punto y coma", nota: "", volver: "//mal" },
+		});
+		assert.equal(mal.headers.get("location"), `/tareas/${id}`);
+
+		comentarAnalisis(montaje.db, { tareaId: 1, terminalId, texto: "Hay que añadir un botón." });
+		const aprobada = await pedir(montaje, `/tareas/${id}/aprobar`, { cookie, formulario: { volver: "/" } });
+		assert.equal(aprobada.headers.get("location"), "/");
+
+		// Sin campo `volver`, a la ficha, como se ha hecho siempre.
+		const sinVolver = await pedir(montaje, `/tareas/${id}/aprobar`, { cookie, formulario: {} });
+		assert.equal(sinVolver.headers.get("location"), `/tareas/${id}`);
+
+		const aMano = await pedir(montaje, `/tareas/${id}/mover`, {
+			cookie,
+			formulario: { estado: "backlog", nota: "Falta decidir el formato.", volver: "//otro.sitio" },
+		});
+		assert.equal(aMano.headers.get("location"), `/tareas/${id}`);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("la tarjeta de una pregunta abierta se contesta fuera de la ficha y vuelve a donde se pida", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		await crearTarea(montaje, cookie, "Exportar clientes", "Hace falta un CSV.");
+		await pedir(montaje, "/tareas/T-0001/mover", { cookie, formulario: { estado: "prepared" } });
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId: valor.terminal.id });
+		const pregunta = preguntar(montaje.db, {
+			tareaId: 1,
+			terminalId: valor.terminal.id,
+			pregunta: "¿Qué separador usamos?",
+			porQueImporta: "La hoja de cálculo está en español.",
+			opciones: [
+				{ texto: "Punto y coma", consecuencia: "Se abre directamente." },
+				{ texto: "No hacer nada", consecuencia: "Siguen copiando a mano." },
+			],
+			recomendacion: "Punto y coma",
+		});
+
+		const tarjeta = String(
+			await tarjetaPreguntaAbierta({ id: 1, titulo: "Exportar clientes" }, pregunta, { volver: "/" }),
+		);
+		assert.match(tarjeta, /<strong>¿Qué separador usamos\?<\/strong>/);
+		assert.match(tarjeta, /La hoja de cálculo está en español\./);
+		assert.match(tarjeta, /action="\/tareas\/T-0001\/responder\/P1"/);
+		assert.match(tarjeta, /<input type="hidden" name="volver" value="\/">/);
+		assert.match(tarjeta, /<span class="recomendada">recomendada<\/span>/);
+		// Sin destino de vuelta no se manda el campo: es lo que hace la ficha.
+		assert.doesNotMatch(String(await tarjetaPreguntaAbierta({ id: 1, titulo: "T" }, pregunta)), /name="volver"/);
 	} finally {
 		await montaje.cerrar();
 	}

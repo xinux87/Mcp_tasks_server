@@ -418,3 +418,37 @@ test("la migración de los agentes deja a 1 los terminales de antes y no admite 
 		rmSync(carpeta, { recursive: true, force: true });
 	}
 });
+
+test("la migración de la edad en columna estrena estado_desde con la fecha de la última escritura", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-estado-desde.sql"));
+		assert.ok(cual > 0, "no está la migración de la edad en columna");
+
+		// Una tarea que lleva tiempo en marcha: lo único que se sabe de cuándo
+		// entró en su columna es cuándo se escribió por última vez.
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		const movida = "2026-09-10T08:00:00.000Z";
+		db
+			.prepare(
+				`INSERT INTO tareas (id, titulo, descripcion, tipo, estado, orden, creada, actualizada, revision)
+				VALUES (7, 'De antes', 'd', 'tarea', 'doing', 1, ?, ?, 3)`,
+			)
+			.run(FECHA, movida);
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		assert.equal(db.prepare("SELECT estado_desde FROM tareas WHERE id = 7").get()?.estado_desde, movida);
+		// Y la columna no admite nulos, ni en las filas de antes ni en las nuevas.
+		assert.throws(() => {
+			db.prepare("UPDATE tareas SET estado_desde = NULL WHERE id = 7").run();
+		});
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});
