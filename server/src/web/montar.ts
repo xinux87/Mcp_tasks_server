@@ -6,6 +6,7 @@ import { registrarRutasActividad } from "./rutas/actividad.ts";
 import { registrarRutasBandeja } from "./rutas/bandeja.ts";
 import { registrarRutasEventos } from "./rutas/eventos.ts";
 import { registrarRutasFuncionalidades } from "./rutas/funcionalidades.ts";
+import { registrarRutasInformes } from "./rutas/informes.ts";
 import { registrarRutasKanban } from "./rutas/kanban.ts";
 import { exigeProyecto, registrarRutasProyectos } from "./rutas/proyectos.ts";
 import { registrarRutasSesion } from "./rutas/sesion.ts";
@@ -27,6 +28,7 @@ const PRIVADAS = [
 	"/tareas",
 	"/tareas/*",
 	"/funcionalidades",
+	"/informes",
 	// Las vistas acotadas a un proyecto: las mismas de arriba bajo `/p/:clave`.
 	"/p/*",
 	"/proyectos",
@@ -77,6 +79,7 @@ export function montarWeb(app: Hono, deps: DependenciasWeb): void {
 	registrarRutasKanban(app, deps);
 	registrarRutasTareas(app, deps);
 	registrarRutasFuncionalidades(app, deps);
+	registrarRutasInformes(app, deps);
 	registrarRutasProyectos(app, deps);
 	registrarRutasTerminales(app, deps);
 	registrarRutasUsuarios(app, deps);

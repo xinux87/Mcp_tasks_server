@@ -8,7 +8,7 @@ import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { listarTerminales } from "../src/db/admin.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
 import { crearProyecto, listarProyectos } from "../src/db/proyectos.ts";
-import { buscarTarea, crearTareaHumana } from "../src/db/tareas.ts";
+import { borrarTarea, buscarTarea, crearTareaHumana } from "../src/db/tareas.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 /**
@@ -245,7 +245,8 @@ test("la página de proyectos crea, edita y borra, con sus tres errores de borra
 		assert.match(await conTareas.text(), /El proyecto tiene 1 tarea/);
 
 		// Ni con un terminal suyo.
-		montaje.db.exec(`DELETE FROM tareas WHERE id = ${tarea.id}`);
+		// Por la puerta de siempre: la tarea se lleva su hilo y sus transiciones.
+		borrarTarea(montaje.db, { tareaId: tarea.id, actor: { nombre: "cli" } });
 		const conTerminal = await pedir(montaje, "/terminales", {
 			cookie,
 			formulario: { nombre: "portatil", cuenta: "xinux@ejemplo.com", agentes: "1", proyecto: String(web.id) },

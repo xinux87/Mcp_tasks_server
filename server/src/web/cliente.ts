@@ -188,20 +188,31 @@ function posicionDe(columna, tarjeta) {
 	return Array.prototype.indexOf.call(columna.children, tarjeta) + 1;
 }
 
-async function enviarOrden(id, estado, orden, nota) {
+/**
+ * El ámbito de una columna: la franja donde se soltó la tarjeta si el tablero
+ * va por carriles, y el tablero entero si no. El de una funcionalidad solo
+ * enseña sus partes, y una franja solo las suyas: en los dos casos la posición
+ * que se ve es entre hermanas, y el servidor la traduce a la de la columna.
+ */
+function ambitoDe(columna) {
+	const franja = columna.closest(".franja");
+	return franja === null ? elTablero() : franja;
+}
+
+async function enviarOrden(columna, id, estado, orden, nota) {
 	const datos = new URLSearchParams();
 	datos.set("estado", estado);
 	datos.set("orden", String(orden));
 	datos.set("nota", nota);
-	// El tablero de una funcionalidad solo enseña sus partes: la posición que
-	// se ve es entre hermanas, y el servidor la traduce a la de la columna.
-	const tablero = elTablero();
-	const padre = tablero === null ? "" : tablero.dataset.padre || "";
+	const ambito = ambitoDe(columna);
+	const padre = ambito === null ? "" : ambito.dataset.padre || "";
 	if (padre !== "") {
 		datos.set("padre", padre);
 	}
-	// Lo mismo con el tablero de un proyecto: la posición es entre sus tareas.
-	const proyecto = tablero === null ? "" : tablero.dataset.proyecto || "";
+	// Sin funcionalidad, el ámbito es el tablero de un proyecto, si lo hay: la
+	// posición es entre sus tareas.
+	const tablero = elTablero();
+	const proyecto = padre !== "" || tablero === null ? "" : tablero.dataset.proyecto || "";
 	if (proyecto !== "") {
 		datos.set("proyecto", proyecto);
 	}
@@ -264,12 +275,26 @@ async function alSoltar(evento) {
 		}
 		nota = escrita;
 	}
-	const mensaje = await enviarOrden(id, destino, posicionDe(columna, tarjeta), nota);
+	const mensaje = await enviarOrden(columna, id, destino, posicionDe(columna, tarjeta), nota);
 	// El servidor manda: se repinta siempre, salga bien o mal.
 	await recargarTablero();
 	if (mensaje !== null) {
 		avisarEnTablero(mensaje);
 	}
+}
+
+/**
+ * A qué grupo de SortableJS pertenece una columna. Agrupado por funcionalidad
+ * hay uno por franja, así que una tarjeta no se puede soltar en otra: cambiar
+ * una tarea de funcionalidad no es una prioridad, es una edición, y va por la
+ * ficha.
+ */
+function grupoDe(columna) {
+	const franja = columna.closest(".franja");
+	if (franja === null) {
+		return "tareas";
+	}
+	return "franja-" + (franja.dataset.padre || "sueltas");
 }
 
 /** Una instancia de SortableJS por columna. Se rehace al sustituir el tablero. */
@@ -281,7 +306,7 @@ function iniciarArrastre() {
 	const columnas = zona.querySelectorAll(".tarjetas");
 	for (const columna of columnas) {
 		new window.Sortable(columna, {
-			group: "tareas",
+			group: grupoDe(columna),
 			animation: 150,
 			ghostClass: "arrastrando",
 			onStart: function () {

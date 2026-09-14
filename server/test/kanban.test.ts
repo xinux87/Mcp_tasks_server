@@ -9,6 +9,7 @@ import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
 import { registrarConsumo } from "../src/db/consumo.ts";
 import { comentarAnalisis, comentarResultado } from "../src/db/hilo.ts";
+import { crearProyecto } from "../src/db/proyectos.ts";
 import { buscarTarea, crearHija, crearTareaHumana, leerTarea, moverTareaHumano, tomarTarea } from "../src/db/tareas.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
@@ -434,6 +435,8 @@ test("el JavaScript del cliente y SortableJS se sirven como estáticos", async (
 		assert.match(cuerpoPropio, /\/tareas\/kanban\/tablero/);
 		// El ámbito del tablero viaja con la posición al soltar.
 		assert.match(cuerpoPropio, /dataset\.padre/);
+		// Y cada franja tiene su propio grupo: entre carriles no se arrastra.
+		assert.match(cuerpoPropio, /"franja-"/);
 		// Nada de evaluar cadenas en el navegador.
 		assert.ok(!/\beval\(/.test(cuerpoPropio), "el cliente no debe usar eval");
 		assert.ok(!/new Function\(/.test(cuerpoPropio), "el cliente no debe usar Function");
@@ -515,6 +518,159 @@ test("la tarjeta enseña el progreso de sus hijas y los tokens de todo su árbol
 		const tarjetaHija = cuerpo.split('data-id="T-0003"')[1] ?? "";
 		assert.ok(!tarjetaHija.startsWith("</article>"), "la tarjeta de la hija tiene que existir");
 		assert.ok(!(tarjetaHija.split("</article>")[0] ?? "").includes("progreso"), "sin hijas no hay barra");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+/** Los `data-padre` de las franjas, en el orden en que se pintan. */
+function franjas(cuerpo: string): string[] {
+	const encajes = cuerpo.matchAll(/<section class="franja"(?: data-padre="(T-\d{4})")?>/g);
+	return [...encajes].map((encaje) => encaje[1] ?? "sueltas");
+}
+
+test("agrupado por funcionalidad, el tablero es una franja por cada una y otra de sueltas", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const terminalId = valor.terminal.id;
+		const nueva = (titulo: string, extra: { tipo?: "funcionalidad"; padreId?: number } = {}): number =>
+			crearTareaHumana(montaje.db, { titulo, descripcion: "d", usuarioId: 1, ...extra }).id;
+
+		// Una funcionalidad en marcha con dos partes, y una hija de trabajo
+		// colgada de la primera: la hija tiene que ir a la franja de su abuela.
+		const enMarcha = nueva("Listados para comerciales", { tipo: "funcionalidad" });
+		const parte = nueva("Sacar los datos del listado", { padreId: enMarcha });
+		nueva("Pintar el botón", { padreId: enMarcha });
+		moverTareaHumano(montaje.db, { tareaId: parte, usuarioId: 1, estado: "prepared" });
+		tomarTarea(montaje.db, { tareaId: parte, fase: "analisis", terminalId, modelo: "sonnet" });
+		comentarAnalisis(montaje.db, { tareaId: parte, terminalId, texto: "Plan." });
+		tomarTarea(montaje.db, { tareaId: parte, fase: "ejecucion", terminalId, modelo: "opus" });
+		crearHija(montaje.db, { titulo: "Generar el fichero", descripcion: "d", padreId: parte, terminalId });
+		// Aprobar la descomposición es de la web y exige su análisis; aquí lo
+		// único que importa es en qué columna está la funcionalidad.
+		montaje.db.prepare("UPDATE tareas SET estado = 'doing' WHERE id = ?").run(enMarcha);
+
+		// Una idea todavía en backlog, con su parte, y una cerrada que ya no
+		// tiene franja: sus partes están cerradas.
+		const idea = nueva("Avisos por correo", { tipo: "funcionalidad" });
+		nueva("Elegir la plantilla", { padreId: idea });
+		const cerrada = nueva("Lo de antes", { tipo: "funcionalidad" });
+		montaje.db.prepare("UPDATE tareas SET estado = 'finished' WHERE id = ?").run(cerrada);
+
+		await crearTarea(montaje, cookie, "Suelta primera");
+		await crearTarea(montaje, cookie, "Suelta segunda");
+
+		const cuerpo = await (await pedir(montaje, "/tareas/kanban?agrupar=funcionalidad", { cookie })).text();
+		// Primero la que está en marcha, después la idea, y «Sueltas» la última.
+		assert.deepEqual(franjas(cuerpo), ["T-0001", "T-0005", "sueltas"]);
+		assert.match(cuerpo, /<h2>Sueltas<\/h2>/);
+		assert.ok(!cuerpo.includes('data-padre="T-0007"'), "una funcionalidad finished no tiene franja");
+
+		// La cabecera de la franja: el id enlazado, el título, el estado y el
+		// progreso en partes.
+		assert.match(cuerpo, /<a class="id-tarea" href="\/tareas\/T-0001">T-0001<\/a>/);
+		assert.match(cuerpo, /<h2><a href="\/tareas\/T-0001">Listados para comerciales<\/a><\/h2>/);
+		assert.match(cuerpo, /<span class="insignia estado-doing color-amarillo">doing<\/span>/);
+		assert.match(cuerpo, /<span class="progreso-texto">partes 0\/2<\/span>/);
+
+		// Las funcionalidades son cabecera, no tarjeta.
+		for (const id of ["T-0001", "T-0005", "T-0007"]) {
+			assert.ok(!cuerpo.includes(`data-id="${id}"`), `la funcionalidad ${id} no se pinta como tarjeta`);
+		}
+		// Cada tarea en su franja: las partes y la hija de trabajo con su abuela,
+		// y las sueltas en la última.
+		const [, primera = "", segunda = "", ultima = ""] = cuerpo.split('<section class="franja"');
+		for (const id of ['data-id="T-0002"', 'data-id="T-0003"', 'data-id="T-0004"']) {
+			assert.ok(primera.includes(id), `${id} va en la franja de T-0001`);
+		}
+		assert.ok(segunda.includes('data-id="T-0006"'), "la parte de la idea va en su franja");
+		assert.ok(ultima.includes('data-id="T-0008"') && ultima.includes('data-id="T-0009"'), "faltan las sueltas");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el conmutador de carriles conserva los filtros y no sale en la ficha de la funcionalidad", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const evolutivo = crearTareaHumana(montaje.db, {
+			titulo: "Listados para comerciales",
+			descripcion: "d",
+			usuarioId: 1,
+			tipo: "funcionalidad",
+		});
+		crearTareaHumana(montaje.db, {
+			titulo: "Sacar los datos del listado",
+			descripcion: "d",
+			usuarioId: 1,
+			padreId: evolutivo.id,
+		});
+
+		// Sin agrupar, el conmutador lo pone conservando la búsqueda y el rápido.
+		const suelto = await (await pedir(montaje, "/tareas/kanban?q=listado&rapido=espera", { cookie })).text();
+		assert.match(
+			suelto,
+			/<a class="boton-filtro" href="\/tareas\/kanban\?rapido=espera&amp;q=listado&amp;agrupar=funcionalidad">Agrupar por funcionalidad<\/a>/,
+		);
+		assert.ok(!suelto.includes('class="franja"'), "sin el parámetro no hay franjas");
+
+		// Puesto, el enlace lo quita y el resto de filtros sigue en él.
+		const agrupado = await (
+			await pedir(montaje, "/tareas/kanban?q=listado&rapido=espera&agrupar=funcionalidad", { cookie })
+		).text();
+		assert.match(
+			agrupado,
+			/<a class="boton-filtro" href="\/tareas\/kanban\?rapido=espera&amp;q=listado" aria-current="true">Sin agrupar<\/a>/,
+		);
+		// Y viaja con el formulario y con el refresco en vivo.
+		assert.match(agrupado, /<input type="hidden" name="agrupar" value="funcionalidad">/);
+		assert.match(
+			agrupado,
+			/data-fuente="\/tareas\/kanban\/tablero\?rapido=espera&amp;q=listado&amp;agrupar=funcionalidad"/,
+		);
+
+		// El fragmento que recarga el cliente conserva las franjas.
+		const fragmento = await (await pedir(montaje, "/tareas/kanban/tablero?agrupar=funcionalidad", { cookie })).text();
+		assert.deepEqual(franjas(fragmento), ["T-0001", "sueltas"]);
+		assert.match(fragmento, /data-id="T-0002"/);
+
+		// El tablero de la ficha de una funcionalidad ya está acotado a sus partes.
+		const ficha = await (await pedir(montaje, "/tareas/T-0001", { cookie })).text();
+		assert.ok(!ficha.includes("Agrupar por funcionalidad"), "la ficha no lleva el conmutador");
+		assert.ok(!ficha.includes('class="franja"'), "la ficha no pinta franjas");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el kanban de un proyecto agrupa solo sus funcionalidades", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const web = crearProyecto(montaje.db, { clave: "WEB", nombre: "La web nueva" }).id;
+		const nueva = (titulo: string, extra: { tipo?: "funcionalidad"; padreId?: number; proyectoId?: number }): number =>
+			crearTareaHumana(montaje.db, { titulo, descripcion: "d", usuarioId: 1, ...extra }).id;
+		const principal = nueva("Listados para comerciales", { tipo: "funcionalidad" });
+		nueva("Sacar los datos del listado", { padreId: principal });
+		const deLaWeb = nueva("Avisos por correo", { tipo: "funcionalidad", proyectoId: web });
+		nueva("Elegir la plantilla", { padreId: deLaWeb });
+
+		const cuerpo = await (await pedir(montaje, "/p/WEB/tareas/kanban?agrupar=funcionalidad", { cookie })).text();
+		assert.deepEqual(franjas(cuerpo), ["T-0003", "sueltas"]);
+		assert.match(cuerpo, /data-id="T-0004"/);
+		assert.ok(!cuerpo.includes('data-id="T-0002"'), "la parte del otro proyecto no sale");
+		assert.match(cuerpo, /<a class="boton-filtro" href="\/p\/WEB\/tareas\/kanban" aria-current="true">Sin agrupar<\/a>/);
+
+		// En la vista cruzada salen las dos, y cada cabecera lleva su chip.
+		const cruzada = await (await pedir(montaje, "/tareas/kanban?agrupar=funcionalidad", { cookie })).text();
+		assert.deepEqual(franjas(cruzada), ["T-0001", "T-0003", "sueltas"]);
+		assert.match(
+			cruzada,
+			/<span class="insignia proyecto color-gris">WEB<\/span>\s*<a class="id-tarea" href="\/tareas\/T-0003">/,
+		);
 	} finally {
 		await montaje.cerrar();
 	}

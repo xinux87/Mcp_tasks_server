@@ -650,7 +650,24 @@ export function insertarTarea(conexion: DatabaseSync, revision: number, nueva: F
 		marca,
 		revision,
 	);
-	return exigirTarea(conexion, idInsertado(cambios.lastInsertRowid));
+	const tareaId = idInsertado(cambios.lastInsertRowid);
+	anotarTransicion(conexion, tareaId, null, nueva.estado, marca);
+	return exigirTarea(conexion, tareaId);
+}
+
+/**
+ * Deja escrito el salto de columna. Se llama desde los dos únicos sitios que
+ * ponen un estado —la creación, con `de` a nulo, y `cambiarEstado`— y de ahí
+ * salen los tiempos de ciclo y las devoluciones de los informes. Va siempre
+ * dentro de la misma transacción que el cambio: o se guardan los dos o ninguno.
+ */
+function anotarTransicion(conexion: DatabaseSync, tareaId: number, de: Estado | null, a: Estado, creado: string): void {
+	sentencia(conexion, "INSERT INTO transiciones (tarea_id, de, a, creado) VALUES (?, ?, ?, ?)").run(
+		tareaId,
+		de,
+		a,
+		creado,
+	);
 }
 
 /**
@@ -674,12 +691,14 @@ export function cambiarEstado(
 	parametros: readonly (string | number | null)[] = [],
 ): void {
 	const marca = ahora();
+	const antes = exigirTarea(conexion, tareaId).estado;
 	sentencia(
 		conexion,
 		`UPDATE tareas
 			SET estado = ?, orden = ?, estado_desde = ?, actualizada = ?, revision = ?${extra}
 			WHERE id = ?`,
 	).run(estado, siguienteOrden(conexion, estado), marca, marca, revision, ...parametros, tareaId);
+	anotarTransicion(conexion, tareaId, antes, estado, marca);
 }
 
 /**
@@ -1293,6 +1312,7 @@ export function borrarTarea(db: DatabaseSync, datos: BorradoDeTarea): Tarea {
 		sentencia(conexion, "DELETE FROM comentarios WHERE tarea_id = ?").run(tarea.id);
 		sentencia(conexion, "DELETE FROM preguntas WHERE tarea_id = ?").run(tarea.id);
 		sentencia(conexion, "DELETE FROM consumo WHERE tarea_id = ?").run(tarea.id);
+		sentencia(conexion, "DELETE FROM transiciones WHERE tarea_id = ?").run(tarea.id);
 		borrarDependenciasDe(conexion, tarea.id);
 		sentencia(conexion, "DELETE FROM tareas WHERE id = ?").run(tarea.id);
 		// Si era la última parte pendiente de una funcionalidad, con ella fuera

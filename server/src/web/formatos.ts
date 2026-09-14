@@ -28,23 +28,32 @@ const HORA = 60 * MINUTO;
 const DIA = 24 * HORA;
 
 /**
- * Cuánto tiempo lleva algo, en una sola unidad: `12 min` por debajo de una
- * hora, `5 h` por debajo de un día, `3 d` a partir de ahí. Siempre entero y
- * hacia abajo, que es como se lee una edad: 23 horas y media son 23 h.
+ * Cuánto tiempo, en una sola unidad: `12 min` por debajo de una hora, `5 h`
+ * por debajo de un día, `3 d` a partir de ahí. Siempre entero y hacia abajo,
+ * que es como se lee una duración: 23 horas y media son 23 h. Lo que no es un
+ * número, o es negativo, son `0 min`.
  *
- * Es la edad en columna de una tarea. Una fecha futura o ilegible es `0 min`:
- * en una edad no hay nada que decir por debajo de cero.
+ * Es la escala de la edad en columna y la de los tiempos de los informes: las
+ * dos se leen de un vistazo y ninguna pide precisión de reloj.
+ */
+export function duracion(ms: number): string {
+	const valor = Number.isFinite(ms) ? Math.max(0, ms) : 0;
+	if (valor < HORA) {
+		return `${Math.floor(valor / MINUTO)} min`;
+	}
+	if (valor < DIA) {
+		return `${Math.floor(valor / HORA)} h`;
+	}
+	return `${Math.floor(valor / DIA)} d`;
+}
+
+/**
+ * La edad en columna de una tarea: lo que lleva desde esa fecha hasta ahora.
+ * Una fecha futura o ilegible es `0 min`: en una edad no hay nada que decir
+ * por debajo de cero.
  */
 export function edad(desde: string, ahora: Date = new Date()): string {
-	const transcurrido = ahora.getTime() - new Date(desde).getTime();
-	const ms = Number.isFinite(transcurrido) ? Math.max(0, transcurrido) : 0;
-	if (ms < HORA) {
-		return `${Math.floor(ms / MINUTO)} min`;
-	}
-	if (ms < DIA) {
-		return `${Math.floor(ms / HORA)} h`;
-	}
-	return `${Math.floor(ms / DIA)} d`;
+	return duracion(ahora.getTime() - new Date(desde).getTime());
 }
 
 /** Las mismas horas, para decidir si una edad duele. */

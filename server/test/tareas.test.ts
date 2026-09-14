@@ -1077,3 +1077,40 @@ test("la búsqueda mira el título y la descripción, no distingue mayúsculas y
 		banco.cerrar();
 	}
 });
+
+test("cada salto de columna deja su transición, y borrar la tarea se las lleva", () => {
+	const banco = montar();
+	try {
+		const tarea = crearTareaHumana(banco.db, {
+			titulo: "Exportar el listado",
+			descripcion: "Hoy lo copian a mano.",
+			usuarioId: banco.xinux,
+			analisisModelo: "sonnet",
+			ejecucionModelo: "opus",
+		});
+		const saltos = (): string[] =>
+			banco.db
+				.prepare("SELECT de, a FROM transiciones WHERE tarea_id = ? ORDER BY id")
+				.all(tarea.id)
+				.map((fila) => `${fila.de ?? "—"} → ${fila.a}`);
+
+		// Nacer también es entrar en una columna: la primera transición no viene
+		// de ninguna parte.
+		assert.deepEqual(saltos(), ["— → backlog"]);
+
+		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		tomarTarea(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, fase: "analisis" });
+		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "Plan." });
+		tomarTarea(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, fase: "ejecucion" });
+		comentarResultado(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "Hecho. Commit: a1b2c3d" });
+
+		assert.deepEqual(saltos(), ["— → backlog", "backlog → prepared", "prepared → doing", "doing → done"]);
+
+		// El comentario de análisis no mueve la tarea, así que no anota nada: en
+		// la lista de arriba no hay ningún salto entre `prepared` y `doing`.
+		borrarTarea(banco.db, { tareaId: tarea.id, actor: { usuarioId: banco.xinux } });
+		assert.deepEqual(saltos(), []);
+	} finally {
+		banco.cerrar();
+	}
+});

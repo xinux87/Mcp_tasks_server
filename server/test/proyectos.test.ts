@@ -22,6 +22,7 @@ import {
 	PROYECTO_PRINCIPAL,
 } from "../src/db/proyectos.ts";
 import {
+	borrarTarea,
 	crearHija,
 	crearPropuesta,
 	crearTareaHumana,
@@ -221,7 +222,8 @@ test("un proyecto se borra vacío: nunca el principal, nunca con tareas ni termi
 			"proyecto_con_tareas",
 		);
 
-		banco.db.prepare("DELETE FROM tareas WHERE id = ?").run(tarea.id);
+		// Por la puerta de siempre: la tarea se lleva su hilo y sus transiciones.
+		borrarTarea(banco.db, { tareaId: tarea.id, actor: ACTOR });
 		assert.equal(borrarProyecto(banco.db, proyectoId, ACTOR).clave, "WEB");
 	} finally {
 		banco.cerrar();

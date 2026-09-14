@@ -452,3 +452,24 @@ test("la migración de la edad en columna estrena estado_desde con la fecha de l
 		rmSync(carpeta, { recursive: true, force: true });
 	}
 });
+
+test("la tabla de transiciones entra vacía, con sus dos índices, y no admite una tarea que no existe", () => {
+	const db = abrirBaseDeDatos(":memory:");
+	try {
+		assert.ok(tablas(db).includes("transiciones"), "falta la tabla transiciones");
+		// El pasado no está escrito en ninguna parte: no se reconstruye.
+		assert.equal(db.prepare("SELECT COUNT(*) AS total FROM transiciones").get()?.total, 0);
+		assert.deepEqual(
+			db
+				.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'transiciones' ORDER BY name")
+				.all()
+				.map((fila) => String(fila.name)),
+			["transiciones_por_fecha", "transiciones_por_tarea"],
+		);
+		assert.throws(() => {
+			db.prepare("INSERT INTO transiciones (tarea_id, de, a, creado) VALUES (999, NULL, 'backlog', ?)").run(FECHA);
+		});
+	} finally {
+		db.close();
+	}
+});

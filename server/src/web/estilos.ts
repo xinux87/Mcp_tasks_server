@@ -965,6 +965,39 @@ button.enlace:hover {
 	z-index: 30;
 }
 
+/* Carriles del kanban */
+
+/* Agrupado por funcionalidad, el tablero es una franja por funcionalidad más
+   «Sueltas»: la cabecera de ancho completo y debajo las columnas de siempre. */
+.franja + .franja {
+	margin-top: 1.5rem;
+}
+
+.franja-cabecera {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.4rem;
+	margin-bottom: 0.6rem;
+	padding: 0.2rem 0.15rem 0.35rem;
+	border-bottom: 1px solid var(--borde);
+}
+
+.franja-cabecera h2 {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 600;
+}
+
+.franja-cabecera h2 a {
+	color: inherit;
+	text-decoration: none;
+}
+
+.franja-cabecera h2 a:hover {
+	text-decoration: underline;
+}
+
 /* --- móvil: la barra lateral se convierte en panel ----------------------- */
 
 @media (max-width: 48rem) {
@@ -1694,5 +1727,36 @@ details.caja[open] > summary {
 	align-items: baseline;
 	justify-content: space-between;
 	gap: 0.5rem;
+}
+
+/* --- Informes ------------------------------------------------------------ */
+
+/* Cada pregunta con su tabla: el hueco entre bloques es lo que las separa,
+   porque ninguna lleva caja ni borde exterior. */
+.informe {
+	margin-top: 2rem;
+}
+
+.informe h2 {
+	margin: 0 0 0.6rem;
+	font-size: 1.05rem;
+	font-weight: 600;
+}
+
+/* El selector de periodo va justo debajo de la explicación, sin pegarse. */
+.filtros-rapidos + .informe {
+	margin-top: 1.6rem;
+}
+
+/* La barra del ritmo manda en su columna: aquí es el gráfico, no un adorno
+   al lado de un título. */
+.informe .progreso {
+	width: 12rem;
+	max-width: 60%;
+}
+
+.pie-informes {
+	margin-top: 2rem;
+	font-size: 0.85rem;
 }
 `;

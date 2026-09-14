@@ -120,6 +120,7 @@ const BLOQUES: readonly { titulo: string; entradas: readonly EntradaNav[] }[] = 
 			{ ruta: "/tareas", texto: "Lista", vistas: ["lista", "ficha", "tarea", "tarea-nueva"], acotable: true },
 			{ ruta: "/tareas/kanban", texto: "Kanban", vistas: ["kanban"], acotable: true },
 			{ ruta: "/funcionalidades", texto: "Funcionalidades", vistas: ["funcionalidades"], acotable: true },
+			{ ruta: "/informes", texto: "Informes", vistas: ["informes"], acotable: true },
 		],
 	},
 	{

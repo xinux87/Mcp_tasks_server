@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Context, Hono } from "hono";
-import { html } from "hono/html";
+import { html, raw } from "hono/html";
 import { type TerminalListado, terminalesActivos } from "../../db/admin.ts";
 import { revisionActual } from "../../db/consultas.ts";
 import { dependenciasDeVarias } from "../../db/dependencias.ts";
@@ -83,7 +83,20 @@ export type Filtros = {
 	rapido: string;
 	/** Lo que se busca en el título y en la descripción. */
 	q: string;
+	/**
+	 * Cómo se agrupa el tablero: `funcionalidad` lo parte en carriles. Es
+	 * opcional porque el tablero de la ficha de una funcionalidad ya está
+	 * acotado a sus partes y nunca se agrupa.
+	 */
+	agrupar?: string;
 };
+
+/** El único agrupamiento que hay: una franja por funcionalidad más «Sueltas». */
+const POR_FUNCIONALIDAD = "funcionalidad";
+
+function enCarriles(filtros: Filtros): boolean {
+	return filtros.agrupar === POR_FUNCIONALIDAD;
+}
 
 /**
  * Los filtros de la petición. El proyecto sale de la URL cuando la vista está
@@ -98,6 +111,7 @@ export function filtrosDe(c: Context): Filtros {
 		proyecto: proyectoActual(c)?.clave ?? c.req.query("proyecto") ?? "",
 		rapido: c.req.query("rapido") ?? "",
 		q: c.req.query("q") ?? "",
+		agrupar: c.req.query("agrupar") ?? "",
 	};
 }
 
@@ -109,7 +123,7 @@ export function filtrosDe(c: Context): Filtros {
 export function consultaDe(filtros: Filtros, acotado: Proyecto | undefined): URLSearchParams {
 	const consulta = new URLSearchParams();
 	for (const [nombre, valor] of Object.entries(filtros)) {
-		if (valor !== "" && !(nombre === "proyecto" && acotado !== undefined)) {
+		if (valor !== undefined && valor !== "" && !(nombre === "proyecto" && acotado !== undefined)) {
 			consulta.set(nombre, valor);
 		}
 	}
@@ -169,6 +183,18 @@ function fuenteDe(filtros: Filtros, acotado: Proyecto | undefined): string {
 // --- trozos de página --------------------------------------------------------
 
 /**
+ * El conmutador de carriles, al lado de los filtros rápidos y con la misma
+ * pinta. Va en la dirección como un filtro más, así que el refresco en vivo y
+ * los demás conmutadores lo conservan; puesto, el enlace lo quita.
+ */
+function conmutadorCarriles(filtros: Filtros, acotado: Proyecto | undefined): Html {
+	const puesto = enCarriles(filtros);
+	const consulta = consultaDe({ ...filtros, agrupar: puesto ? "" : POR_FUNCIONALIDAD }, acotado).toString();
+	const base = `${prefijo(acotado)}/tareas/kanban`;
+	return html`<a class="boton-filtro" href="${consulta === "" ? base : `${base}?${consulta}`}"${puesto ? raw(' aria-current="true"') : ""}>${puesto ? "Sin agrupar" : "Agrupar por funcionalidad"}</a>`;
+}
+
+/**
  * La misma fila de filtros que la lista, sin `estado`: aquí el estado es la
  * columna. «Quitar filtros» solo sale cuando hay algo que quitar.
  */
@@ -183,8 +209,10 @@ function formularioFiltros(
 	const base = `${prefijo(acotado)}/tareas/kanban`;
 	return html`<div class="fila-filtros">
 		${filtrosRapidos(filtros.rapido, base, consultaDe(filtros, acotado))}
+		${conmutadorCarriles(filtros, acotado)}
 		<form class="filtros" method="get" action="${base}">
 			${filtros.rapido === "" ? html`` : html`<input type="hidden" name="rapido" value="${filtros.rapido}">`}
+			${enCarriles(filtros) ? html`<input type="hidden" name="agrupar" value="${POR_FUNCIONALIDAD}">` : html``}
 			<input type="search" name="q" value="${filtros.q}" placeholder="Buscar">
 			${acotado !== undefined ? html`` : filtroSelect(opcionesProyecto(db, filtros.proyecto))}
 			${filtroSelect({
@@ -353,9 +381,10 @@ function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
  */
 function columna(titulo: string, estado: Estado, items: ItemIndice[], total: number, vecindad: Vecindad): Html {
 	// Las cerradas están archivadas y son muchas: se enseñan las últimas y el
-	// resto se ve en la lista filtrada.
+	// resto se ve en la lista filtrada. Dentro de una franja caben todas, y
+	// entonces no hay ninguna que ir a ver a otro sitio.
 	const pie =
-		estado === "finished" && total > 0
+		estado === "finished" && total > items.length
 			? html`<p class="pequeno"><a href="/tareas?estado=finished">ver todas (${total})</a></p>`
 			: html``;
 	return html`<section class="columna">
@@ -383,6 +412,120 @@ function ultimasCerradas(db: DatabaseSync, items: ItemIndice[]): ItemIndice[] {
 }
 
 /**
+ * Las cinco columnas con las tareas que se les den. `recortarCerradas` es lo
+ * que separa el tablero entero, donde las cerradas son muchas, de una franja,
+ * donde son las de una sola funcionalidad y caben todas.
+ */
+function columnas(db: DatabaseSync, items: ItemIndice[], vecindad: Vecindad, recortarCerradas: boolean): Html {
+	return html`<div class="columnas">
+			${COLUMNAS.map((cual) => {
+				const propias = items.filter((item) => item.estado === cual.estado);
+				const visibles = cual.estado === "finished" && recortarCerradas ? ultimasCerradas(db, propias) : propias;
+				return columna(cual.titulo, cual.estado, visibles, propias.length, vecindad);
+			})}
+		</div>`;
+}
+
+/** Un carril del tablero agrupado: su funcionalidad, o `null` en «Sueltas». */
+type Franja = {
+	cual: ItemIndice | null;
+	items: ItemIndice[];
+};
+
+/** El orden de los carriles: primero lo que está en marcha. `finished` no tiene. */
+const ORDEN_FRANJAS: readonly Estado[] = ["doing", "prepared", "backlog", "done"];
+
+/**
+ * De qué funcionalidad cuelga una tarea: se sube por el padre hasta dar con
+ * una. Vale tanto para una parte como para la hija de trabajo de una parte.
+ * El tope de saltos no debería hacer falta, pero un árbol con un ciclo colgaría
+ * la página entera.
+ */
+function funcionalidadDe(item: ItemIndice, todas: Map<number, ItemIndice>): ItemIndice | null {
+	let padreId = item.padreId;
+	for (let salto = 0; padreId !== null && salto < todas.size; salto += 1) {
+		const padre = todas.get(padreId);
+		if (padre === undefined) {
+			return null;
+		}
+		if (padre.tipo === "funcionalidad") {
+			return padre;
+		}
+		padreId = padre.padreId;
+	}
+	return null;
+}
+
+/**
+ * Las franjas del tablero agrupado. El índice entero se lee una vez, no una
+ * por tarjeta: de ahí salen los antepasados y las cabeceras.
+ *
+ * Solo se pinta la funcionalidad que tenga alguna tarea visible con los
+ * filtros puestos, y ninguna `finished`: sus partes están cerradas, así que lo
+ * poco que quedara suyo cae en «Sueltas», que va siempre la última y siempre
+ * se pinta.
+ */
+function franjasDe(db: DatabaseSync, items: ItemIndice[]): Franja[] {
+	const indice = listarTareas(db);
+	const todas = new Map(indice.map((tarea) => [tarea.id, tarea]));
+	const agrupadas = new Map<number, ItemIndice[]>();
+	const sueltas: ItemIndice[] = [];
+	for (const item of items) {
+		// La funcionalidad es la cabecera de su franja, no una tarjeta más.
+		if (item.tipo === "funcionalidad") {
+			continue;
+		}
+		const cual = funcionalidadDe(item, todas);
+		if (cual === null || cual.estado === "finished") {
+			sueltas.push(item);
+			continue;
+		}
+		const propias = agrupadas.get(cual.id);
+		if (propias === undefined) {
+			agrupadas.set(cual.id, [item]);
+		} else {
+			propias.push(item);
+		}
+	}
+	// `listarTareas` ya viene ordenado por columna y por orden dentro de ella,
+	// así que recorrerlo por estados da las franjas en su orden sin ordenar nada.
+	const franjas: Franja[] = [];
+	for (const estado of ORDEN_FRANJAS) {
+		for (const tarea of indice) {
+			const propias = agrupadas.get(tarea.id);
+			if (propias !== undefined && tarea.tipo === "funcionalidad" && tarea.estado === estado) {
+				franjas.push({ cual: tarea, items: propias });
+			}
+		}
+	}
+	franjas.push({ cual: null, items: sueltas });
+	return franjas;
+}
+
+/**
+ * Una franja: su cabecera de ancho completo y, debajo, las cinco columnas con
+ * solo sus tareas. `data-padre` es su ámbito, el mismo que lleva el tablero de
+ * la ficha de una funcionalidad: el cliente lo manda al soltar y el servidor
+ * coloca la tarjeta entre hermanas. «Sueltas» no lo lleva.
+ */
+function franja(db: DatabaseSync, { cual, items }: Franja, vecindad: Vecindad): Html {
+	const id = cual === null ? "" : formatearId(cual.id);
+	const clave = cual === null ? undefined : vecindad.proyectos?.get(cual.proyectoId);
+	const cabecera =
+		cual === null
+			? html`<h2>Sueltas</h2>`
+			: html`${clave === undefined ? html`` : chipProyecto(clave)}
+				<a class="id-tarea" href="/tareas/${id}">${id}</a>
+				<h2><a href="/tareas/${id}">${cual.titulo}</a></h2>
+				${insigniaEstado(cual.estado)}
+				${barraProgreso(cual.partesCerradas ?? 0, cual.partes ?? 0, "partes")}`;
+	return html`<section class="franja"${cual === null ? html`` : html` data-padre="${id}"`}>
+			<header class="franja-cabecera">${cabecera}</header>
+			${columnas(db, items, vecindad, cual === null)}
+		</section>`;
+}
+
+/**
  * El fragmento del tablero, que es lo que el cliente vuelve a pedir cuando
  * sube la revisión. Lleva su propia revisión para no repintar hacia atrás y la
  * dirección de la que salió, para volver a pedirse con sus mismos filtros: la
@@ -390,20 +533,16 @@ function ultimasCerradas(db: DatabaseSync, items: ItemIndice[]): ItemIndice[] {
  */
 export function tablero(db: DatabaseSync, filtros: Filtros, acotado?: Proyecto): Html {
 	const items = tareasFiltradas(db, filtros);
-	// Dentro del tablero de una funcionalidad, cada tarjeta es una parte suya:
-	// repetir su título en todas no diría nada que no diga la propia página.
-	const vecindad = vecindadDe(db, items, filtros.padre === "", acotado === undefined);
+	const carriles = enCarriles(filtros);
+	// Dentro del tablero de una funcionalidad, y dentro de una franja, cada
+	// tarjeta cuelga de la que encabeza: repetir su título en todas no diría
+	// nada que no diga ya la cabecera.
+	const vecindad = vecindadDe(db, items, filtros.padre === "" && !carriles, acotado === undefined);
 	// `data-padre` y `data-proyecto` son el ámbito del tablero: con ellos, la
 	// posición que manda el cliente al soltar es entre las tarjetas que se ven.
 	return html`<section id="tablero" class="tablero" data-fuente="${fuenteDe(filtros, acotado)}" data-padre="${filtros.padre}" data-proyecto="${acotado?.clave ?? ""}" data-revision="${revisionActual(db)}">
 			<p class="aviso aviso-tablero" id="aviso-tablero" role="alert" hidden></p>
-			<div class="columnas">
-				${COLUMNAS.map((cual) => {
-					const propias = items.filter((item) => item.estado === cual.estado);
-					const visibles = cual.estado === "finished" ? ultimasCerradas(db, propias) : propias;
-					return columna(cual.titulo, cual.estado, visibles, propias.length, vecindad);
-				})}
-			</div>
+			${carriles ? franjasDe(db, items).map((cual) => franja(db, cual, vecindad)) : columnas(db, items, vecindad, true)}
 		</section>`;
 }
 
