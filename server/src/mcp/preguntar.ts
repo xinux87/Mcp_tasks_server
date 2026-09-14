@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
+import type { Avisador } from "../avisos.ts";
 import { preguntar } from "../db/hilo.ts";
 import { itemIndiceDe } from "../db/tareas.ts";
 import { parsearId } from "../md/ids.ts";
@@ -14,7 +15,12 @@ export const NOMBRE = "preguntar";
  * en el hilo con su formato. La tarea queda `bloqueada` hasta que el humano
  * conteste; la respuesta llega por `novedades`.
  */
-export function registrarHerramientaPreguntar(server: McpServer, db: DatabaseSync, terminalId: number): void {
+export function registrarHerramientaPreguntar(
+	server: McpServer,
+	db: DatabaseSync,
+	terminalId: number,
+	avisar: Avisador,
+): void {
 	server.registerTool(
 		NOMBRE,
 		{
@@ -47,7 +53,10 @@ export function registrarHerramientaPreguntar(server: McpServer, db: DatabaseSyn
 			conErroresDeRegla(() => {
 				const tareaId = parsearId(id);
 				const creada = preguntar(db, { tareaId, terminalId, pregunta, porQueImporta, opciones, recomendacion });
-				return [`pregunta: P${creada.numero}`, lineaIndice(itemIndiceDe(db, tareaId))].join("\n");
+				const item = itemIndiceDe(db, tareaId);
+				// La pregunta ya está escrita: el aviso sale fuera de la transacción.
+				avisar({ tipo: "pregunta", tareaId, titulo: item.titulo, pregunta });
+				return [`pregunta: P${creada.numero}`, lineaIndice(item)].join("\n");
 			}),
 	);
 }

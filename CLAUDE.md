@@ -501,6 +501,20 @@ CREATE INDEX transiciones_por_fecha ON transiciones (a, creado);
 - **En el frontmatter** aparece `presupuesto: 200000` tras `autoejecucion` solo cuando lo hay. `editar_tarea` deja `presupuesto: — → 200 k` en el rastro (o `200 k → —` al quitarlo). Cambiarlo es contenido y sube la revisión como cualquier edición.
 - **`marcasDe` recibe los tokens** con hijas y el presupuesto; el índice ya trae `tokensConHijas` y `leerTarea` ya calcula el total con hijas para la ficha.
 
+### Avisos fuera de la web
+
+El contador de la pestaña cubre el caso de tener la web abierta. Para el resto, un aviso por cada cosa que un agente deja esperando al humano, enviado a una URL que él elige. Con un servicio como ntfy llega al móvil sin más código. Sin correo ni push del navegador. Decidido el 14 de septiembre de 2026.
+
+- **Variable `AVISOS_URL`**, opcional. Si falta, no se envía nada y no se avisa de ello. Si está, cada aviso es un `POST` a esa URL con `Content-Type: text/plain; charset=utf-8` y el texto del aviso como cuerpo: dos líneas, la frase y el enlace a la ficha compuesto con `BASE_URL`. Es el formato que ntfy acepta tal cual; cualquier otro receptor recibe texto llano.
+- **Tres cosas avisan**, siempre que las provoque un agente:
+  - una pregunta nueva (`preguntar`): `T-0042 pregunta: «¿Qué separador usamos en el CSV?»`;
+  - una tarea que pasa a `done` (comentario `resultado`, o el `analisis` que cierra una tarea de tipo `pregunta`): `T-0042 hecha: «Exportar el listado de clientes a CSV»`. Una funcionalidad no avisa al cerrarse: se cierra cuando el humano finaliza su última parte, y eso lo hace él;
+  - un análisis que se queda esperando aprobación (comentario `analisis` con `autoejecucion` desactivada, o la descomposición de una funcionalidad): `T-0042 análisis listo: «…»` o `T-0050 descomposición lista: «…»`.
+  Lo que hace el humano desde la web no avisa: ya lo sabe.
+- **Se envía después de confirmar la transacción**, nunca dentro: un receptor caído no puede tumbar una escritura. Lo hace la herramienta MCP que provocó el cambio, no `src/db/`, que no sabe de HTTP. La función que envía no lanza nunca: con fallo o tiempo de espera (cinco segundos) escribe una línea en stderr y sigue. La respuesta al agente no espera al aviso.
+- **`src/avisos.ts`** expone `crearAvisador({ url, baseUrl, enviar? })` que devuelve `avisar(evento)`; `enviar` es la función que hace el POST, y los tests le pasan una que apunta. Sin `url`, `avisar` es una función vacía. `app.ts` lo crea y se lo pasa al handler del MCP con el resto de dependencias.
+- **`compose.yaml`** pasa `AVISOS_URL` como `DIRECCIONES`: opcional, sin valor por defecto.
+
 ### Sesión y seguridad
 
 - **Login con usuario y contraseña** contra la tabla `usuarios`; contraseñas con scrypt. Cookie de sesión firmada con `SESSION_SECRET`, `HttpOnly`, `SameSite=Lax`, treinta días.
@@ -919,6 +933,7 @@ LICENSE                    # MIT, la que declara el plugin
 | `SESSION_SECRET` | Firma de la cookie de sesión | obligatoria |
 | `ADMIN_PASSWORD` | Contraseña del primer usuario, solo en el primer arranque | obligatoria si no hay usuarios |
 | `DIRECCIONES` | URLs base adicionales por las que se llega al servidor, separadas por comas; se admiten en `Host` y salen en el tutorial | si falta, se detectan las IPs privadas del proceso |
+| `AVISOS_URL` | URL a la que se envía por POST un aviso de texto cuando un agente deja algo esperando al humano. Ver «Avisos fuera de la web» | sin avisos |
 
 ### Comandos
 

@@ -1402,9 +1402,10 @@ test("la lista enseña el progreso y los tokens, y filtra por conmutador y por t
 
 		const lista = await (await pedir(montaje, "/tareas", { cookie })).text();
 		assert.match(lista, /<th class="numero">Tokens<\/th>/);
+		// El progreso va detrás del título, al final de la celda.
 		assert.match(
 			lista,
-			/<progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto">hijas 1\/2<\/span>/,
+			/Exportar el listado a CSV <progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto">hijas 1\/2<\/span>/,
 		);
 		assert.match(lista, /<td class="numero pequeno">184 k<\/td>/);
 		// Sin consumo la celda se queda vacía: un cero no dice nada.
@@ -1424,6 +1425,95 @@ test("la lista enseña el progreso y los tokens, y filtra por conmutador y por t
 		assert.ok(!buscado.includes("Exportar el listado a CSV"), "la búsqueda deja fuera lo que no encaja");
 		// Y se combina con el conmutador, que conserva lo buscado.
 		assert.match(buscado, /<a class="boton-filtro" href="\/tareas\?q=cola&amp;rapido=espera">Espera por mí<\/a>/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el presupuesto se pone en el formulario, se ve en la ficha y avisa cuando se pasa", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		// El formulario de alta lleva la casilla, vacía.
+		const nueva = await (await pedir(montaje, "/tareas/nueva", { cookie })).text();
+		assert.match(nueva, /<span>Presupuesto en tokens<\/span>/);
+		assert.match(nueva, /<input type="number" name="presupuesto" min="0" step="1000" value="">/);
+
+		const respuesta = await pedir(montaje, "/tareas", {
+			cookie,
+			formulario: {
+				titulo: "Exportar el listado a CSV",
+				descripcion: "Los comerciales lo copian a mano.",
+				autoejecucion: "on",
+				presupuesto: "200000",
+				analisisTerminal: "",
+				ejecucionTerminal: "",
+			},
+		});
+		assert.equal(respuesta.status, 302);
+		assert.equal(exigirTarea(montaje.db, 1).presupuesto, 200_000);
+
+		// La ficha lo enseña en las propiedades y el formulario vuelve con él puesto.
+		const conTope = await (await pedir(montaje, "/tareas/T-0001", { cookie })).text();
+		assert.match(conTope, /<dt>Presupuesto<\/dt>\s*<dd>200 k<\/dd>/);
+		assert.match(conTope, /<input type="number" name="presupuesto" min="0" step="1000" value="200000">/);
+		assert.ok(!conTope.includes("marca-sobre-presupuesto"), "sin gasto no hay aviso");
+
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		registrarConsumo(montaje.db, {
+			tareaId: 1,
+			fase: "ejecucion",
+			modelo: "opus",
+			terminalId: valor.terminal.id,
+			tokens: 250_000,
+			herramientas: 41,
+			duracionMs: 1_520_000,
+		});
+
+		const pasada = await (await pedir(montaje, "/tareas/T-0001", { cookie })).text();
+		assert.match(pasada, /<span class="insignia marca-sobre-presupuesto color-naranja">sobre presupuesto<\/span>/);
+		// El consumo se lee contra el tope.
+		assert.match(pasada, /<strong>250\.000 de 200\.000<\/strong>/);
+		// Y la fila de la lista pinta lo gastado sobre el tope.
+		const lista = await (await pedir(montaje, "/tareas", { cookie })).text();
+		assert.match(lista, /<td class="numero pequeno">250 k \/ 200 k<\/td>/);
+		assert.match(lista, /<span class="insignia marca-sobre-presupuesto color-naranja">sobre presupuesto<\/span>/);
+
+		// Quitarlo deja la tarea sin tope y sin marca, y deja rastro en los dos sentidos.
+		const edicion = (presupuesto: string): Promise<Response> =>
+			pedir(montaje, "/tareas/T-0001/editar", {
+				cookie,
+				formulario: {
+					titulo: "Exportar el listado a CSV",
+					descripcion: "Los comerciales lo copian a mano.",
+					tipo: "tarea",
+					rama: "",
+					padre: "",
+					autoejecucion: "on",
+					presupuesto,
+					analisisTerminal: "",
+					ejecucionTerminal: "",
+				},
+			});
+		assert.equal((await edicion("")).status, 302);
+		assert.equal(exigirTarea(montaje.db, 1).presupuesto, null);
+		const sinTope = await (await pedir(montaje, "/tareas/T-0001", { cookie })).text();
+		assert.match(sinTope, /<dt>Presupuesto<\/dt>\s*<dd><span class="silencio">sin presupuesto<\/span><\/dd>/);
+		assert.ok(!sinTope.includes("marca-sobre-presupuesto"), "sin tope no hay nada que pasarse");
+		assert.equal((await edicion("300000")).status, 302);
+
+		assert.deepEqual(
+			actividadDe(montaje.db, "tarea", 1)
+				.filter((fila) => fila.accion === "editar_tarea")
+				.map((fila) => fila.detalle),
+			["presupuesto: 200 k → —", "presupuesto: — → 300 k"],
+		);
+
+		// Lo que no es un número no se guarda: se vuelve a la ficha con el aviso.
+		const mala = await edicion("abc");
+		assert.equal(mala.status, 422);
+		assert.match(await mala.text(), /El presupuesto se escribe en tokens, con un número entero de 0 en adelante\./);
+		assert.equal(exigirTarea(montaje.db, 1).presupuesto, 300_000);
 	} finally {
 		await montaje.cerrar();
 	}

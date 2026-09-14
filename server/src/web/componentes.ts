@@ -48,6 +48,7 @@ export const COLOR_MARCA: Record<Marca, Color> = {
 	"en marcha": "morado",
 	"análisis listo": "rosa",
 	esperando: "naranja",
+	"sobre presupuesto": "naranja",
 };
 
 /** Color de cada tipo de comentario del hilo. */

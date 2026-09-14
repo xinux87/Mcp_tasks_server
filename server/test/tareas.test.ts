@@ -1114,3 +1114,81 @@ test("cada salto de columna deja su transición, y borrar la tarea se las lleva"
 		banco.cerrar();
 	}
 });
+
+test("el presupuesto marca la tarea cuando el árbol lo pasa, y solo cuando lo hay", () => {
+	const banco = montar();
+	try {
+		const tarea = crearTareaHumana(banco.db, {
+			titulo: "Con tope",
+			descripcion: "d",
+			usuarioId: banco.xinux,
+			presupuesto: 200_000,
+		});
+		assert.equal(tarea.presupuesto, 200_000);
+		assert.equal(itemIndiceDe(banco.db, tarea.id).presupuesto, 200_000);
+		// Sin gasto no hay nada que avisar.
+		assert.deepEqual(marcasDe(tarea, 0, 0, 0), []);
+		// Por debajo y justo en el tope tampoco: se marca al pasarse.
+		assert.deepEqual(marcasDe(tarea, 0, 0, 199_999), []);
+		assert.deepEqual(marcasDe(tarea, 0, 0, 200_000), []);
+		assert.deepEqual(marcasDe(tarea, 0, 0, 200_001), ["sobre presupuesto"]);
+
+		// Sin presupuesto no se marca nunca, gaste lo que gaste.
+		const sinTope = crearTareaHumana(banco.db, { titulo: "Sin tope", descripcion: "d", usuarioId: banco.xinux });
+		assert.equal(sinTope.presupuesto, null);
+		assert.deepEqual(marcasDe(sinTope, 0, 0, 9_000_000), []);
+
+		// Y el índice y la ficha lo calculan con lo gastado de verdad en el árbol.
+		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		tomarTarea(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, fase: "analisis", modelo: "sonnet" });
+		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "Plan." });
+		tomarTarea(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, fase: "ejecucion", modelo: "opus" });
+		const hija = crearHija(banco.db, {
+			titulo: "Lo que hace un subagente",
+			descripcion: "d",
+			padreId: tarea.id,
+			terminalId: banco.portatil,
+		});
+		registrarConsumo(banco.db, {
+			tareaId: hija.id,
+			fase: "ejecucion",
+			modelo: "opus",
+			terminalId: banco.portatil,
+			tokens: 250_000,
+			herramientas: 9,
+			duracionMs: 1_000,
+		});
+		assert.ok(itemIndiceDe(banco.db, tarea.id).marcas.includes("sobre presupuesto"));
+		assert.ok(leerTarea(banco.db, tarea.id)?.marcas.includes("sobre presupuesto"));
+		// La hija nace sin tope: lo suyo no se compara con el de su madre.
+		assert.equal(exigirTarea(banco.db, hija.id).presupuesto, null);
+		assert.ok(!itemIndiceDe(banco.db, hija.id).marcas.includes("sobre presupuesto"));
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("un presupuesto que no es un entero de cero en adelante no se guarda", () => {
+	const banco = montar();
+	try {
+		for (const malo of [Number.NaN, -1, 1.5]) {
+			assert.equal(
+				codigoDe(() =>
+					crearTareaHumana(banco.db, { titulo: "Con tope", descripcion: "d", usuarioId: banco.xinux, presupuesto: malo }),
+				),
+				"presupuesto_invalido",
+			);
+		}
+		// Cero es un tope válido: todo lo que se gaste se pasa de él.
+		const cero = crearTareaHumana(banco.db, {
+			titulo: "A coste cero",
+			descripcion: "d",
+			usuarioId: banco.xinux,
+			presupuesto: 0,
+		});
+		assert.equal(cero.presupuesto, 0);
+		assert.deepEqual(marcasDe(cero, 0, 0, 1), ["sobre presupuesto"]);
+	} finally {
+		banco.cerrar();
+	}
+});

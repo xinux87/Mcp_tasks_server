@@ -16,6 +16,8 @@ services:
       # interfaces que detecta el proceso son las del contenedor, no las del
       # anfitrión, así que las direcciones de red se declaran aquí.
       - DIRECCIONES
+      # Igual: sin valor por defecto. Si está, cada aviso va por POST ahí.
+      - AVISOS_URL
     volumes:
       - datos:/data
     restart: unless-stopped

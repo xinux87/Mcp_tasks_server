@@ -48,7 +48,15 @@ import {
 	type QuienCreo,
 	rotuloColumna,
 } from "../componentes.ts";
-import { duracionLegible, faseLegible, fechaLegible, numeroLegible, SIN_DATO, tokensAbreviados } from "../formatos.ts";
+import {
+	duracionLegible,
+	faseLegible,
+	fechaLegible,
+	numeroLegible,
+	SIN_DATO,
+	tokensAbreviados,
+	tokensConPresupuesto,
+} from "../formatos.ts";
 import {
 	campo,
 	campoLista,
@@ -118,6 +126,8 @@ type ValoresTarea = {
 	/** Tareas que tienen que estar hechas antes que esta. */
 	dependeDe: number[];
 	autoejecucion: boolean;
+	/** Tope de tokens. `null` es sin tope; `NaN`, lo que el humano escribió y no era un número. */
+	presupuesto: number | null;
 	analisisModelo: string | null;
 	analisisTerminalId: number | null;
 	ejecucionModelo: string | null;
@@ -133,6 +143,7 @@ const TAREA_VACIA: ValoresTarea = {
 	padreId: null,
 	dependeDe: [],
 	autoejecucion: true,
+	presupuesto: null,
 	analisisModelo: null,
 	analisisTerminalId: null,
 	ejecucionModelo: null,
@@ -209,6 +220,15 @@ function numeroONull(valor: string): number | null {
 	return Number.isSafeInteger(numero) ? numero : null;
 }
 
+/**
+ * El presupuesto del formulario. Vacío es sin tope; lo que no es un número
+ * llega como `NaN` y lo rechaza la regla de la base, que es la que manda.
+ */
+function presupuestoDeFormulario(formulario: Formulario): number | null {
+	const valor = campo(formulario, "presupuesto").trim();
+	return valor === "" ? null : Number(valor);
+}
+
 /** El tipo elegido en el desplegable. Cualquier otra cosa es una tarea normal. */
 function tipoDeFormulario(formulario: Formulario): TipoTarea {
 	const valor = campo(formulario, "tipo");
@@ -247,6 +267,7 @@ function valoresCrudos(formulario: Formulario): ValoresTarea {
 		padreId: idONull(campo(formulario, "padre")),
 		dependeDe: idsDeFormulario(formulario, "dependeDe"),
 		autoejecucion: tipo !== "tarea" || marcado(formulario, "autoejecucion"),
+		presupuesto: presupuestoDeFormulario(formulario),
 		analisisModelo: campoOpcional(formulario, "analisisModelo"),
 		analisisTerminalId: numeroONull(campo(formulario, "analisisTerminal")),
 		ejecucionModelo: esPregunta ? null : campoOpcional(formulario, "ejecucionModelo"),
@@ -288,6 +309,11 @@ function selectTerminal(nombre: string, activos: TerminalListado[], seleccionado
 			<option value=""${seleccionado === null ? raw(" selected") : ""}>cualquiera</option>
 			${activos.map((terminal) => opcionTerminal(terminal, seleccionado))}
 		</select>`;
+}
+
+/** El presupuesto en la casilla del formulario: vacío si no hay, o si lo que llegó no era un número. */
+function valorPresupuesto(presupuesto: number | null): string {
+	return presupuesto === null || !Number.isSafeInteger(presupuesto) ? "" : String(presupuesto);
 }
 
 /** Una casilla con su explicación debajo, en texto suave. */
@@ -433,6 +459,15 @@ function camposTarea(valores: ValoresTarea, opciones: OpcionesTarea): Html {
 		</label>
 		${esFuncionalidad ? html`` : selectPadre(opciones.padres, valores.padreId)}
 		${selectDependencias(opciones.candidatas, valores.dependeDe)}
+		<label>
+			<span>Presupuesto en tokens</span>
+			<input type="number" name="presupuesto" min="0" step="1000" value="${valorPresupuesto(valores.presupuesto)}">
+			<span class="ayuda">${
+				esFuncionalidad
+					? "Tope del evolutivo entero. Pasarse solo avisa: sus partes no lo heredan."
+					: "Tope de la tarea con sus hijas. Pasarse solo avisa, no frena nada."
+			}</span>
+		</label>
 		${autoejecucion}
 		<datalist id="modelos">${MODELOS_SUGERIDOS.map((modelo) => html`<option value="${modelo}"></option>`)}</datalist>
 		<div class="fases">
@@ -466,7 +501,7 @@ function filaTarea(
 	return html`<tr>
 			<td>${enlaceTarea(item.id)} ${clave === undefined ? html`` : chipProyecto(clave)}</td>
 			<td>
-				${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas)}${progresoDe(item)}${item.titulo}
+				${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas)}${item.titulo} ${progresoDe(item)}
 				${
 					funcionalidad === undefined || item.padreId === null
 						? html``
@@ -475,7 +510,7 @@ function filaTarea(
 			</td>
 			<td class="pequeno">${faseLegible(item.analisisModelo, item.analisisTerminal)}</td>
 			<td class="pequeno">${ejecucionLegible(item.tipo, item.ejecucionModelo, item.ejecucionTerminal)}</td>
-			<td class="numero pequeno">${item.tokensConHijas === 0 ? html`` : tokensAbreviados(item.tokensConHijas)}</td>
+			<td class="numero pequeno">${tokensConPresupuesto(item.tokensConHijas, item.presupuesto)}</td>
 			<td>${creador ?? SIN_DATO}</td>
 			<td class="pequeno">${edadEnColumna(item)}</td>
 		</tr>`;
@@ -647,6 +682,13 @@ function estadoLegible(completa: TareaCompleta): Html {
 	return html`${insignia} <span class="silencio">desde hace ${edad}</span>`;
 }
 
+/** El tope de tokens de la tarea, o que no tiene ninguno. */
+function presupuestoLegible(presupuesto: number | null): Html {
+	return presupuesto === null
+		? html`<span class="silencio">sin presupuesto</span>`
+		: html`${tokensAbreviados(presupuesto)}`;
+}
+
 /** La rama en la que se trabaja la tarea, o que no hay ninguna. */
 function ramaLegible(rama: string | null): Html {
 	return rama === null ? html`<span class="silencio">ninguna</span>` : html`<code>${rama}</code>`;
@@ -709,6 +751,7 @@ function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe
 		filas.push({ nombre: "Ejecución", valor: faseLegible(tarea.ejecucionModelo, completa.ejecucionTerminal) });
 		filas.push({ nombre: "Autoejecución", valor: tarea.autoejecucion ? "activada" : "desactivada" });
 	}
+	filas.push({ nombre: "Presupuesto", valor: presupuestoLegible(tarea.presupuesto) });
 	filas.push({ nombre: "Padre", valor: padreLegible(db, tarea.padreId) });
 	filas.push({ nombre: "Dependencias", valor: dependenciasLegibles(db, tarea.id, completa.dependeDe) });
 	filas.push({ nombre: "Orden", valor: String(tarea.orden) });
@@ -743,12 +786,13 @@ function propiedadesDeFuncionalidad(db: DatabaseSync, completa: TareaCompleta, c
 		filas.push({ nombre: "Dependencias", valor: dependenciasLegibles(db, tarea.id, completa.dependeDe) });
 	}
 	filas.push({ nombre: "Consumo de las partes", valor: `${numeroLegible(completa.consumo.totalConHijas)} tokens` });
+	filas.push({ nombre: "Presupuesto", valor: presupuestoLegible(tarea.presupuesto) });
 	filas.push({ nombre: "Creada", valor: creadaLegible(tarea, creadorDe) });
 	filas.push({ nombre: "Revisión", valor: String(tarea.revision) });
 	return propiedades(filas);
 }
 
-function tablaConsumo(consumo: ConsumoDeTarea): Html {
+function tablaConsumo(consumo: ConsumoDeTarea, presupuesto: number | null): Html {
 	const fases: { nombre: string; fase: ConsumoDeTarea["analisis"] }[] = [
 		{ nombre: "analisis", fase: consumo.analisis },
 		{ nombre: "ejecucion", fase: consumo.ejecucion },
@@ -757,6 +801,11 @@ function tablaConsumo(consumo: ConsumoDeTarea): Html {
 	if (conDatos.length === 0 && consumo.totalConHijas === 0) {
 		return html`<p class="silencio">Sin consumo.</p>`;
 	}
+	// Con tope, el total se lee contra él: lo gastado de lo que había.
+	const total =
+		presupuesto === null
+			? numeroLegible(consumo.totalConHijas)
+			: `${numeroLegible(consumo.totalConHijas)} de ${numeroLegible(presupuesto)}`;
 	return html`<div class="tabla-envuelta">
 			<table>
 				<thead>
@@ -777,7 +826,7 @@ function tablaConsumo(consumo: ConsumoDeTarea): Html {
 					)}
 					<tr>
 						<td colspan="2"><strong>Total con hijas</strong></td>
-						<td class="numero"><strong>${numeroLegible(consumo.totalConHijas)}</strong></td>
+						<td class="numero"><strong>${total}</strong></td>
 						<td class="numero"></td>
 						<td class="numero"></td>
 					</tr>
@@ -957,6 +1006,7 @@ function detallesEditar(db: DatabaseSync, tarea: Tarea, dependeDe: number[]): Ht
 						padreId: tarea.padreId,
 						dependeDe,
 						autoejecucion: tarea.autoejecucion,
+						presupuesto: tarea.presupuesto,
 						analisisModelo: tarea.analisisModelo,
 						analisisTerminalId: tarea.analisisTerminalId,
 						ejecucionModelo: tarea.ejecucionModelo,
@@ -1187,7 +1237,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 			tarea.tipo === "funcionalidad"
 				? html``
 				: html`<h2>Consumo</h2>
-					${tablaConsumo(completa.consumo)}`
+					${tablaConsumo(completa.consumo, tarea.presupuesto)}`
 		}
 		${vueltasAtras(completa)}
 		${detallesEditar(deps.db, tarea, completa.dependeDe)}

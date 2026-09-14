@@ -32,7 +32,7 @@ import {
 	type OpcionesFiltro,
 	rotuloColumna,
 } from "../componentes.ts";
-import { abreviar, faseLegible, tokensAbreviados } from "../formatos.ts";
+import { abreviar, faseLegible, tokensConPresupuesto } from "../formatos.ts";
 import { campo, ESTADO_AVISO, leerFormulario } from "../formulario.ts";
 import {
 	COLUMNAS,
@@ -47,7 +47,14 @@ import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
 import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
 
 /** Las marcas por las que se puede filtrar, en el orden en que se muestran. */
-export const MARCAS: readonly Marca[] = ["bloqueada", "sin terminal", "en marcha", "análisis listo", "esperando"];
+export const MARCAS: readonly Marca[] = [
+	"bloqueada",
+	"sin terminal",
+	"en marcha",
+	"análisis listo",
+	"esperando",
+	"sobre presupuesto",
+];
 
 /** Cuántas cerradas se enseñan en su columna. El resto, en la lista filtrada. */
 const CERRADAS_VISIBLES = 10;
@@ -352,6 +359,7 @@ function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
 	const id = formatearId(item.id);
 	const funcionalidad = item.padreId === null ? undefined : vecindad.funcionalidades.get(item.padreId);
 	const clave = vecindad.proyectos?.get(item.proyectoId);
+	const tokens = tokensConPresupuesto(item.tokensConHijas, item.presupuesto);
 	return html`<article class="tarjeta" data-id="${id}" data-estado="${item.estado}">
 			<div class="linea">
 				<a class="id-tarea" href="/tareas/${id}">${id}</a>
@@ -370,7 +378,7 @@ function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
 			${dependenciasLegibles(vecindad.dependencias.get(item.id))}
 			<p class="pequeno silencio pie">
 				<span>${fasesLegibles(item)}</span>
-				${item.tokensConHijas === 0 ? html`` : html`<span class="tokens">${tokensAbreviados(item.tokensConHijas)}</span>`}
+				${tokens === "" ? html`` : html`<span class="tokens">${tokens}</span>`}
 			</p>
 		</article>`;
 }

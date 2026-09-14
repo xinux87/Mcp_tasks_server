@@ -3,6 +3,7 @@ import { createMcpHonoApp } from "@modelcontextprotocol/hono";
 import type { Hono } from "hono";
 import { montarApiUso } from "./api/uso.ts";
 import { authInfoDelContexto, bearerTerminal } from "./auth/bearer.ts";
+import { crearAvisador, type Enviar } from "./avisos.ts";
 import { type Config, HOST_ESCUCHA } from "./config.ts";
 import { hostsPermitidos } from "./direcciones.ts";
 import { crearHandlerMcp } from "./mcp/handler.ts";
@@ -23,6 +24,8 @@ export type OpcionesApp = {
 	db: DatabaseSync;
 	/** La configuración entera: la web necesita `SESSION_SECRET` además de `BASE_URL`. */
 	config: Config;
+	/** Cómo se manda el aviso de `AVISOS_URL`. Solo los tests pasan otra cosa. */
+	enviarAviso?: Enviar;
 };
 
 export type App = {
@@ -36,8 +39,9 @@ export type App = {
  * eventos SSE llegarán en otro encargo (ver «Un solo proceso, un solo puerto»
  * en CLAUDE.md).
  */
-export function crearApp({ db, config }: OpcionesApp): App {
-	const handler = crearHandlerMcp(db);
+export function crearApp({ db, config, enviarAviso }: OpcionesApp): App {
+	const avisar = crearAvisador({ url: config.AVISOS_URL, baseUrl: config.BASE_URL, enviar: enviarAviso });
+	const handler = crearHandlerMcp(db, avisar);
 	const app = createMcpHonoApp({ host: HOST_ESCUCHA, allowedHosts: hostsPermitidos(config) });
 
 	// Comprobación de vida para Docker. Sin autenticación.

@@ -67,6 +67,10 @@ function frontmatter(completa: TareaCompleta): string {
 		lineas.push(`padre: ${formatearId(tarea.padreId)}`);
 	}
 	lineas.push(`autoejecucion: ${tarea.autoejecucion}`);
+	// El tope de tokens, solo cuando lo hay: sin él la línea no diría nada.
+	if (tarea.presupuesto !== null) {
+		lineas.push(`presupuesto: ${tarea.presupuesto}`);
+	}
 	// La rama y las dependencias solo se escriben cuando las hay: en la mayoría
 	// de las tareas serían dos líneas vacías en cada lectura.
 	if (tarea.rama !== null) {

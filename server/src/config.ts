@@ -32,6 +32,7 @@ const esquemaConfig = z.object({
 	SESSION_SECRET: z.string().min(1, { error: "SESSION_SECRET es obligatoria" }),
 	ADMIN_PASSWORD: z.string().min(1).optional(),
 	DIRECCIONES: listaDeDirecciones.optional(),
+	AVISOS_URL: z.url({ error: "AVISOS_URL tiene que ser una URL absoluta" }).optional(),
 });
 
 export type Config = z.infer<typeof esquemaConfig>;

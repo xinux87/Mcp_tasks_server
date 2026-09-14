@@ -52,6 +52,7 @@ const CLASE_MARCA: Record<Marca, string> = {
 	"en marcha": "en-marcha",
 	"análisis listo": "analisis-listo",
 	esperando: "esperando",
+	"sobre presupuesto": "sobre-presupuesto",
 };
 
 /** Etiqueta de estado. El valor viene de un conjunto cerrado, así que sirve de clase. */

@@ -25,7 +25,11 @@ respuesta es la respuesta misma, sin código.
 **La web abre en la bandeja**: lo que espera por el humano, de todos los proyectos, en cuatro bloques
 —preguntas sin contestar, análisis por aprobar, resultados por revisar y lo que lleva más de una semana
 en `backlog`—. Se contesta y se aprueba desde ahí mismo, sin abrir la ficha, y el número de pendientes va
-en la barra lateral y en el título de la pestaña. Las tareas se ven además como lista y como kanban.
+en la barra lateral y en el título de la pestaña. Las tareas se ven además como lista y como kanban,
+con filtros de un clic, búsqueda por texto y el kanban agrupado en carriles por funcionalidad. Cada
+tarjeta enseña cuánto lleva en su columna, el progreso de sus hijas y los tokens que ha costado, contra
+su presupuesto si lo tiene. La página de informes dice qué cuesta cada modelo, cuánto interrumpe, dónde
+se atasca el flujo y qué modelo entrega resultados que no valen.
 
 **Un proyecto** es un repositorio, con su rama principal y su comando de verificación. Las tareas viven
 en un proyecto y cada terminal pertenece a uno y trabaja en una carpeta: una máquina con tres

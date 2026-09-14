@@ -385,6 +385,49 @@ test("la línea de índice pone las marcas entre el estado y el título", () => 
 	}
 });
 
+test("el presupuesto va tras la autoejecución, y pasarse es una marca más", () => {
+	const banco = montar();
+	try {
+		const tarea = crearTareaHumana(banco.db, {
+			titulo: "Exportar el listado",
+			descripcion: "d",
+			usuarioId: banco.xinux,
+			presupuesto: 200_000,
+		});
+		const documento = (): string => sinFechas(documentoTarea(leerTarea(banco.db, tarea.id) ?? assert.fail("sin tarea")));
+
+		assert.match(documento(), /^autoejecucion: true\npresupuesto: 200000\nmarcas: \[\]$/m);
+		assert.equal(
+			lineaIndice(itemIndiceDe(banco.db, tarea.id)),
+			"- T-0001 · backlog · Exportar el listado · analisis: sin asignar · ejecucion: sin asignar",
+		);
+
+		registrarConsumo(banco.db, {
+			tareaId: tarea.id,
+			fase: "ejecucion",
+			modelo: "opus",
+			terminalId: banco.portatil,
+			tokens: 250_000,
+			herramientas: 9,
+			duracionMs: 1_000,
+		});
+		assert.match(documento(), /^marcas: \[sobre presupuesto\]$/m);
+		assert.equal(
+			lineaIndice(itemIndiceDe(banco.db, tarea.id)),
+			"- T-0001 · backlog · sobre presupuesto · Exportar el listado · analisis: sin asignar · ejecucion: sin asignar",
+		);
+
+		// Sin tope no hay línea en el frontmatter: no diría nada.
+		const sinTope = crearTareaHumana(banco.db, { titulo: "Sin tope", descripcion: "d", usuarioId: banco.xinux });
+		assert.doesNotMatch(
+			sinFechas(documentoTarea(leerTarea(banco.db, sinTope.id) ?? assert.fail("sin tarea"))),
+			/presupuesto/,
+		);
+	} finally {
+		banco.cerrar();
+	}
+});
+
 test("novedades lista lo cambiado y las preguntas contestadas, y sin nada solo la revisión", () => {
 	const banco = montar();
 	try {

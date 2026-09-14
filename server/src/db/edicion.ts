@@ -3,10 +3,11 @@ import { ErrorDeRegla } from "../errores.ts";
 import { formatearId } from "../md/ids.ts";
 import { registrarActividad } from "./actividad.ts";
 import { ahora, entero, escribirContenido, sentencia, texto } from "./base.ts";
+import { tokensAbreviados } from "./consumo.ts";
 import { dependenciasDe, detalleDependencias, escribirDependencias } from "./dependencias.ts";
 import { autorHumano } from "./hilo.ts";
 import { exigirProyectoPorId } from "./proyectos.ts";
-import { exigirPadreFuncionalidad, exigirTarea, type Tarea, type TipoTarea } from "./tareas.ts";
+import { exigirPadreFuncionalidad, exigirPresupuesto, exigirTarea, type Tarea, type TipoTarea } from "./tareas.ts";
 
 /**
  * Un título vacío deja la tarea sin nada que leer en el índice. Se comprueba
@@ -41,6 +42,8 @@ export type EdicionTarea = {
 	 */
 	proyectoId?: number;
 	autoejecucion: boolean;
+	/** Como la rama: sin este campo, la tarea se queda con el presupuesto que tenía. */
+	presupuesto?: number | null;
 	analisisModelo: string | null;
 	analisisTerminalId: number | null;
 	ejecucionModelo: string | null;
@@ -61,6 +64,11 @@ function faseComoTexto(conexion: DatabaseSync, fase: Fase): string {
 		return `${fase.modelo}@${terminal}`;
 	}
 	return fase.modelo ?? (terminal === null ? "sin asignar" : `@${terminal}`);
+}
+
+/** `200 k`, o una raya cuando no hay tope. */
+function presupuestoComoTexto(presupuesto: number | null): string {
+	return presupuesto === null ? "—" : tokensAbreviados(presupuesto);
 }
 
 /** `T-0050`, o «ninguno» cuando la tarea no cuelga de nadie. */
@@ -96,6 +104,11 @@ function cambiosDeLaEdicion(conexion: DatabaseSync, antes: Tarea, despues: Edici
 	}
 	if (antes.tipo !== despues.tipo) {
 		cambios.push(`tipo: ${antes.tipo} → ${despues.tipo}`);
+	}
+	if (despues.presupuesto !== undefined && antes.presupuesto !== despues.presupuesto) {
+		cambios.push(
+			`presupuesto: ${presupuestoComoTexto(antes.presupuesto)} → ${presupuestoComoTexto(despues.presupuesto)}`,
+		);
 	}
 	if (despues.rama !== undefined && antes.rama !== despues.rama) {
 		cambios.push(`rama: ${antes.rama ?? "ninguna"} → ${despues.rama ?? "ninguna"}`);
@@ -180,6 +193,9 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 		if (padreId !== null && padreId !== tarea.padreId) {
 			exigirPadreFuncionalidad(conexion, padreId);
 		}
+		// Se comprueba antes de componer el rastro: un tope que no es un número no
+		// se guarda ni se cuenta a medias.
+		const presupuesto = datos.presupuesto === undefined ? tarea.presupuesto : exigirPresupuesto(datos.presupuesto);
 		const proyectoId = datos.proyectoId ?? tarea.proyectoId;
 		const mudanza = proyectoId === tarea.proyectoId ? null : mudarDeProyecto(conexion, tarea, proyectoId, padreId);
 		// Un terminal es de un solo proyecto: al mudar la tarea, sus asignaciones
@@ -191,6 +207,7 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 			conexion,
 			`UPDATE tareas
 				SET titulo = ?, descripcion = ?, tipo = ?, rama = ?, padre_id = ?, proyecto_id = ?, autoejecucion = ?,
+					presupuesto = ?,
 					analisis_modelo = ?, analisis_terminal_id = ?,
 					ejecucion_modelo = ?, ejecucion_terminal_id = ?,
 					actualizada = ?, revision = ?
@@ -203,6 +220,7 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 			padreId,
 			proyectoId,
 			datos.autoejecucion ? 1 : 0,
+			presupuesto,
 			datos.analisisModelo,
 			asignado.analisisTerminalId,
 			datos.ejecucionModelo,

@@ -1,8 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
+import type { Avisador } from "../avisos.ts";
 import { type ComentarioDeAgente, comentarAnalisis, comentarAvance, comentarResultado } from "../db/hilo.ts";
-import { itemIndiceDe } from "../db/tareas.ts";
+import { buscarTarea, type ItemIndice, itemIndiceDe, type Tarea } from "../db/tareas.ts";
 import { ErrorDeRegla } from "../errores.ts";
 import { parsearId } from "../md/ids.ts";
 import { lineaIndice } from "../md/indice.ts";
@@ -19,11 +20,55 @@ const ESCRITORES: Record<TipoDeAgente, (db: DatabaseSync, datos: ComentarioDeAge
 	resultado: comentarResultado,
 };
 
+/** La funcionalidad de la que cuelga la tarea, si es que cuelga de alguna. */
+function funcionalidadDe(db: DatabaseSync, tareaId: number): Tarea | undefined {
+	const padreId = buscarTarea(db, tareaId)?.padreId ?? null;
+	if (padreId === null) {
+		return undefined;
+	}
+	const padre = buscarTarea(db, padreId);
+	return padre?.tipo === "funcionalidad" ? padre : undefined;
+}
+
+/**
+ * Lo que este comentario deja esperando al humano. Se mira después de escribir,
+ * con la tarea ya tal como queda: `done` es una tarea hecha, y la marca
+ * «análisis listo» es un análisis (o una descomposición) pendiente de aprobar.
+ *
+ * `antes` es la funcionalidad de la que cuelga la tarea tal como estaba antes
+ * de escribir: si el comentario la cerró en la misma transacción, también se
+ * avisa de ella.
+ */
+function avisarDeLoQueEspera(avisar: Avisador, db: DatabaseSync, item: ItemIndice, antes: Tarea | undefined): void {
+	if (item.estado === "done") {
+		avisar({ tipo: "hecha", tareaId: item.id, titulo: item.titulo });
+	}
+	if (item.marcas.includes("análisis listo")) {
+		avisar({
+			tipo: item.tipo === "funcionalidad" ? "descomposicion_lista" : "analisis_listo",
+			tareaId: item.id,
+			titulo: item.titulo,
+		});
+	}
+	if (antes === undefined || antes.estado === "done") {
+		return;
+	}
+	const despues = funcionalidadDe(db, item.id);
+	if (despues !== undefined && despues.estado === "done") {
+		avisar({ tipo: "hecha", tareaId: despues.id, titulo: despues.titulo });
+	}
+}
+
 /**
  * `comentar_tarea`: añade un comentario al hilo. Cada tipo cierra o no una
  * fase; el estado no se toca a mano, lo mueve el comentario que corresponde.
  */
-export function registrarHerramientaComentarTarea(server: McpServer, db: DatabaseSync, terminalId: number): void {
+export function registrarHerramientaComentarTarea(
+	server: McpServer,
+	db: DatabaseSync,
+	terminalId: number,
+	avisar: Avisador,
+): void {
 	server.registerTool(
 		NOMBRE,
 		{
@@ -54,8 +99,12 @@ export function registrarHerramientaComentarTarea(server: McpServer, db: Databas
 					);
 				}
 				const tareaId = parsearId(id);
+				const funcionalidadAntes = funcionalidadDe(db, tareaId);
 				ESCRITORES[tipo](db, { tareaId, terminalId, texto });
-				return [`comentado: ${tipo}`, lineaIndice(itemIndiceDe(db, tareaId))].join("\n");
+				// Escrito y confirmado: ahora sí se avisa de lo que queda esperando.
+				const item = itemIndiceDe(db, tareaId);
+				avisarDeLoQueEspera(avisar, db, item, funcionalidadAntes);
+				return [`comentado: ${tipo}`, lineaIndice(item)].join("\n");
 			}),
 	);
 }

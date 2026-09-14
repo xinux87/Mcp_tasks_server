@@ -473,3 +473,37 @@ test("la tabla de transiciones entra vacía, con sus dos índices, y no admite u
 		db.close();
 	}
 });
+
+test("la migración del presupuesto deja sin tope las tareas de antes y no admite uno negativo", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-presupuesto.sql"));
+		assert.ok(cual > 0, "no está la migración del presupuesto");
+
+		// Una tarea ya escrita: es lo que hay en una base en marcha.
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		db
+			.prepare(
+				`INSERT INTO tareas (id, titulo, descripcion, tipo, estado, orden, creada, actualizada, estado_desde, revision)
+				VALUES (7, 'De antes', 'd', 'tarea', 'doing', 1, ?, ?, ?, 3)`,
+			)
+			.run(FECHA, FECHA, FECHA);
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		// Nulo es lo de siempre: sin tope y sin marca.
+		assert.equal(db.prepare("SELECT presupuesto FROM tareas WHERE id = 7").get()?.presupuesto, null);
+		db.prepare("UPDATE tareas SET presupuesto = 200000 WHERE id = 7").run();
+		assert.equal(db.prepare("SELECT presupuesto FROM tareas WHERE id = 7").get()?.presupuesto, 200_000);
+		assert.throws(() => {
+			db.prepare("UPDATE tareas SET presupuesto = -1 WHERE id = 7").run();
+		});
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});

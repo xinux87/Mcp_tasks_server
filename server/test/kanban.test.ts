@@ -717,3 +717,44 @@ test("los conmutadores y la búsqueda filtran el tablero y se combinan con el pr
 		await montaje.cerrar();
 	}
 });
+
+test("la tarjeta enseña los tokens sobre su presupuesto y avisa al pasarse", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const terminalId = valor.terminal.id;
+		const tarea = crearTareaHumana(montaje.db, {
+			titulo: "Exportar el listado a CSV",
+			descripcion: "Hoy lo copian a mano.",
+			usuarioId: 1,
+			presupuesto: 200_000,
+		});
+		const gastar = (tokens: number): void => {
+			registrarConsumo(montaje.db, {
+				tareaId: tarea.id,
+				fase: "ejecucion",
+				modelo: "opus",
+				terminalId,
+				tokens,
+				herramientas: 41,
+				duracionMs: 1_000,
+			});
+		};
+
+		gastar(184_600);
+		const dentro = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
+		assert.match(dentro, /<span class="tokens">184 k \/ 200 k<\/span>/);
+		assert.ok(!dentro.includes("marca-sobre-presupuesto"), "por debajo del tope no hay aviso");
+
+		gastar(20_000);
+		const fuera = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
+		assert.match(fuera, /<span class="tokens">204 k \/ 200 k<\/span>/);
+		assert.match(fuera, /<span class="insignia marca-sobre-presupuesto color-naranja">sobre presupuesto<\/span>/);
+		// Y se puede filtrar por la marca, como por cualquier otra.
+		const filtrado = await (await pedir(montaje, "/tareas/kanban?marca=sobre+presupuesto", { cookie })).text();
+		assert.match(filtrado, /data-id="T-0001"/);
+	} finally {
+		await montaje.cerrar();
+	}
+});

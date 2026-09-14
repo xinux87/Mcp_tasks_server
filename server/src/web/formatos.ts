@@ -1,3 +1,5 @@
+import { tokensAbreviados } from "../db/consumo.ts";
+
 /** Rellena a dos cifras: 7 → `07`. */
 function dosCifras(valor: number): string {
 	return String(valor).padStart(2, "0");
@@ -86,20 +88,22 @@ export function numeroLegible(valor: number): string {
 }
 
 /**
- * Tokens para donde solo caben tres o cuatro caracteres: `980`, `184 k`,
- * `1,2 M`. Entero por debajo de mil, miles sin decimales hasta el millón y
- * millones con una decimal. Siempre hacia abajo: 999.999 son 999 k, no un
- * millón que todavía no se ha gastado.
+ * La abreviación de tokens vive en `src/db/consumo.ts`, que es donde están los
+ * tokens: el rastro de una edición la necesita y `src/db/` no puede importar de
+ * la web. Aquí se reexporta para que las páginas tengan una sola puerta.
  */
-export function tokensAbreviados(valor: number): string {
-	const tokens = Math.max(0, Math.trunc(valor));
-	if (tokens < 1_000) {
-		return String(tokens);
+export { tokensAbreviados };
+
+/**
+ * Los tokens con su tope cuando lo hay: `184 k / 200 k`, y `184 k` cuando no.
+ * Vacío cuando no hay ni gasto ni tope: un cero solo no dice nada. Es lo que
+ * pintan la fila de la lista y la tarjeta del kanban.
+ */
+export function tokensConPresupuesto(tokens: number, presupuesto: number | null): string {
+	if (presupuesto !== null) {
+		return `${tokensAbreviados(tokens)} / ${tokensAbreviados(presupuesto)}`;
 	}
-	if (tokens < 1_000_000) {
-		return `${Math.floor(tokens / 1_000)} k`;
-	}
-	return `${(Math.floor(tokens / 100_000) / 10).toFixed(1).replace(".", ",")} M`;
+	return tokens === 0 ? "" : tokensAbreviados(tokens);
 }
 
 /**

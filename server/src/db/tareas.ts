@@ -55,7 +55,7 @@ export type Fase = "analisis" | "ejecucion";
 export type TipoTarea = "tarea" | "pregunta" | "funcionalidad";
 
 /** Etiquetas derivadas del estado de la tarea. No se guardan: se calculan al leer. */
-export type Marca = "bloqueada" | "sin terminal" | "en marcha" | "análisis listo" | "esperando";
+export type Marca = "bloqueada" | "sin terminal" | "en marcha" | "análisis listo" | "esperando" | "sobre presupuesto";
 
 const ESTADOS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
 
@@ -74,6 +74,8 @@ export type Tarea = {
 	orden: number;
 	padreId: number | null;
 	autoejecucion: boolean;
+	/** Tope de tokens, o `null` si no tiene. Pasarlo pone la marca `sobre presupuesto`. */
+	presupuesto: number | null;
 	ejecucionAprobada: boolean;
 	analisisHecho: boolean;
 	analisisModelo: string | null;
@@ -125,6 +127,8 @@ export type ItemIndice = {
 	hijasCerradas: number;
 	/** Tokens de la tarea más los de todas sus descendientes. */
 	tokensConHijas: number;
+	/** Tope de tokens, o `null` si no tiene: la fila y la tarjeta pintan `184 k / 200 k`. */
+	presupuesto: number | null;
 	analisisModelo: string | null;
 	analisisTerminal: string | null;
 	ejecucionModelo: string | null;
@@ -202,6 +206,7 @@ export function comoTarea(fila: Record<string, unknown>): Tarea {
 		orden: entero(fila, "orden"),
 		padreId: enteroOpcional(fila, "padre_id"),
 		autoejecucion: booleano(fila, "autoejecucion"),
+		presupuesto: enteroOpcional(fila, "presupuesto"),
 		ejecucionAprobada: booleano(fila, "ejecucion_aprobada"),
 		analisisHecho: booleano(fila, "analisis_hecho"),
 		analisisModelo: textoOpcional(fila, "analisis_modelo"),
@@ -222,6 +227,7 @@ export function comoTarea(fila: Record<string, unknown>): Tarea {
 function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
 	const tarea = comoTarea(fila);
 	const esFuncionalidad = tarea.tipo === "funcionalidad";
+	const tokensConHijas = entero(fila, "tokens_con_hijas");
 	return {
 		id: tarea.id,
 		proyectoId: tarea.proyectoId,
@@ -229,7 +235,7 @@ function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
 		estado: tarea.estado,
 		titulo: tarea.titulo,
 		padreId: tarea.padreId,
-		marcas: marcasDe(tarea, entero(fila, "preguntas_abiertas"), entero(fila, "dependencias_pendientes")),
+		marcas: marcasDe(tarea, entero(fila, "preguntas_abiertas"), entero(fila, "dependencias_pendientes"), tokensConHijas),
 		estadoDesde: tarea.estadoDesde,
 		bloqueadaDesde: textoOpcional(fila, "bloqueada_desde"),
 		// Una parte cerrada es una hija `finished`: en una funcionalidad la
@@ -238,7 +244,8 @@ function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
 		partesCerradas: esFuncionalidad ? entero(fila, "partes_cerradas") : null,
 		hijas: entero(fila, "hijas"),
 		hijasCerradas: entero(fila, "hijas_cerradas"),
-		tokensConHijas: entero(fila, "tokens_con_hijas"),
+		tokensConHijas,
+		presupuesto: tarea.presupuesto,
 		analisisModelo: tarea.analisisModelo,
 		analisisTerminal: textoOpcional(fila, "analisis_terminal"),
 		ejecucionModelo: tarea.ejecucionModelo,
@@ -366,8 +373,17 @@ export function faseQueToca(tarea: Tarea): Fase {
 /**
  * Marcas activas de la tarea, en el orden en el que se muestran. No se
  * guardan en la base de datos: son consecuencia del estado.
+ *
+ * `tokensConHijas` es lo gastado en el árbol entero, que es con lo que se
+ * compara el presupuesto: el índice ya lo trae y `leerTarea` ya lo calcula
+ * para la ficha.
  */
-export function marcasDe(tarea: Tarea, preguntasAbiertas: number, dependenciasPendientes = 0): Marca[] {
+export function marcasDe(
+	tarea: Tarea,
+	preguntasAbiertas: number,
+	dependenciasPendientes = 0,
+	tokensConHijas = 0,
+): Marca[] {
 	const marcas: Marca[] = [];
 	if (preguntasAbiertas > 0) {
 		marcas.push("bloqueada");
@@ -407,7 +423,30 @@ export function marcasDe(tarea: Tarea, preguntasAbiertas: number, dependenciasPe
 	if (tarea.estado === "prepared" && dependenciasPendientes > 0) {
 		marcas.push("esperando");
 	}
+	// Pasarse del tope es un aviso al humano, en cualquier columna: no frena a
+	// nadie y no depende del estado, solo de lo que ya se ha gastado.
+	if (tarea.presupuesto !== null && tokensConHijas > tarea.presupuesto) {
+		marcas.push("sobre presupuesto");
+	}
 	return marcas;
+}
+
+/**
+ * Un presupuesto tal como llega de la web o del CLI: entero de cero en
+ * adelante, o nulo para quitarlo. Cualquier otra cosa (un texto, un decimal,
+ * un negativo) es un formulario que no se guarda a medias.
+ */
+export function exigirPresupuesto(presupuesto: number | null): number | null {
+	if (presupuesto === null) {
+		return null;
+	}
+	if (!Number.isSafeInteger(presupuesto) || presupuesto < 0) {
+		throw new ErrorDeRegla(
+			"presupuesto_invalido",
+			"El presupuesto se escribe en tokens, con un número entero de 0 en adelante.",
+		);
+	}
+	return presupuesto;
 }
 
 /** Todo lo que necesita el documento Markdown de la tarea. */
@@ -417,19 +456,27 @@ export function leerTarea(db: DatabaseSync, tareaId: number): TareaCompleta | un
 		return undefined;
 	}
 	const partes = tarea.tipo === "funcionalidad" ? partesDe(db, tareaId) : null;
+	// El consumo se lee antes que las marcas: de él sale el total con hijas con
+	// el que se compara el presupuesto, y la ficha ya lo necesitaba entero.
+	const consumo = consumoDeTarea(db, tareaId);
 	return {
 		tarea,
 		proyecto: exigirProyectoPorId(db, tarea.proyectoId).clave,
 		analisisTerminal: nombreTerminal(db, tarea.analisisTerminalId),
 		ejecucionTerminal: nombreTerminal(db, tarea.ejecucionTerminalId),
-		marcas: marcasDe(tarea, contarPreguntasAbiertas(db, tareaId), contarDependenciasPendientes(db, tareaId)),
+		marcas: marcasDe(
+			tarea,
+			contarPreguntasAbiertas(db, tareaId),
+			contarDependenciasPendientes(db, tareaId),
+			consumo.totalConHijas,
+		),
 		dependeDe: dependenciasDe(db, tareaId),
 		partes: partes === null ? null : partes.total,
 		partesCerradas: partes === null ? null : partes.cerradas,
 		hijas: hijasDe(db, tareaId),
 		comentarios: comentariosDeTarea(db, tareaId),
 		preguntas: preguntasDeTarea(db, tareaId),
-		consumo: consumoDeTarea(db, tareaId),
+		consumo,
 		revisionServidor: revisionActual(db),
 	};
 }
@@ -599,10 +646,10 @@ export function siguienteOrden(db: DatabaseSync, estado: Estado): number {
 
 const INSERTAR_TAREA = `
 	INSERT INTO tareas (
-		proyecto_id, titulo, descripcion, tipo, rama, estado, orden, padre_id, autoejecucion, ejecucion_aprobada,
-		analisis_hecho, analisis_modelo, analisis_terminal_id, ejecucion_modelo, ejecucion_terminal_id,
+		proyecto_id, titulo, descripcion, tipo, rama, estado, orden, padre_id, autoejecucion, presupuesto,
+		ejecucion_aprobada, analisis_hecho, analisis_modelo, analisis_terminal_id, ejecucion_modelo, ejecucion_terminal_id,
 		en_marcha_terminal_id, creada_por_usuario_id, creada_por_terminal_id, creada, actualizada, estado_desde, revision
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /** Los campos con los que nace una tarea. Lo comparte `funcionalidades.ts`. */
 export type FilaNueva = {
@@ -614,6 +661,8 @@ export type FilaNueva = {
 	estado: Estado;
 	padreId: number | null;
 	autoejecucion: boolean;
+	/** Solo lo pone el humano al crearla: una hija, una propuesta y una parte nacen sin tope. */
+	presupuesto?: number | null;
 	analisisHecho: boolean;
 	analisisModelo: string | null;
 	analisisTerminalId: number | null;
@@ -636,6 +685,7 @@ export function insertarTarea(conexion: DatabaseSync, revision: number, nueva: F
 		siguienteOrden(conexion, nueva.estado),
 		nueva.padreId,
 		nueva.autoejecucion ? 1 : 0,
+		nueva.presupuesto ?? null,
 		0,
 		nueva.analisisHecho ? 1 : 0,
 		nueva.analisisModelo,
@@ -725,6 +775,8 @@ export type NuevaTareaHumana = {
 	/** Tareas que tienen que estar `done` o `finished` antes que esta. */
 	dependeDe?: number[];
 	autoejecucion?: boolean;
+	/** Tope de tokens. Sin él, la tarea no tiene presupuesto y nunca lleva la marca. */
+	presupuesto?: number | null;
 	analisisModelo?: string | null;
 	analisisTerminalId?: number | null;
 	ejecucionModelo?: string | null;
@@ -765,6 +817,7 @@ export function crearTareaHumana(db: DatabaseSync, datos: NuevaTareaHumana): Tar
 			estado: "backlog",
 			padreId,
 			autoejecucion: datos.autoejecucion ?? true,
+			presupuesto: exigirPresupuesto(datos.presupuesto ?? null),
 			analisisHecho: false,
 			analisisModelo: datos.analisisModelo ?? null,
 			analisisTerminalId: datos.analisisTerminalId ?? null,
