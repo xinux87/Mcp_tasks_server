@@ -24,7 +24,7 @@ function tarea(banco: Banco, titulo: string, dependeDe: number[] = []): Tarea {
 	return crearTareaHumana(banco.db, {
 		titulo,
 		descripcion: "d",
-		usuarioId: banco.xinux,
+		usuarioId: banco.ana,
 		dependeDe,
 		analisisModelo: "sonnet",
 		analisisTerminalId: banco.portatil,
@@ -53,14 +53,14 @@ test("una tarea no depende de sí misma, ni de una que no existe, ni cierra un c
 				fijarDependencias(banco.db, {
 					tareaId: segunda.id,
 					dependeDe: [segunda.id],
-					actor: { usuarioId: banco.xinux },
+					actor: { usuarioId: banco.ana },
 				}),
 			),
 			"dependencia_propia",
 		);
 		assert.equal(
 			codigoDe(() =>
-				fijarDependencias(banco.db, { tareaId: segunda.id, dependeDe: [404], actor: { usuarioId: banco.xinux } }),
+				fijarDependencias(banco.db, { tareaId: segunda.id, dependeDe: [404], actor: { usuarioId: banco.ana } }),
 			),
 			"tarea_inexistente",
 		);
@@ -71,7 +71,7 @@ test("una tarea no depende de sí misma, ni de una que no existe, ni cierra un c
 				fijarDependencias(banco.db, {
 					tareaId: primera.id,
 					dependeDe: [segunda.id],
-					actor: { usuarioId: banco.xinux },
+					actor: { usuarioId: banco.ana },
 				}),
 			),
 			"dependencia_ciclica",
@@ -83,7 +83,7 @@ test("una tarea no depende de sí misma, ni de una que no existe, ni cierra un c
 				fijarDependencias(banco.db, {
 					tareaId: primera.id,
 					dependeDe: [tercera.id],
-					actor: { usuarioId: banco.xinux },
+					actor: { usuarioId: banco.ana },
 				}),
 			),
 			"dependencia_ciclica",
@@ -104,7 +104,7 @@ test("las dependencias se fijan en backlog, dejan rastro y ahí se congelan", ()
 		fijarDependencias(banco.db, {
 			tareaId: segunda.id,
 			dependeDe: [otra.id, primera.id, primera.id],
-			actor: { usuarioId: banco.xinux },
+			actor: { usuarioId: banco.ana },
 		});
 		// Sin repetidas y en orden, aunque llegaran de cualquier manera.
 		assert.deepEqual(dependenciasDe(banco.db, segunda.id), [primera.id, otra.id]);
@@ -112,10 +112,10 @@ test("las dependencias se fijan en backlog, dejan rastro y ahí se congelan", ()
 		assert.equal(rastro.at(-1)?.accion, "editar_tarea");
 		assert.equal(rastro.at(-1)?.detalle, "dependencias: T-0001, T-0002");
 
-		moverTareaHumano(banco.db, { tareaId: segunda.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: segunda.id, usuarioId: banco.ana, estado: "prepared" });
 		assert.equal(
 			codigoDe(() =>
-				fijarDependencias(banco.db, { tareaId: segunda.id, dependeDe: [], actor: { usuarioId: banco.xinux } }),
+				fijarDependencias(banco.db, { tareaId: segunda.id, dependeDe: [], actor: { usuarioId: banco.ana } }),
 			),
 			"solo_en_backlog",
 		);
@@ -129,8 +129,8 @@ test("con una dependencia sin cerrar la tarea espera: ni se toma ni sale en nove
 	try {
 		const primera = tarea(banco, "Primera");
 		const segunda = tarea(banco, "Segunda", [primera.id]);
-		moverTareaHumano(banco.db, { tareaId: primera.id, usuarioId: banco.xinux, estado: "prepared" });
-		moverTareaHumano(banco.db, { tareaId: segunda.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: primera.id, usuarioId: banco.ana, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: segunda.id, usuarioId: banco.ana, estado: "prepared" });
 
 		assert.deepEqual(marcasDe(exigirTarea(banco.db, segunda.id), 0, 1), ["esperando"]);
 		assert.deepEqual(itemIndiceDe(banco.db, segunda.id).marcas, ["esperando"]);

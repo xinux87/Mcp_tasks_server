@@ -18,7 +18,7 @@ type Montaje = {
 
 function montar(): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
-	const { valor: usuario } = crearUsuario(db, "xinux", hashPassword("secreta"));
+	const { valor: usuario } = crearUsuario(db, "ana", hashPassword("secreta"));
 	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
 	return {
 		db,
@@ -58,7 +58,7 @@ async function pedir(montaje: Montaje, ruta: string, opciones: Opciones = {}): P
 
 async function entrar(montaje: Montaje): Promise<string> {
 	const respuesta = await pedir(montaje, "/login", {
-		formulario: { usuario: "xinux", password: "secreta", volver: "/tareas" },
+		formulario: { usuario: "ana", password: "secreta", volver: "/tareas" },
 	});
 	assert.equal(respuesta.status, 302);
 	return (respuesta.headers.get("set-cookie") ?? "").split(";")[0] ?? "";

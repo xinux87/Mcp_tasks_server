@@ -108,7 +108,7 @@ function terminalesDeUsuario(db: DatabaseSync, usuarioId: number): number {
  *
  * Lo que el usuario firmó (tareas creadas, preguntas contestadas) no se borra:
  * se queda sin referencia. El autor de los comentarios del hilo ya está
- * escrito como texto (`humano:xinux`), así que el hilo se lee igual.
+ * escrito como texto (`humano:ana`), así que el hilo se lee igual.
  */
 export function borrarUsuario(db: DatabaseSync, usuarioId: number, actorId: number): Usuario {
 	return enTransaccionConRevision(db, (conexion) => {

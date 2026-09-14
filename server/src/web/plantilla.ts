@@ -13,6 +13,13 @@ import {
 	etiqueta,
 	type Miga,
 } from "./componentes.ts";
+import {
+	NOMBRE_COLUMNA,
+	NOMBRE_ESTADO,
+	NOMBRE_MARCA,
+	NOMBRE_TIPO_COMENTARIO,
+	NOMBRE_TIPO_TAREA,
+} from "./vocabulario.ts";
 
 /**
  * Lo que devuelve la plantilla `html` de Hono: HTML con cada interpolación ya
@@ -30,14 +37,8 @@ export type RespuestaHtml = Response | Promise<Response>;
 /** Nombre del proyecto, tal como aparece en la barra lateral y en el título. */
 export const NOMBRE_PROYECTO = "MCP Tareas";
 
-/** Las cinco columnas del kanban, en su orden, con el título que se enseña. */
-export const COLUMNAS: readonly { estado: Estado; titulo: string }[] = [
-	{ estado: "backlog", titulo: "Backlog" },
-	{ estado: "prepared", titulo: "Preparadas" },
-	{ estado: "doing", titulo: "En curso" },
-	{ estado: "done", titulo: "Hechas" },
-	{ estado: "finished", titulo: "Cerradas" },
-];
+/** Las cinco columnas del tablero, en su orden. El rótulo lo pone `rotuloColumna`. */
+export const COLUMNAS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
 
 /** Sugerencias de modelo del formulario de tarea. No es una lista cerrada. */
 export const MODELOS_SUGERIDOS: readonly string[] = ["opus", "sonnet", "haiku", "fable"];
@@ -55,37 +56,53 @@ const CLASE_MARCA: Record<Marca, string> = {
 	"sobre presupuesto": "sobre-presupuesto",
 };
 
-/** Etiqueta de estado. El valor viene de un conjunto cerrado, así que sirve de clase. */
+/**
+ * Etiqueta de estado. El texto es el del vocabulario; la clase lleva el nombre
+ * interno, que viene de un conjunto cerrado y es lo que buscan los tests.
+ */
 export function insigniaEstado(estado: Estado): Html {
-	return etiqueta(estado, COLOR_ESTADO[estado], `estado-${estado}`);
+	return etiqueta(NOMBRE_ESTADO[estado], COLOR_ESTADO[estado], `estado-${estado}`);
+}
+
+/**
+ * La misma etiqueta, con el nombre de la columna en plural: encabeza un montón
+ * de tareas, no una. Comparte clase y color con la de estado, que es lo que
+ * hace que el tablero y la tarjeta se lean como lo mismo.
+ */
+export function insigniaColumna(estado: Estado): Html {
+	return etiqueta(NOMBRE_COLUMNA[estado], COLOR_ESTADO[estado], `estado-${estado}`);
 }
 
 /** Etiquetas de las marcas activas de una tarea, en su orden. */
 export function insigniasMarcas(marcas: readonly Marca[]): Html {
-	return html`${marcas.map((marca) => etiqueta(marca, COLOR_MARCA[marca], `marca-${CLASE_MARCA[marca]}`))}`;
+	return html`${marcas.map((marca) =>
+		etiqueta(NOMBRE_MARCA[marca], COLOR_MARCA[marca], `marca-${CLASE_MARCA[marca]}`),
+	)}`;
 }
 
 /**
  * Etiqueta del tipo de un comentario del hilo. Recibe una cadena porque es lo
- * que hay guardado; un tipo que no esté en el mapa se pinta en gris en vez de
- * romper la página.
+ * que hay guardado; un tipo que no esté en el mapa se pinta en gris y con su
+ * nombre crudo en vez de romper la página.
  */
 export function insigniaTipo(tipo: string): Html {
 	const colores: Record<string, Color | undefined> = COLOR_TIPO;
-	return etiqueta(tipo, colores[tipo] ?? "gris", `tipo-${tipo}`);
+	const nombres: Record<string, string | undefined> = NOMBRE_TIPO_COMENTARIO;
+	return etiqueta(nombres[tipo] ?? tipo, colores[tipo] ?? "gris", `tipo-${tipo}`);
 }
 
 /**
  * Etiqueta del tipo de la tarea. No se pinta en una tarea normal: `tarea` es lo
  * corriente y decirlo en cada tarjeta no aportaría nada. Una funcionalidad
- * lleva su progreso al lado cuando se sabe: `funcionalidad · 3/7`.
+ * lleva su progreso al lado cuando se sabe: `Funcionalidad 3/7`.
  */
 export function insigniaTipoTarea(tipo: TipoTarea, progreso?: string | null): Html {
 	if (tipo === "pregunta") {
-		return etiqueta("pregunta", COLOR_TIPO_TAREA.pregunta, "tipo-pregunta");
+		return etiqueta(NOMBRE_TIPO_TAREA.pregunta, COLOR_TIPO_TAREA.pregunta, "tipo-pregunta");
 	}
 	if (tipo === "funcionalidad") {
-		const texto = progreso === undefined || progreso === null ? "funcionalidad" : `funcionalidad · ${progreso}`;
+		const nombre = NOMBRE_TIPO_TAREA.funcionalidad;
+		const texto = progreso === undefined || progreso === null ? nombre : `${nombre} ${progreso}`;
 		return etiqueta(texto, COLOR_TIPO_TAREA.funcionalidad, "tipo-funcionalidad");
 	}
 	return html``;
@@ -109,31 +126,65 @@ type EntradaNav = {
 };
 
 /**
- * Los dos bloques de la navegación. La ficha y el alta de tarea marcan
- * «Lista»: son la misma sección, no otro sitio.
+ * La bandeja va sola en lo alto de la navegación: es la pantalla que dice qué
+ * espera por el humano y no es una más de las de trabajo. Cruza todos los
+ * proyectos, así que no se acota a ninguno.
+ */
+const BANDEJA: EntradaNav = { ruta: "/", texto: "Bandeja", vistas: ["bandeja"] };
+
+/**
+ * Los dos bloques de la navegación. «Tareas» es una sección con dos vistas de
+ * lo mismo, la lista y el tablero, y una sola entrada: la ficha y el alta son
+ * la misma sección, no otro sitio.
  */
 const BLOQUES: readonly { titulo: string; entradas: readonly EntradaNav[] }[] = [
 	{
-		titulo: "Tareas",
+		titulo: "Trabajo",
 		entradas: [
-			// La bandeja cruza todos los proyectos: no se acota a ninguno.
-			{ ruta: "/", texto: "Bandeja", vistas: ["bandeja"] },
-			{ ruta: "/tareas", texto: "Lista", vistas: ["lista", "ficha", "tarea", "tarea-nueva"], acotable: true },
-			{ ruta: "/tareas/kanban", texto: "Kanban", vistas: ["kanban"], acotable: true },
+			{
+				ruta: "/tareas",
+				texto: "Tareas",
+				vistas: ["lista", "kanban", "ficha", "tarea", "tarea-nueva"],
+				acotable: true,
+			},
 			{ ruta: "/funcionalidades", texto: "Funcionalidades", vistas: ["funcionalidades"], acotable: true },
 			{ ruta: "/informes", texto: "Informes", vistas: ["informes"], acotable: true },
+			{ ruta: "/actividad", texto: "Actividad", vistas: ["actividad"] },
 		],
 	},
 	{
-		titulo: "Sistema",
+		titulo: "Configuración",
 		entradas: [
 			{ ruta: "/proyectos", texto: "Proyectos", vistas: ["proyectos"] },
 			{ ruta: "/terminales", texto: "Terminales", vistas: ["terminales", "conectar"] },
 			{ ruta: "/usuarios", texto: "Usuarios", vistas: ["usuarios"] },
-			{ ruta: "/actividad", texto: "Actividad", vistas: ["actividad"] },
 		],
 	},
 ];
+
+/** Las tres opciones del tema. El valor viaja al `localStorage` del navegador. */
+const TEMAS: readonly { valor: string; texto: string }[] = [
+	{ valor: "claro", texto: "Claro" },
+	{ valor: "oscuro", texto: "Oscuro" },
+	{ valor: "sistema", texto: "Sistema" },
+];
+
+/**
+ * El conmutador de tema, en el pie de la barra. Es una preferencia de quien
+ * mira y no del usuario: no toca el servidor ni la revisión, así que aquí se
+ * pinta siempre «Sistema» marcado y `cliente.ts` corrige lo que haga falta con
+ * lo que tenga guardado el navegador.
+ */
+function conmutadorTema(): Html {
+	return html`<fieldset class="tema">
+			<legend>Tema</legend>
+			${TEMAS.map(
+				(cual) => html`<label>
+					<input type="radio" name="tema" value="${cual.valor}"${cual.valor === "sistema" ? raw(" checked") : ""}>${cual.texto}
+				</label>`,
+			)}
+		</fieldset>`;
+}
 
 /**
  * A qué vista lleva el selector de proyecto: a la misma en la que se está, y a
@@ -181,8 +232,10 @@ export type OpcionesPagina = NavProyectos & {
 	 * que se refrescan en vivo; sin ella el cliente no abre el SSE.
 	 */
 	revision?: number;
-	/** Con migas o con acciones, la página arranca con `cabeceraPagina`. */
+	/** Con migas, propósito o acciones, la página arranca con `cabeceraPagina`. */
 	migas?: readonly Miga[];
+	/** Para qué sirve esta pantalla, en una frase y desde el punto de vista del humano. */
+	proposito?: string;
 	/** Etiquetas de estado y marcas, bajo el título. Solo se pintan con cabecera. */
 	etiquetas?: Html;
 	/** Las acciones principales, a la derecha del título. */
@@ -214,7 +267,7 @@ function selectorProyecto(proyectos: readonly Proyecto[], proyecto: Proyecto | u
 				<option value="${ruta}"${proyecto === undefined ? raw(" selected") : ""}>Todos los proyectos</option>
 				${proyectos.map(
 					(cual) =>
-						html`<option value="/p/${cual.clave}${ruta}"${cual.id === proyecto?.id ? raw(" selected") : ""}>${cual.clave} · ${cual.nombre}</option>`,
+						html`<option value="/p/${cual.clave}${ruta}"${cual.id === proyecto?.id ? raw(" selected") : ""}>${cual.clave} — ${cual.nombre}</option>`,
 				)}
 			</select>
 			<button type="submit" class="pequeno">Ir</button>
@@ -232,14 +285,16 @@ function barraLateral(
 ): Html {
 	const prefijo = nav.proyecto === undefined ? "" : `/p/${nav.proyecto.clave}`;
 	return html`<aside class="lateral" id="lateral">
-			<a class="marca" href="/tareas">${NOMBRE_PROYECTO}</a>
+			<a class="marca" href="/">${NOMBRE_PROYECTO}</a>
 			${nav.proyectos.length === 0 ? html`` : selectorProyecto(nav.proyectos, nav.proyecto, vista)}
+			<nav class="bloque bloque-suelto">${enlaceNav(BANDEJA, vista, prefijo, nav.pendientes)}</nav>
 			${BLOQUES.map(
 				(bloque) => html`<nav class="bloque">
 					<h2>${bloque.titulo}</h2>
 					${bloque.entradas.map((entrada) => enlaceNav(entrada, vista, prefijo, nav.pendientes))}
 				</nav>`,
 			)}
+			${conmutadorTema()}
 			<div class="pie-lateral">
 				${chipUsuario(usuario.nombre, usuario.color)}
 				<form method="post" action="/logout" class="en-linea">
@@ -271,6 +326,7 @@ export function pagina({
 	vista,
 	revision,
 	migas,
+	proposito,
 	etiquetas,
 	acciones,
 	ancho,
@@ -279,7 +335,7 @@ export function pagina({
 	proyecto,
 	pendientes = 0,
 }: OpcionesPagina): Html {
-	const conCabecera = migas !== undefined || acciones !== undefined;
+	const conCabecera = migas !== undefined || acciones !== undefined || proposito !== undefined;
 	const clasesContenido = usuario === null ? "contenido contenido-entrada" : "contenido";
 	const clasesDentro = ancho === "completo" ? "dentro dentro-completo" : "dentro";
 	// Lo que espera por el humano se ve desde la pestaña, esté donde esté. Sin
@@ -291,6 +347,7 @@ export function pagina({
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${cuantas}${titulo} · ${NOMBRE_PROYECTO}</title>
+<script>try{var t=localStorage.getItem("tema");if(t==="claro"||t==="oscuro"){document.documentElement.dataset.tema=t;}}catch(e){}</script>
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body${atributosCuerpo(vista, revision)}>
@@ -299,14 +356,14 @@ ${
 		? html``
 		: html`<header class="cabecera-movil">
 	<button type="button" class="alternar-lateral" id="alternar-lateral" aria-controls="lateral" aria-label="Navegación">☰</button>
-	<a class="marca" href="/tareas">${NOMBRE_PROYECTO}</a>
+	<a class="marca" href="/">${NOMBRE_PROYECTO}</a>
 </header>
 ${barraLateral(usuario, vista ?? "", { proyectos: proyectos ?? [], proyecto, pendientes })}`
 }
 <main class="${clasesContenido}">
 	<div class="${clasesDentro}">
 		${aviso === null || aviso === undefined || aviso === "" ? html`` : html`<p class="aviso" role="alert">${aviso}</p>`}
-		${conCabecera ? cabeceraPagina({ migas, titulo, etiquetas, acciones }) : html``}
+		${conCabecera ? cabeceraPagina({ migas, titulo, proposito, etiquetas, acciones }) : html``}
 		${cuerpo}
 	</div>
 </main>

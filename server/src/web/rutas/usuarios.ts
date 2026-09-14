@@ -99,6 +99,7 @@ function paginaUsuarios(c: Context, deps: DependenciasWeb, aviso: string | null)
 		pagina({
 			...navProyectos(c, deps.db),
 			titulo: "Usuarios",
+			proposito: "Quién puede entrar en esta web.",
 			usuario: usuarioActual(c),
 			vista: "usuarios",
 			aviso,

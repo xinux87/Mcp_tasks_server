@@ -30,8 +30,8 @@ type Montaje = {
 
 function montar(): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
-	const { valor: usuario } = crearUsuario(db, "xinux", hashPassword("secreta"));
-	const { valor } = crearTerminalConToken(db, usuario.id, "portatil-xinux", "xinux@ejemplo.com");
+	const { valor: usuario } = crearUsuario(db, "ana", hashPassword("secreta"));
+	const { valor } = crearTerminalConToken(db, usuario.id, "portatil-ana", "ana@ejemplo.com");
 	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
 	return {
 		db,

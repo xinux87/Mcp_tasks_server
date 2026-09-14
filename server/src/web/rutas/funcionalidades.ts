@@ -92,8 +92,8 @@ function frenos(fila: Fila): Html {
 	if (fila.bloqueadas === 0 && fila.esperando === 0) {
 		return html`<span class="silencio">${SIN_DATO}</span>`;
 	}
-	return html`${fila.bloqueadas === 0 ? html`` : etiqueta(`${fila.bloqueadas} bloqueada${fila.bloqueadas === 1 ? "" : "s"}`, "rojo", "marca-bloqueada")}
-		${fila.esperando === 0 ? html`` : etiqueta(`${fila.esperando} esperando`, "naranja", "marca-esperando")}`;
+	return html`${fila.bloqueadas === 0 ? html`` : etiqueta(`${fila.bloqueadas} con pregunta abierta`, "rojo", "marca-bloqueada")}
+		${fila.esperando === 0 ? html`` : etiqueta(`${fila.esperando} esperando a otra`, "naranja", "marca-esperando")}`;
 }
 
 function filaFuncionalidad(fila: Fila, creadorDe: Creador, claves: Claves): Html {
@@ -181,7 +181,12 @@ export function registrarRutasFuncionalidades(app: Hono, deps: DependenciasWeb):
 		return c.html(
 			pagina({
 				...navProyectos(c, deps.db),
-				titulo: acotado === undefined ? "Funcionalidades" : `Funcionalidades · ${acotado.clave}`,
+				titulo: "Funcionalidades",
+				proposito: "Lo que has pedido en lenguaje de negocio, y cuánto de cada cosa está hecho.",
+				migas:
+					acotado === undefined
+						? undefined
+						: [{ texto: acotado.clave, href: `/p/${acotado.clave}/tareas` }, { texto: "Funcionalidades" }],
 				usuario: usuarioActual(c),
 				vista: "funcionalidades",
 				revision: revisionActual(deps.db),

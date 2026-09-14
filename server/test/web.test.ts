@@ -22,6 +22,7 @@ import {
 	moverTareaHumano,
 	tomarTarea,
 } from "../src/db/tareas.ts";
+import { formatearId } from "../src/md/ids.ts";
 import { type ConEdad, edadEnColumna } from "../src/web/componentes.ts";
 import { edad, tokensAbreviados } from "../src/web/formatos.ts";
 import { tarjetaPreguntaAbierta } from "../src/web/hilo.ts";
@@ -37,7 +38,7 @@ type Montaje = {
 /** Base en memoria con un usuario, y la app entera montada, sin abrir puerto. */
 function montar(config: Config = CONFIG_PRUEBA): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
-	crearUsuario(db, "xinux", hashPassword("secreta"));
+	crearUsuario(db, "ana", hashPassword("secreta"));
 	const { app, cerrar } = crearApp({ db, config });
 	return {
 		db,
@@ -92,7 +93,7 @@ function cookieDeSesion(respuesta: Response): string {
 /** Entra con el usuario de prueba y devuelve su cookie. */
 async function entrar(montaje: Montaje): Promise<string> {
 	const respuesta = await pedir(montaje, "/login", {
-		formulario: { usuario: "xinux", password: "secreta", volver: "/tareas" },
+		formulario: { usuario: "ana", password: "secreta", volver: "/tareas" },
 	});
 	assert.equal(respuesta.status, 302);
 	return cookieDeSesion(respuesta);
@@ -104,7 +105,7 @@ async function entrar(montaje: Montaje): Promise<string> {
  */
 function grupo(cuerpo: string, titulo: string): string {
 	const trozos = cuerpo.split('<section class="grupo">');
-	const encontrado = trozos.find((trozo) => trozo.includes(`</span> ${titulo} <span class="contador"`));
+	const encontrado = trozos.find((trozo) => trozo.includes(`${titulo}</span> <span class="dueno"`));
 	assert.ok(encontrado !== undefined, `no aparece el grupo «${titulo}»`);
 	return encontrado;
 }
@@ -141,13 +142,13 @@ test("sin sesión la web redirige al login, y el login exige la contraseña buen
 		assert.equal(sinSesion.headers.get("location"), "/login?volver=%2Ftareas");
 
 		const mala = await pedir(montaje, "/login", {
-			formulario: { usuario: "xinux", password: "otra", volver: "/tareas" },
+			formulario: { usuario: "ana", password: "otra", volver: "/tareas" },
 		});
 		assert.equal(mala.status, 401);
 		assert.match(await mala.text(), /Usuario o contraseña incorrectos/);
 
 		const buena = await pedir(montaje, "/login", {
-			formulario: { usuario: "xinux", password: "secreta", volver: "/tareas" },
+			formulario: { usuario: "ana", password: "secreta", volver: "/tareas" },
 		});
 		assert.equal(buena.status, 302);
 		assert.equal(buena.headers.get("location"), "/tareas");
@@ -189,12 +190,12 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		// El grupo se encabeza con la etiqueta del estado, el título y el contador.
 		assert.match(
 			cuerpoLista,
-			/<span class="insignia estado-backlog color-gris">backlog<\/span> Backlog <span class="contador">1<\/span>/,
+			/<span class="insignia estado-backlog color-gris">Por definir<\/span> <span class="dueno">la defines tú<\/span> <span class="contador">1<\/span>/,
 		);
-		const backlog = grupo(cuerpoLista, "Backlog");
+		const backlog = grupo(cuerpoLista, "Por definir");
 		assert.match(backlog, /T-0001/);
 		// «Creada por» enseña el chip de quien la creó, con su color.
-		assert.match(backlog, /<span class="chip color-\w+"><span class="inicial">X<\/span>xinux<\/span>/);
+		assert.match(backlog, /<span class="chip color-\w+"><span class="inicial">A<\/span>ana<\/span>/);
 		assert.match(grupo(cuerpoLista, "Preparadas"), /Ninguna\./);
 		// La lista arranca con «cabeceraPagina» y su acción principal, y su tabla
 		// ocupa todo el ancho como el kanban.
@@ -253,7 +254,7 @@ test("una pregunta se crea con su tipo, sale con badge y sin nada de ejecución"
 		const ficha = await pedir(montaje, "/tareas/T-0001", { cookie });
 		assert.equal(ficha.status, 200);
 		const cuerpo = await ficha.text();
-		assert.match(cuerpo, /<span class="insignia tipo-pregunta color-rosa">pregunta<\/span>/);
+		assert.match(cuerpo, /<span class="insignia tipo-pregunta color-rosa">Pregunta<\/span>/);
 		// Las propiedades de una pregunta llevan Tipo y no llevan ejecución.
 		assert.match(cuerpo, /<dt>Tipo<\/dt>/);
 		assert.doesNotMatch(cuerpo, /<dt>Ejecución<\/dt>/);
@@ -269,7 +270,7 @@ test("una pregunta se crea con su tipo, sale con badge y sin nada de ejecución"
 
 		// El kanban la marca igual en su tarjeta.
 		const kanban = await pedir(montaje, "/tareas/kanban", { cookie });
-		assert.match(await kanban.text(), /<span class="insignia tipo-pregunta color-rosa">pregunta<\/span>/);
+		assert.match(await kanban.text(), /<span class="insignia tipo-pregunta color-rosa">Pregunta<\/span>/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -285,7 +286,7 @@ test("mover una tarea: a prepared y de vuelta a backlog, que exige nota", async 
 		assert.equal(aPrepared.status, 302);
 		const enPrepared = await pedir(montaje, `/tareas/${id}`, { cookie });
 		// La clase de estado es el gancho; el color va siempre en la última clase.
-		assert.match(await enPrepared.text(), /<span class="insignia estado-prepared color-azul">prepared<\/span>/);
+		assert.match(await enPrepared.text(), /<span class="insignia estado-prepared color-azul">Preparada<\/span>/);
 
 		const sinNota = await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "backlog", nota: "" } });
 		assert.equal(sinNota.status, 422);
@@ -298,7 +299,7 @@ test("mover una tarea: a prepared y de vuelta a backlog, que exige nota", async 
 		assert.equal(conNota.status, 302);
 		const vuelta = await pedir(montaje, `/tareas/${id}`, { cookie });
 		const cuerpo = await vuelta.text();
-		assert.match(cuerpo, /<span class="insignia estado-backlog color-gris">backlog<\/span>/);
+		assert.match(cuerpo, /<span class="insignia estado-backlog color-gris">Por definir<\/span>/);
 		assert.match(cuerpo, /Falta decidir el formato\./);
 		assert.match(cuerpo, /class="insignia tipo-nota color-gris"/);
 	} finally {
@@ -314,7 +315,7 @@ test("una pregunta abierta se contesta desde la ficha, y solo una vez", async ()
 		await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "prepared" } });
 
 		// El agente, contra la base de datos directamente.
-		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
 		const terminalId = valor.terminal.id;
 		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId });
 		comentarAnalisis(montaje.db, { tareaId: 1, terminalId, texto: "Hay que añadir un botón al listado." });
@@ -362,7 +363,7 @@ test("la ficha pone la pregunta abierta arriba, el hilo la manda a ella y se fil
 		const id = await crearTarea(montaje, cookie, "Exportar clientes", "Hace falta un CSV.");
 		await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "prepared" } });
 
-		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
 		const terminalId = valor.terminal.id;
 		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId });
 		comentarAnalisis(montaje.db, { tareaId: 1, terminalId, texto: "Hay que añadir un botón al listado." });
@@ -427,7 +428,7 @@ test("el hilo enseña cada autor como chip y la ficha lleva su rastro de activid
 		assert.equal(alta.status, 302);
 		await pedir(montaje, "/tareas/T-0001/mover", { cookie, formulario: { estado: "prepared" } });
 
-		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
 		const terminalId = valor.terminal.id;
 		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId });
 		comentarAnalisis(montaje.db, { tareaId: 1, terminalId, texto: "Hay que añadir un botón al listado." });
@@ -457,11 +458,11 @@ test("el hilo enseña cada autor como chip y la ficha lleva su rastro de activid
 		// El agente: chip gris con la inicial del modelo y su terminal detrás.
 		assert.match(
 			cuerpo,
-			/<span class="chip color-gris"><span class="inicial">S<\/span>sonnet<span class="terminal">@portatil-xinux<\/span><\/span>/,
+			/<span class="chip color-gris"><span class="inicial">S<\/span>sonnet<span class="terminal">@portatil-ana<\/span><\/span>/,
 		);
 		// El humano: el chip de su usuario, con el color que tiene ahora.
-		assert.match(cuerpo, /<span class="chip color-\w+"><span class="inicial">X<\/span>xinux<\/span>/);
-		assert.match(cuerpo, /<span class="insignia tipo-analisis color-azul">analisis<\/span>/);
+		assert.match(cuerpo, /<span class="chip color-\w+"><span class="inicial">A<\/span>ana<\/span>/);
+		assert.match(cuerpo, /<span class="insignia tipo-analisis color-azul">Análisis<\/span>/);
 		assert.match(cuerpo, /<span>P1<\/span>/);
 		// Contestada, ya no hay formulario de respuesta en su tarjeta.
 		assert.doesNotMatch(cuerpo, /class="responder"/);
@@ -474,7 +475,7 @@ test("el hilo enseña cada autor como chip y la ficha lleva su rastro de activid
 		assert.match(actividad, /P1: Punto y coma/);
 
 		// La vuelta atrás está, pero plegada: es excepcional.
-		assert.match(cuerpo, /<details class="caja">\s*<summary><strong>Volver a backlog<\/strong><\/summary>/);
+		assert.match(cuerpo, /<details class="caja">\s*<summary><strong>Devolver a por definir<\/strong><\/summary>/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -486,7 +487,7 @@ test("un terminal se crea con su token, se lista y se revoca", async () => {
 		const cookie = await entrar(montaje);
 		const alta = await pedir(montaje, "/terminales", {
 			cookie,
-			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+			formulario: { nombre: "portatil-ana", cuenta: "ana@ejemplo.com" },
 		});
 		assert.equal(alta.status, 200);
 		const cuerpoAlta = await alta.text();
@@ -500,11 +501,11 @@ test("un terminal se crea con su token, se lista y se revoca", async () => {
 
 		const lista = await pedir(montaje, "/terminales", { cookie });
 		const cuerpoLista = await lista.text();
-		assert.match(cuerpoLista, /portatil-xinux/);
-		assert.match(cuerpoLista, />activo</);
+		assert.match(cuerpoLista, /portatil-ana/);
+		assert.match(cuerpoLista, />Activo</);
 		assert.match(cuerpoLista, /sin datos/);
 		// El dueño y quien lo creó van como chip con el color del usuario.
-		assert.match(cuerpoLista, /<span class="chip color-azul"><span class="inicial">X<\/span>xinux<\/span>/);
+		assert.match(cuerpoLista, /<span class="chip color-azul"><span class="inicial">A<\/span>ana<\/span>/);
 		// La telemetría no mueve la revisión: esta vista se refresca por intervalo.
 		assert.match(cuerpoLista, /data-vista="terminales"/);
 
@@ -516,10 +517,10 @@ test("un terminal se crea con su token, se lista y se revoca", async () => {
 		const revocado = await pedir(montaje, `/terminales/${terminalId}/revocar`, { cookie, formulario: {} });
 		assert.equal(revocado.status, 302);
 		assert.equal(buscarTerminalPorToken(montaje.db, token), undefined);
-		// La etiqueta dice «revocado» y la fecha va al lado, fuera: dentro no
+		// La etiqueta dice «Revocado» y la fecha va al lado, fuera: dentro no
 		// podría partirse y ensancharía la tabla entera.
 		const yaRevocado = await (await pedir(montaje, "/terminales", { cookie })).text();
-		assert.match(yaRevocado, /<span class="insignia color-gris">revocado<\/span>/);
+		assert.match(yaRevocado, /<span class="insignia color-gris">Revocado<\/span>/);
 		assert.match(yaRevocado, /<span class="pequeno silencio">\d{4}-\d{2}-\d{2} \d{2}:\d{2}<\/span>/);
 	} finally {
 		await montaje.cerrar();
@@ -532,7 +533,7 @@ test("el uso disponible se pinta por ventana como barra, sin estilos en línea",
 		const cookie = await entrar(montaje);
 		const alta = await pedir(montaje, "/terminales", {
 			cookie,
-			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+			formulario: { nombre: "portatil-ana", cuenta: "ana@ejemplo.com" },
 		});
 		const token = /<code class="token">([A-Za-z0-9_-]+)<\/code>/.exec(await alta.text())?.[1] ?? "";
 
@@ -620,7 +621,7 @@ test("la barra lateral enseña al usuario de la sesión con su color y marca dó
 		];
 		for (const { ruta, vista } of sistema) {
 			const cuerpo = await (await pedir(montaje, ruta, { cookie })).text();
-			assert.match(cuerpo, /<span class="chip color-azul"><span class="inicial">X<\/span>xinux<\/span>/, ruta);
+			assert.match(cuerpo, /<span class="chip color-azul"><span class="inicial">A<\/span>ana<\/span>/, ruta);
 			assert.match(cuerpo, new RegExp(`data-vista="${vista}"`), ruta);
 			// Las tres son del bloque «Sistema» y cada una marca su entrada.
 			assert.match(cuerpo, new RegExp(`<a class="enlace-nav" href="${ruta}" aria-current="page">`), ruta);
@@ -734,7 +735,7 @@ test("la página del terminal creado lleva el tutorial con el token y las direcc
 		const cookie = await entrar(montaje);
 		const alta = await pedir(montaje, "/terminales", {
 			cookie,
-			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+			formulario: { nombre: "portatil-ana", cuenta: "ana@ejemplo.com" },
 		});
 		const cuerpo = await alta.text();
 		const token = /<code class="token">([A-Za-z0-9_-]+)<\/code>/.exec(cuerpo)?.[1] ?? "";
@@ -907,7 +908,7 @@ test("la página del terminal creado ofrece el enlace de conexión con el token 
 		const cookie = await entrar(montaje);
 		const alta = await pedir(montaje, "/terminales", {
 			cookie,
-			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+			formulario: { nombre: "portatil-ana", cuenta: "ana@ejemplo.com" },
 		});
 		const cuerpo = await alta.text();
 		const token = tokenDe(cuerpo);
@@ -928,7 +929,7 @@ test("los agentes en paralelo se eligen en el alta y se cambian desde la fila", 
 		const cookie = await entrar(montaje);
 		await pedir(montaje, "/terminales", {
 			cookie,
-			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com", agentes: "2" },
+			formulario: { nombre: "portatil-ana", cuenta: "ana@ejemplo.com", agentes: "2" },
 		});
 		const id = listarTerminales(montaje.db)[0]?.id ?? 0;
 		assert.equal(listarTerminales(montaje.db)[0]?.agentes, 2);
@@ -950,7 +951,7 @@ test("los agentes en paralelo se eligen en el alta y se cambian desde la fila", 
 		// Con el usuario de la sesión, en el rastro del terminal.
 		const rastro = actividadDe(montaje.db, "terminal", id).filter((fila) => fila.accion === "cambiar_agentes");
 		assert.equal(rastro.length, 1);
-		assert.equal(rastro[0]?.usuarioNombre, "xinux");
+		assert.equal(rastro[0]?.usuarioNombre, "ana");
 		assert.equal(rastro[0]?.detalle, "2 → 4");
 
 		// Un valor que no es un entero de 1 en adelante vuelve a la lista con el aviso.
@@ -969,7 +970,7 @@ test("rotar el token da uno nuevo al mismo terminal, sin revocarlo ni subir la r
 		const cookie = await entrar(montaje);
 		const alta = await pedir(montaje, "/terminales", {
 			cookie,
-			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+			formulario: { nombre: "portatil-ana", cuenta: "ana@ejemplo.com" },
 		});
 		const viejo = tokenDe(await alta.text());
 		const id = listarTerminales(montaje.db)[0]?.id ?? 0;
@@ -1002,7 +1003,7 @@ test("rotar el token da uno nuevo al mismo terminal, sin revocarlo ni subir la r
 		// Con el usuario de la sesión, en el rastro del terminal.
 		const rastro = actividadDe(montaje.db, "terminal", id).filter((fila) => fila.accion === "rotar_terminal");
 		assert.equal(rastro.length, 1);
-		assert.equal(rastro[0]?.usuarioNombre, "xinux");
+		assert.equal(rastro[0]?.usuarioNombre, "ana");
 
 		// Un terminal revocado no se rota: el token nuevo no serviría de nada.
 		assert.equal((await pedir(montaje, `/terminales/${id}/revocar`, { cookie, formulario: {} })).status, 302);
@@ -1020,7 +1021,7 @@ test("borrar un terminal lo quita de la lista: sus tareas quedan sin terminal y 
 		const cookie = await entrar(montaje);
 		const alta = await pedir(montaje, "/terminales", {
 			cookie,
-			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+			formulario: { nombre: "portatil-ana", cuenta: "ana@ejemplo.com" },
 		});
 		const token = tokenDe(await alta.text());
 		const id = listarTerminales(montaje.db)[0]?.id ?? 0;
@@ -1088,8 +1089,8 @@ test("borrar un terminal lo quita de la lista: sus tareas quedan sin terminal y 
 
 		// Y el rastro se queda, con el nombre del terminal y quien lo borró.
 		const baja = actividadDe(montaje.db, "terminal", id).find((fila) => fila.accion === "baja_terminal");
-		assert.equal(baja?.usuarioNombre, "xinux");
-		assert.equal(baja?.objetoNombre, "portatil-xinux");
+		assert.equal(baja?.usuarioNombre, "ana");
+		assert.equal(baja?.objetoNombre, "portatil-ana");
 		assert.match(await (await pedir(montaje, "/actividad", { cookie })).text(), /borró el terminal/);
 	} finally {
 		await montaje.cerrar();
@@ -1102,7 +1103,7 @@ test("un terminal revocado se puede borrar, y borrar uno que no existe avisa sin
 		const cookie = await entrar(montaje);
 		await pedir(montaje, "/terminales", {
 			cookie,
-			formulario: { nombre: "portatil-xinux", cuenta: "xinux@ejemplo.com" },
+			formulario: { nombre: "portatil-ana", cuenta: "ana@ejemplo.com" },
 		});
 		const id = listarTerminales(montaje.db)[0]?.id ?? 0;
 		assert.equal((await pedir(montaje, `/terminales/${id}/revocar`, { cookie, formulario: {} })).status, 302);
@@ -1210,7 +1211,7 @@ test("la lista y el kanban enseñan la edad en columna, y la ficha desde cuándo
 		const ficha = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
 		assert.match(
 			ficha,
-			/estado-prepared color-azul">prepared<\/span> <span class="silencio">desde hace <span class="edad"/,
+			/estado-prepared color-azul">Preparada<\/span> <span class="silencio">desde hace <span class="edad"/,
 		);
 	} finally {
 		await montaje.cerrar();
@@ -1267,7 +1268,7 @@ test("responder, aprobar y mover vuelven a donde diga el campo volver, y a la fi
 		assert.equal(conVolver.headers.get("location"), "/");
 
 		// El análisis deja la tarea lista para aprobar y con una pregunta que contestar.
-		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
 		const terminalId = valor.terminal.id;
 		montaje.db.prepare("UPDATE tareas SET autoejecucion = 0 WHERE id = 1").run();
 		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId });
@@ -1314,7 +1315,7 @@ test("la tarjeta de una pregunta abierta se contesta fuera de la ficha y vuelve 
 		const cookie = await entrar(montaje);
 		await crearTarea(montaje, cookie, "Exportar clientes", "Hace falta un CSV.");
 		await pedir(montaje, "/tareas/T-0001/mover", { cookie, formulario: { estado: "prepared" } });
-		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
 		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId: valor.terminal.id });
 		const pregunta = preguntar(montaje.db, {
 			tareaId: 1,
@@ -1360,7 +1361,7 @@ test("la lista enseña el progreso y los tokens, y filtra por conmutador y por t
 	const montaje = montar();
 	try {
 		const cookie = await entrar(montaje);
-		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
 		const terminalId = valor.terminal.id;
 		const padre = crearTareaHumana(montaje.db, {
 			titulo: "Exportar el listado a CSV",
@@ -1411,12 +1412,12 @@ test("la lista enseña el progreso y los tokens, y filtra por conmutador y por t
 		// Sin consumo la celda se queda vacía: un cero no dice nada.
 		assert.match(lista, /<td class="numero pequeno"><\/td>/);
 
-		// «Espera por mí»: la hija en done entra; la preparada sin nada pendiente, no.
+		// «Espera por ti»: la hija en done entra; la preparada sin nada pendiente, no.
 		const espera = await (await pedir(montaje, "/tareas?rapido=espera", { cookie })).text();
 		assert.match(espera, /Generar el fichero/);
 		assert.ok(!espera.includes("Migrar el envío de correos"), "una preparada tranquila no espera por nadie");
 		// El conmutador puesto se marca y su enlace lo quita.
-		assert.match(espera, /<a class="boton-filtro" href="\/tareas" aria-current="true">Espera por mí<\/a>/);
+		assert.match(espera, /<a class="boton-filtro" href="\/tareas" aria-current="true">Espera por ti<\/a>/);
 		assert.match(espera, /<input type="hidden" name="rapido" value="espera">/);
 
 		// La búsqueda mira también la descripción.
@@ -1424,7 +1425,7 @@ test("la lista enseña el progreso y los tokens, y filtra por conmutador y por t
 		assert.match(buscado, /Migrar el envío de correos/);
 		assert.ok(!buscado.includes("Exportar el listado a CSV"), "la búsqueda deja fuera lo que no encaja");
 		// Y se combina con el conmutador, que conserva lo buscado.
-		assert.match(buscado, /<a class="boton-filtro" href="\/tareas\?q=cola&amp;rapido=espera">Espera por mí<\/a>/);
+		assert.match(buscado, /<a class="boton-filtro" href="\/tareas\?q=cola&amp;rapido=espera">Espera por ti<\/a>/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -1459,7 +1460,7 @@ test("el presupuesto se pone en el formulario, se ve en la ficha y avisa cuando 
 		assert.match(conTope, /<input type="number" name="presupuesto" min="0" step="1000" value="200000">/);
 		assert.ok(!conTope.includes("marca-sobre-presupuesto"), "sin gasto no hay aviso");
 
-		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
 		registrarConsumo(montaje.db, {
 			tareaId: 1,
 			fase: "ejecucion",
@@ -1471,13 +1472,13 @@ test("el presupuesto se pone en el formulario, se ve en la ficha y avisa cuando 
 		});
 
 		const pasada = await (await pedir(montaje, "/tareas/T-0001", { cookie })).text();
-		assert.match(pasada, /<span class="insignia marca-sobre-presupuesto color-naranja">sobre presupuesto<\/span>/);
+		assert.match(pasada, /<span class="insignia marca-sobre-presupuesto color-naranja">Sobre presupuesto<\/span>/);
 		// El consumo se lee contra el tope.
 		assert.match(pasada, /<strong>250\.000 de 200\.000<\/strong>/);
 		// Y la fila de la lista pinta lo gastado sobre el tope.
 		const lista = await (await pedir(montaje, "/tareas", { cookie })).text();
 		assert.match(lista, /<td class="numero pequeno">250 k \/ 200 k<\/td>/);
-		assert.match(lista, /<span class="insignia marca-sobre-presupuesto color-naranja">sobre presupuesto<\/span>/);
+		assert.match(lista, /<span class="insignia marca-sobre-presupuesto color-naranja">Sobre presupuesto<\/span>/);
 
 		// Quitarlo deja la tarea sin tope y sin marca, y deja rastro en los dos sentidos.
 		const edicion = (presupuesto: string): Promise<Response> =>
@@ -1514,6 +1515,264 @@ test("el presupuesto se pone en el formulario, se ve en la ficha y avisa cuando 
 		assert.equal(mala.status, 422);
 		assert.match(await mala.text(), /El presupuesto se escribe en tokens, con un número entero de 0 en adelante\./);
 		assert.equal(exigirTarea(montaje.db, 1).presupuesto, 300_000);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el tema tiene tres opciones, se aplica antes de pintar y la hoja lo sigue", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const cuerpo = await (await pedir(montaje, "/tareas", { cookie })).text();
+
+		// El conmutador: tres radios en un grupo, con «Sistema» puesto de salida.
+		assert.match(cuerpo, /<fieldset class="tema">\s*<legend>Tema<\/legend>/);
+		for (const valor of ["claro", "oscuro", "sistema"]) {
+			assert.match(cuerpo, new RegExp(`<input type="radio" name="tema" value="${valor}"`));
+		}
+		assert.match(cuerpo, /<input type="radio" name="tema" value="sistema" checked>/);
+
+		// El script del tema va antes de la hoja: sin él la página parpadearía en
+		// el tema del sistema. Es el único JavaScript en línea, y no evalúa nada.
+		const script = cuerpo.indexOf('<script>try{var t=localStorage.getItem("tema")');
+		assert.ok(script > 0, "el script del tema está en la cabecera");
+		assert.ok(script < cuerpo.indexOf("/static/app.css"), "y antes de la hoja de estilos");
+		assert.ok(!cuerpo.includes("new Function("), "nada de new Function");
+		assert.ok(!cuerpo.includes('style="'), "ningún estilo en línea");
+
+		// La hoja define los tres bloques de tema y el color de la señal.
+		const css = await (await pedir(montaje, "/static/app.css")).text();
+		for (const trozo of ['[data-tema="oscuro"]', '[data-tema="claro"]', "--turno"]) {
+			assert.ok(css.includes(trozo), `la hoja define ${trozo}`);
+		}
+		// Los nueve colores también siguen al tema elegido, no solo al del sistema.
+		assert.match(css, /:root\[data-tema="oscuro"\] \.color-azul \{/);
+
+		// Y el cliente guarda y aplica la preferencia.
+		const js = await (await pedir(montaje, "/static/app.js")).text();
+		assert.match(js, /localStorage\.setItem\("tema"/);
+		assert.match(js, /localStorage\.removeItem\("tema"\)/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("nada de lo que se ve enseña un nombre interno: estados, marcas y fases", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
+		const id = await crearTarea(montaje, cookie, "Exportar clientes", "Hace falta un CSV.");
+		await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "prepared" } });
+		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId: 1, modelo: "sonnet" });
+		comentarAnalisis(montaje.db, { tareaId: 1, terminalId: 1, texto: "Plan." });
+		registrarConsumo(montaje.db, {
+			tareaId: 1,
+			fase: "analisis",
+			modelo: "sonnet",
+			tokens: 31_500,
+			herramientas: 6,
+			duracionMs: 87_000,
+			terminalId: 1,
+		});
+
+		// La clase lleva el nombre interno; el texto, el del vocabulario.
+		const ficha = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		assert.match(ficha, /<span class="insignia estado-prepared color-azul">Preparada<\/span>/);
+		assert.match(ficha, /<td>Análisis<\/td>/);
+		assert.match(ficha, /<span class="insignia tipo-analisis color-azul">Análisis<\/span>/);
+
+		const lista = await (await pedir(montaje, "/tareas", { cookie })).text();
+		// Los desplegables mandan el valor interno y enseñan el nombre legible.
+		assert.match(lista, /<option value="prepared">Preparada<\/option>/);
+		assert.match(lista, /<option value="bloqueada">Pregunta abierta<\/option>/);
+
+		for (const pagina of [lista, ficha, await (await pedir(montaje, "/tareas/kanban", { cookie })).text()]) {
+			for (const crudo of [">backlog<", ">prepared<", ">doing<", ">done<", ">finished<", ">analisis<", ">ejecucion<"]) {
+				assert.ok(!pagina.includes(crudo), `no se ve «${crudo}»`);
+			}
+		}
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+/**
+ * Un `<li>` del ciclo, con sus clases y lo que dice. La lista es la misma en
+ * todas las fichas: cinco pasos en el mismo orden.
+ */
+function paso(cuerpo: string, nombre: string): string {
+	const ciclo = cuerpo.match(/<ol class="ciclo">[\s\S]*?<\/ol>/);
+	assert.ok(ciclo !== null, "la ficha no lleva el ciclo");
+	const pasos = ciclo[0].split("<li").slice(1);
+	assert.equal(pasos.length, 5, "el ciclo tiene cinco pasos");
+	const encontrado = pasos.find((trozo) => trozo.includes(`<span class="paso-nombre">${nombre}</span>`));
+	assert.ok(encontrado !== undefined, `no aparece el paso «${nombre}»`);
+	return encontrado;
+}
+
+test("la ficha enseña el ciclo con el paso actual, su dueño y qué pasa ahora", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
+
+		// Preparada y sin análisis: el turno es del agente, no del humano.
+		const estudiando = crearTareaHumana(montaje.db, { titulo: "Exportar clientes", descripcion: ".", usuarioId: 1 });
+		moverTareaHumano(montaje.db, { tareaId: estudiando.id, usuarioId: 1, estado: "prepared" });
+		const enAnalisis = await (await pedir(montaje, `/tareas/${formatearId(estudiando.id)}`, { cookie })).text();
+		const preparada = paso(enAnalisis, "Preparada");
+		assert.match(preparada, / class="agente" aria-current="step"/);
+		assert.match(preparada, /<span class="paso-dueno">el agente<\/span>/);
+		assert.match(preparada, /El agente de análisis la está estudiando/);
+		// Por definir ya pasó; En curso todavía no, así que no dice nada.
+		assert.match(paso(enAnalisis, "Por definir"), / class="pasado"/);
+		assert.doesNotMatch(paso(enAnalisis, "En curso"), /paso-ahora/);
+
+		// Con una pregunta abierta el turno se le da la vuelta al humano.
+		tomarTarea(montaje.db, { tareaId: estudiando.id, fase: "analisis", terminalId: 1, modelo: "sonnet" });
+		preguntar(montaje.db, {
+			tareaId: estudiando.id,
+			terminalId: 1,
+			pregunta: "¿Qué separador?",
+			porQueImporta: "La hoja está en español.",
+			opciones: [
+				{ texto: "Punto y coma", consecuencia: "Se abre." },
+				{ texto: "No hacer nada", consecuencia: "Siguen a mano." },
+			],
+			recomendacion: "Punto y coma",
+		});
+		const bloqueada = await (await pedir(montaje, `/tareas/${formatearId(estudiando.id)}`, { cookie })).text();
+		assert.match(paso(bloqueada, "Preparada"), / class="turno" aria-current="step"/);
+		assert.match(paso(bloqueada, "Preparada"), /Espera tu respuesta a P1/);
+		// El paso actual dice de quién es el turno de verdad, no de quién es la
+		// columna: está en la del agente y espera por el humano.
+		assert.match(paso(bloqueada, "Preparada"), /<span class="paso-dueno">tú<\/span>/);
+		// Los demás siguen diciendo el dueño de su columna.
+		assert.match(paso(bloqueada, "En curso"), /<span class="paso-dueno">el agente<\/span>/);
+
+		// Hecha: el resultado espera por el humano.
+		const hecha = crearTareaHumana(montaje.db, { titulo: "Subir el informe", descripcion: ".", usuarioId: 1 });
+		moverTareaHumano(montaje.db, { tareaId: hecha.id, usuarioId: 1, estado: "prepared" });
+		tomarTarea(montaje.db, { tareaId: hecha.id, fase: "analisis", terminalId: 1, modelo: "sonnet" });
+		comentarAnalisis(montaje.db, { tareaId: hecha.id, terminalId: 1, texto: "Plan." });
+		tomarTarea(montaje.db, { tareaId: hecha.id, fase: "ejecucion", terminalId: 1, modelo: "opus" });
+		comentarResultado(montaje.db, { tareaId: hecha.id, terminalId: 1, texto: "Hecho. Commit: a1b2c3d" });
+		const revisar = await (await pedir(montaje, `/tareas/${formatearId(hecha.id)}`, { cookie })).text();
+		assert.match(paso(revisar, "Hecha"), / class="turno" aria-current="step"/);
+		assert.match(paso(revisar, "Hecha"), /Revisa el resultado/);
+
+		// Una pregunta no se ejecuta: su paso En curso se salta y no tiene dueño.
+		const duda = crearTareaHumana(montaje.db, {
+			titulo: "¿Cuánto cuesta un informe?",
+			descripcion: ".",
+			usuarioId: 1,
+			tipo: "pregunta",
+		});
+		const suya = await (await pedir(montaje, `/tareas/${formatearId(duda.id)}`, { cookie })).text();
+		const saltado = paso(suya, "En curso");
+		assert.match(saltado, / class="omitido"/);
+		assert.doesNotMatch(saltado, /paso-dueno/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("«Espera por ti» sale en la lista, el tablero y la ficha, y solo donde toca", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
+
+		const hecha = crearTareaHumana(montaje.db, { titulo: "Subir el informe", descripcion: ".", usuarioId: 1 });
+		moverTareaHumano(montaje.db, { tareaId: hecha.id, usuarioId: 1, estado: "prepared" });
+		tomarTarea(montaje.db, { tareaId: hecha.id, fase: "analisis", terminalId: 1, modelo: "sonnet" });
+		comentarAnalisis(montaje.db, { tareaId: hecha.id, terminalId: 1, texto: "Plan." });
+		tomarTarea(montaje.db, { tareaId: hecha.id, fase: "ejecucion", terminalId: 1, modelo: "opus" });
+		comentarResultado(montaje.db, { tareaId: hecha.id, terminalId: 1, texto: "Hecho. Commit: a1b2c3d" });
+
+		// En curso y sin marcas: la trabaja el agente, no espera por nadie.
+		const enCurso = crearTareaHumana(montaje.db, { titulo: "Migrar el correo", descripcion: ".", usuarioId: 1 });
+		moverTareaHumano(montaje.db, { tareaId: enCurso.id, usuarioId: 1, estado: "prepared" });
+		tomarTarea(montaje.db, { tareaId: enCurso.id, fase: "analisis", terminalId: 1, modelo: "sonnet" });
+		comentarAnalisis(montaje.db, { tareaId: enCurso.id, terminalId: 1, texto: "Plan." });
+		tomarTarea(montaje.db, { tareaId: enCurso.id, fase: "ejecucion", terminalId: 1, modelo: "opus" });
+
+		// Por definir no lleva la señal: la tarea todavía no bloquea a nadie.
+		crearTareaHumana(montaje.db, { titulo: "Idea suelta", descripcion: ".", usuarioId: 1 });
+
+		const señal = '<span class="insignia turno">Espera por ti</span>';
+		for (const ruta of ["/tareas", "/tareas/kanban"]) {
+			const cuerpo = await (await pedir(montaje, ruta, { cookie })).text();
+			assert.equal(cuerpo.split(señal).length - 1, 1, `${ruta}: solo la hecha espera por el humano`);
+			const suyo = cuerpo.slice(cuerpo.indexOf(formatearId(hecha.id)) - 400, cuerpo.indexOf(formatearId(hecha.id)) + 400);
+			assert.ok(suyo.includes(señal), `${ruta}: la etiqueta va con la tarea hecha`);
+		}
+
+		// En el tablero la tarjeta lleva además el filete de la izquierda.
+		const tablero = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
+		assert.match(tablero, new RegExp(`<article class="tarjeta espera" data-id="${formatearId(hecha.id)}"`));
+		assert.match(tablero, new RegExp(`<article class="tarjeta" data-id="${formatearId(enCurso.id)}"`));
+
+		const ficha = await (await pedir(montaje, `/tareas/${formatearId(hecha.id)}`, { cookie })).text();
+		assert.ok(ficha.includes(señal));
+		const otra = await (await pedir(montaje, `/tareas/${formatearId(enCurso.id)}`, { cookie })).text();
+		assert.ok(!otra.includes(señal));
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("Tareas es una sección con dos vistas, y el conmutador conserva los filtros", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+
+		const lista = await (await pedir(montaje, "/tareas?estado=doing", { cookie })).text();
+		assert.match(lista, /<nav class="vistas" aria-label="Cómo ver las tareas">/);
+		assert.match(lista, /<a href="\/tareas\?estado=doing" aria-current="page">Lista<\/a>/);
+		assert.match(lista, /<a href="\/tareas\/kanban\?estado=doing">Tablero<\/a>/);
+		// La sección se llama Tareas en las dos vistas; «kanban» no se lee.
+		assert.match(lista, /<h1>Tareas<\/h1>/);
+		assert.match(lista, /<p class="proposito">Todas las tareas del proyecto, por columna\.<\/p>/);
+
+		const tablero = await (await pedir(montaje, "/tareas/kanban?estado=doing", { cookie })).text();
+		assert.match(tablero, /<a href="\/tareas\/kanban\?estado=doing" aria-current="page">Tablero<\/a>/);
+		assert.match(tablero, /<a href="\/tareas\?estado=doing">Lista<\/a>/);
+		assert.match(tablero, /<h1>Tareas<\/h1>/);
+		for (const cuerpo of [lista, tablero]) {
+			assert.ok(!cuerpo.toLowerCase().includes(">kanban<"), "la palabra kanban no se ve");
+		}
+
+		// Agrupar es del tablero: al volver a la lista no viaja.
+		const agrupado = await (await pedir(montaje, "/tareas/kanban?agrupar=funcionalidad", { cookie })).text();
+		assert.match(agrupado, /<a href="\/tareas">Lista<\/a>/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("cada pantalla con sesión dice para qué sirve", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const rutas = [
+			"/",
+			"/tareas",
+			"/tareas/kanban",
+			"/tareas/nueva",
+			"/funcionalidades",
+			"/informes",
+			"/actividad",
+			"/proyectos",
+			"/terminales",
+			"/usuarios",
+		];
+		for (const ruta of rutas) {
+			const cuerpo = await (await pedir(montaje, ruta, { cookie })).text();
+			assert.match(cuerpo, /<p class="proposito">[^<]+<\/p>/, `${ruta} no dice para qué sirve`);
+		}
 	} finally {
 		await montaje.cerrar();
 	}

@@ -35,8 +35,10 @@ import {
 	COLOR_ESTADO,
 	chipProyecto,
 	chipUsuario,
+	conmutadorVistas,
 	edadEnColumna,
 	enlaceFuncionalidad,
+	esperaPorTi,
 	etiqueta,
 	filtroSelect,
 	filtrosRapidos,
@@ -44,6 +46,7 @@ import {
 	type Miga,
 	muestraEdad,
 	type Propiedad,
+	pasosDelCiclo,
 	propiedades,
 	type QuienCreo,
 	rotuloColumna,
@@ -72,6 +75,7 @@ import { renderMarkdown } from "../markdown.ts";
 import {
 	COLUMNAS,
 	type Html,
+	insigniaColumna,
 	insigniaEstado,
 	insigniasMarcas,
 	insigniaTipoDeItem,
@@ -81,6 +85,14 @@ import {
 	type RespuestaHtml,
 } from "../plantilla.ts";
 import { type DependenciasWeb, destinoSeguro, usuarioActual } from "../sesion.ts";
+import {
+	NOMBRE_COLUMNA,
+	NOMBRE_ESTADO,
+	NOMBRE_FASE,
+	NOMBRE_MARCA,
+	RECHAZAR_RESULTADO,
+	VOLVER_A_DEFINIR,
+} from "../vocabulario.ts";
 import { paginaBandeja } from "./bandeja.ts";
 import {
 	consultaDe,
@@ -88,14 +100,19 @@ import {
 	filtroDeIndice,
 	filtrosDe,
 	MARCAS,
+	migasDeTareas,
 	opcionesFuncionalidad,
 	opcionesProyecto,
+	PROPOSITO_TAREAS,
 	progresoDe,
 	tablero,
 } from "./kanban.ts";
 import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
 
 const ESTADOS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
+
+/** Para qué sirve el alta: lo que se decide aquí y hasta cuándo se puede cambiar. */
+const PROPOSITO_ALTA = "Define qué quieres y quién lo analiza y lo ejecuta. Se podrá editar mientras esté por definir.";
 
 /** Las tres clases de encargo, con el nombre que se lee en el desplegable. */
 const TIPOS: readonly { valor: TipoTarea; texto: string }[] = [
@@ -106,11 +123,6 @@ const TIPOS: readonly { valor: TipoTarea; texto: string }[] = [
 
 /** Cómo se resuelve quién creó una tarea. Se construye una vez por página. */
 type Creador = (quien: QuienCreo) => Html | null;
-
-/** Lo que se puede filtrar en la lista. Vacío es no filtrar por ese campo. */
-type FiltrosLista = Filtros & {
-	estado: string;
-};
 
 /** Los valores de los campos de una tarea, para pintar el formulario relleno. */
 type ValoresTarea = {
@@ -357,10 +369,10 @@ function selectProyecto(proyectos: Proyecto[], elegido: number | null): Html {
 			<select name="proyecto">
 				${proyectos.map(
 					(cual) =>
-						html`<option value="${cual.id}"${cual.id === principal ? raw(" selected") : ""}>${cual.clave} · ${cual.nombre}</option>`,
+						html`<option value="${cual.id}"${cual.id === principal ? raw(" selected") : ""}>${cual.clave} — ${cual.nombre}</option>`,
 				)}
 			</select>
-			<span class="ayuda">El repositorio en el que vive. Solo se cambia en backlog y si la tarea no cuelga de nada.</span>
+			<span class="ayuda">El repositorio en el que vive. Solo se cambia mientras está por definir y si la tarea no cuelga de nada.</span>
 		</label>`;
 }
 
@@ -386,7 +398,7 @@ function selectPadre(padres: ItemIndice[], elegido: number | null): Html {
 				<option value=""${elegido === null ? raw(" selected") : ""}>ninguna</option>
 				${padres.map(
 					(padre) =>
-						html`<option value="${formatearId(padre.id)}"${padre.id === elegido ? raw(" selected") : ""}>${formatearId(padre.id)} · ${padre.titulo}</option>`,
+						html`<option value="${formatearId(padre.id)}"${padre.id === elegido ? raw(" selected") : ""}>${formatearId(padre.id)} — ${padre.titulo}</option>`,
 				)}
 			</select>
 			<span class="ayuda">Si la eliges, esta tarea es una de sus partes y hereda su rama.</span>
@@ -407,7 +419,7 @@ function selectDependencias(candidatas: ItemIndice[], elegidas: number[]): Html 
 			<select name="dependeDe" multiple size="6">
 				${candidatas.map(
 					(otra) =>
-						html`<option value="${formatearId(otra.id)}"${elegidas.includes(otra.id) ? raw(" selected") : ""}>${formatearId(otra.id)} · ${otra.estado} · ${otra.titulo}</option>`,
+						html`<option value="${formatearId(otra.id)}"${elegidas.includes(otra.id) ? raw(" selected") : ""}>${formatearId(otra.id)} — ${otra.titulo} (${NOMBRE_ESTADO[otra.estado]})</option>`,
 				)}
 			</select>
 			<span class="ayuda">Esta tarea espera a que las elegidas estén hechas. Se marcan varias con la tecla de control.</span>
@@ -501,7 +513,7 @@ function filaTarea(
 	return html`<tr>
 			<td>${enlaceTarea(item.id)} ${clave === undefined ? html`` : chipProyecto(clave)}</td>
 			<td>
-				${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas)}${item.titulo} ${progresoDe(item)}
+				${esperaPorTi(item.estado, item.marcas)}${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas)}${item.titulo} ${progresoDe(item)}
 				${
 					funcionalidad === undefined || item.padreId === null
 						? html``
@@ -544,16 +556,16 @@ function tablaLista(
 
 function grupoColumna(
 	db: DatabaseSync,
-	columna: { estado: Estado; titulo: string },
+	estado: Estado,
 	items: ItemIndice[],
 	creadorDe: Creador,
 	deQuien: Funcionalidades,
 	claves: Claves,
 ): Html {
 	const tabla = tablaLista(db, items, creadorDe, deQuien, claves);
-	const rotulo = rotuloColumna(insigniaEstado(columna.estado), columna.titulo, items.length);
+	const rotulo = rotuloColumna(insigniaColumna(estado), estado, items.length);
 	// Las cerradas están archivadas: se ven si se piden, no estorban por defecto.
-	if (columna.estado === "finished") {
+	if (estado === "finished") {
 		return html`<section class="grupo">
 				<details>
 					<summary>${rotulo}</summary>
@@ -596,7 +608,7 @@ function funcionalidadesDe(db: DatabaseSync, items: ItemIndice[]): Funcionalidad
 function formularioFiltros(
 	db: DatabaseSync,
 	activos: TerminalListado[],
-	filtros: FiltrosLista,
+	filtros: Filtros,
 	acotado: Proyecto | undefined,
 ): Html {
 	const { estado, terminal, marca, padre } = filtros;
@@ -610,6 +622,7 @@ function formularioFiltros(
 		filtros.q !== "" ||
 		(acotado === undefined && filtros.proyecto !== "");
 	return html`<div class="fila-filtros">
+		${conmutadorVistas("lista", prefijo(acotado), consultaDe(filtros, acotado))}
 		${filtrosRapidos(filtros.rapido, base, consultaDe(filtros, acotado))}
 		<form class="filtros" method="get" action="${base}">
 			${filtros.rapido === "" ? html`` : html`<input type="hidden" name="rapido" value="${filtros.rapido}">`}
@@ -619,7 +632,7 @@ function formularioFiltros(
 				nombre: "estado",
 				titulo: "Estado",
 				todas: "todos",
-				valores: ESTADOS.map((valor) => ({ valor, texto: valor })),
+				valores: ESTADOS.map((valor) => ({ valor, texto: NOMBRE_ESTADO[valor] })),
 				seleccionado: estado,
 			})}
 			${filtroSelect({
@@ -633,7 +646,7 @@ function formularioFiltros(
 				nombre: "marca",
 				titulo: "Marca",
 				todas: "todas",
-				valores: MARCAS.map((valor) => ({ valor, texto: valor })),
+				valores: MARCAS.map((valor) => ({ valor, texto: NOMBRE_MARCA[valor] })),
 				seleccionado: marca,
 			})}
 			${filtroSelect(opcionesFuncionalidad(db, padre))}
@@ -722,7 +735,11 @@ function dependenciasLegibles(db: DatabaseSync, tareaId: number, dependeDe: read
 				const insignia =
 					otra === undefined
 						? html``
-						: etiqueta(otra.estado, pendientes.has(otraId) ? "naranja" : COLOR_ESTADO[otra.estado], `estado-${otra.estado}`);
+						: etiqueta(
+								NOMBRE_ESTADO[otra.estado],
+								pendientes.has(otraId) ? "naranja" : COLOR_ESTADO[otra.estado],
+								`estado-${otra.estado}`,
+							);
 				return html`<span class="dependencia">${insignia} ${enlaceTarea(otraId)}</span>`;
 			})}
 		</span>`;
@@ -794,8 +811,8 @@ function propiedadesDeFuncionalidad(db: DatabaseSync, completa: TareaCompleta, c
 
 function tablaConsumo(consumo: ConsumoDeTarea, presupuesto: number | null): Html {
 	const fases: { nombre: string; fase: ConsumoDeTarea["analisis"] }[] = [
-		{ nombre: "analisis", fase: consumo.analisis },
-		{ nombre: "ejecucion", fase: consumo.ejecucion },
+		{ nombre: NOMBRE_FASE.analisis, fase: consumo.analisis },
+		{ nombre: NOMBRE_FASE.ejecucion, fase: consumo.ejecucion },
 	];
 	const conDatos = fases.filter((entrada) => entrada.fase !== null);
 	if (conDatos.length === 0 && consumo.totalConHijas === 0) {
@@ -976,10 +993,10 @@ function vueltaAtras(id: string, estado: Estado, texto: string, queNota: string)
 function vueltasAtras(completa: TareaCompleta): Html {
 	const id = formatearId(completa.tarea.id);
 	if (completa.tarea.estado === "prepared") {
-		return vueltaAtras(id, "backlog", "Volver a backlog", "por qué vuelve a backlog");
+		return vueltaAtras(id, "backlog", VOLVER_A_DEFINIR, "por qué vuelve a por definir");
 	}
 	if (completa.tarea.estado === "done") {
-		return vueltaAtras(id, "doing", "Devolver a doing", "qué falta");
+		return vueltaAtras(id, "doing", RECHAZAR_RESULTADO, "qué falta");
 	}
 	return html``;
 }
@@ -1071,7 +1088,7 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	const { db } = deps;
 	const activos = terminalesActivos(db);
 	const acotado = proyectoActual(c);
-	const filtros: FiltrosLista = { ...filtrosDe(c), estado: c.req.query("estado") ?? "" };
+	const filtros = filtrosDe(c);
 	const padreId = idONull(filtros.padre);
 
 	// Terminal, proyecto, conmutador y búsqueda los resuelve el índice; aquí
@@ -1095,11 +1112,11 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	// En la vista acotada el proyecto es el de la página: el chip solo repetiría.
 	const claves = acotado === undefined ? new Map(listarProyectos(db).map((cual) => [cual.id, cual.clave])) : null;
 	const cuerpo = html`${formularioFiltros(db, activos, filtros, acotado)}
-		${COLUMNAS.map((columna) =>
+		${COLUMNAS.map((estado) =>
 			grupoColumna(
 				db,
-				columna,
-				items.filter((item) => item.estado === columna.estado),
+				estado,
+				items.filter((item) => item.estado === estado),
 				creadorDe,
 				deQuien,
 				claves,
@@ -1110,7 +1127,11 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	return c.html(
 		pagina({
 			...navProyectos(c, db),
-			titulo: acotado === undefined ? "Tareas" : `Tareas · ${acotado.clave}`,
+			// Lista y tablero son la misma sección vista de dos maneras: el título
+			// es el de la sección y el proyecto va en las migas.
+			titulo: "Tareas",
+			proposito: PROPOSITO_TAREAS,
+			migas: migasDeTareas(acotado),
 			usuario: usuarioActual(c),
 			vista: "lista",
 			// La tabla tiene seis columnas: en 60 rem se aprieta o se desplaza.
@@ -1157,6 +1178,7 @@ function paginaNueva(c: Context, deps: DependenciasWeb, valores: ValoresTarea, a
 			titulo,
 			usuario: usuarioActual(c),
 			vista: "tarea-nueva",
+			proposito: PROPOSITO_ALTA,
 			migas: [{ texto: "Tareas", href: `${base}/tareas` }, { texto: titulo }],
 			etiquetas: acotado === undefined ? undefined : chipProyecto(acotado.clave),
 			aviso,
@@ -1209,7 +1231,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 				<div class="acciones acciones-partes">
 					<a class="boton" href="/tareas/nueva?padre=${id}">Nueva parte</a>
 				</div>
-				${tablero(deps.db, { terminal: "", marca: "", padre: id, proyecto: "", rapido: "", q: "" })}
+				${tablero(deps.db, { estado: "", terminal: "", marca: "", padre: id, proyecto: "", rapido: "", q: "" })}
 
 				${actividad}`
 			: html`${descripcion}
@@ -1244,7 +1266,16 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 		${detallesBorrar(tarea)}
 	</aside>`;
 
-	const cuerpo = html`${preguntasArriba(completa)}
+	// El ciclo va a todo lo ancho y lo primero: en qué punto está la tarea, de
+	// quién es el turno y qué pasa ahora, antes que nada de lo que hay debajo.
+	const abiertas = completa.preguntas.filter((pregunta) => pregunta.respuestaOpcion === null);
+	const cuerpo = html`${pasosDelCiclo({
+		estado: tarea.estado,
+		tipo: tarea.tipo,
+		marcas: completa.marcas,
+		preguntaAbierta: abiertas[0]?.numero ?? null,
+	})}
+		${preguntasArriba(completa)}
 		<div class="ficha">
 			<div class="principal">${principal}</div>
 			${panel}
@@ -1263,7 +1294,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 			// La ficha es global, que el identificador lo es; las migas dicen de qué
 			// proyecto es y llevan a sus tableros.
 			migas: migasDeFicha(deps.db, tarea.proyectoId, id),
-			etiquetas: html`${insigniaEstado(tarea.estado)}${insigniaTipoTarea(tarea.tipo)}${insigniasMarcas(completa.marcas)}`,
+			etiquetas: html`${esperaPorTi(tarea.estado, completa.marcas)}${insigniaEstado(tarea.estado)}${insigniaTipoTarea(tarea.tipo)}${insigniasMarcas(completa.marcas)}`,
 			// La ficha es una vista de incidencia: en ancho, el panel de la derecha
 			// necesita sitio, y el tablero de una funcionalidad, sus cinco columnas.
 			ancho: "completo",
@@ -1300,7 +1331,7 @@ function paginaBorrar(c: Context, deps: DependenciasWeb, tareaId: number): Respu
 		tarea.enMarchaTerminalId === null ? undefined : buscarTerminalPorId(deps.db, tarea.enMarchaTerminalId);
 	const dejanDeEsperar = dependientesDe(deps.db, tarea.id);
 	const cuerpo = html`<section class="caja caja-estrecha">
-		<p>Se borra la tarea ${enlaceTarea(tarea.id)} <strong>${tarea.titulo}</strong>, que está en ${tarea.estado}.</p>
+		<p>Se borra la tarea ${enlaceTarea(tarea.id)} <strong>${tarea.titulo}</strong>, que está en ${NOMBRE_COLUMNA[tarea.estado]}.</p>
 		<ul>
 			<li>${hiloQueSeVa(completa.comentarios.length)}</li>
 			${

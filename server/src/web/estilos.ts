@@ -3,43 +3,70 @@
  * disco: así el Dockerfile no tiene que copiar nada más que `src/`. La sirve
  * `GET /static/app.css`.
  *
- * El diseño es el de «Diseño visual» en CLAUDE.md: página limpia tipo Notion,
- * tipografía del sistema, colores neutros, etiquetas de color suave y una
- * barra lateral fija con la navegación. Todo el color sale de variables, y
- * `prefers-color-scheme` solo cambia las variables: no hay una segunda hoja
- * para el modo oscuro.
+ * El diseño es el de «Diseño visual» en CLAUDE.md: el puesto de mando de quien
+ * dirige agentes. Un único color de señal (`--turno`) para lo que espera por el
+ * humano, otro (`--acento`) para las acciones, y lo demás neutro.
+ *
+ * El tema tiene tres estados y tres bloques, que redefinen los mismos tokens:
+ * `:root` es la paleta clara, `@media (prefers-color-scheme: dark)` acotado a
+ * `:root:not([data-tema="claro"])` sigue al sistema, y `:root[data-tema="oscuro"]`
+ * manda sobre los dos. Ningún color se define fuera de los tokens y de la tabla
+ * de nueve colores.
  */
 export const CSS = `:root {
-	color-scheme: light dark;
+	color-scheme: light;
 
-	/* Los ocho tokens de la tabla de CLAUDE.md. Nada más define color. */
+	/* Los diez tokens de la tabla de CLAUDE.md. Nada más define color. */
 	--fondo: #ffffff;
-	--fondo-lateral: #f7f7f5;
-	--fondo-hover: rgba(55, 53, 47, 0.08);
-	--texto: #37352f;
-	--texto-suave: rgba(55, 53, 47, 0.65);
-	--borde: rgba(55, 53, 47, 0.16);
-	--acento: #2383e2;
-	--peligro: #eb5757;
+	--fondo-lateral: #f4f5f7;
+	--fondo-hover: rgba(28, 36, 48, 0.06);
+	--texto: #1c2430;
+	--texto-suave: rgba(28, 36, 48, 0.62);
+	--borde: rgba(28, 36, 48, 0.14);
+	--acento: #0f766e;
+	--turno: #b45309;
+	--turno-fondo: #fff4e5;
+	--peligro: #b91c1c;
 
-	/* Medidas: 4 px en controles, 6 px en tarjetas, 15 rem de barra lateral. */
+	/* Medidas: 4 px en controles, 8 px en tarjetas, 15 rem de barra lateral. */
 	--radio: 4px;
-	--radio-tarjeta: 6px;
+	--radio-tarjeta: 8px;
 	--lateral: 15rem;
-	--ancho-contenido: 60rem;
+	--ancho-contenido: 64rem;
 }
 
+/* Sin elegir tema se sigue al sistema; con «claro» puesto, no. */
 @media (prefers-color-scheme: dark) {
-	:root {
-		--fondo: #191919;
-		--fondo-lateral: #202020;
-		--fondo-hover: rgba(255, 255, 255, 0.055);
-		--texto: rgba(255, 255, 255, 0.81);
-		--texto-suave: rgba(255, 255, 255, 0.44);
-		--borde: rgba(255, 255, 255, 0.13);
-		--acento: #529cca;
-		--peligro: #ff7369;
+	:root:not([data-tema="claro"]) {
+		color-scheme: dark;
+
+		--fondo: #1b2027;
+		--fondo-lateral: #14181d;
+		--fondo-hover: rgba(255, 255, 255, 0.06);
+		--texto: rgba(255, 255, 255, 0.86);
+		--texto-suave: rgba(255, 255, 255, 0.5);
+		--borde: rgba(255, 255, 255, 0.12);
+		--acento: #34b8ab;
+		--turno: #f59e0b;
+		--turno-fondo: rgba(245, 158, 11, 0.14);
+		--peligro: #f87171;
 	}
+}
+
+/* Elegido a mano: gana al sistema, esté como esté. */
+:root[data-tema="oscuro"] {
+	color-scheme: dark;
+
+	--fondo: #1b2027;
+	--fondo-lateral: #14181d;
+	--fondo-hover: rgba(255, 255, 255, 0.06);
+	--texto: rgba(255, 255, 255, 0.86);
+	--texto-suave: rgba(255, 255, 255, 0.5);
+	--borde: rgba(255, 255, 255, 0.12);
+	--acento: #34b8ab;
+	--turno: #f59e0b;
+	--turno-fondo: rgba(245, 158, 11, 0.14);
+	--peligro: #f87171;
 }
 
 /* --- base ---------------------------------------------------------------- */
@@ -52,7 +79,7 @@ body {
 	margin: 0;
 	background: var(--fondo);
 	color: var(--texto);
-	font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+	font-family: "Avenir Next", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
 	font-size: 15px;
 	line-height: 1.5;
 	-webkit-font-smoothing: antialiased;
@@ -69,13 +96,13 @@ h1, h2, h3 {
 
 /* El título de página, suelto o dentro de «cabeceraPagina», es el mismo. */
 h1 {
-	font-size: 2rem;
-	font-weight: 700;
+	font-size: 1.75rem;
+	font-weight: 600;
 	letter-spacing: -0.01em;
 }
 
 h2 {
-	font-size: 1.15rem;
+	font-size: 1.2rem;
 	font-weight: 600;
 	margin-top: 1.8rem;
 }
@@ -148,14 +175,13 @@ pre {
 	margin-bottom: 1.1rem;
 }
 
+/* El título de un bloque de navegación: pequeño y suave, nunca en mayúsculas. */
 .bloque h2 {
 	margin: 0 0 0.2rem;
 	padding: 0 0.5rem;
 	color: var(--texto-suave);
-	font-size: 0.72rem;
+	font-size: 0.8125rem;
 	font-weight: 600;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
 }
 
 .enlace-nav {
@@ -181,13 +207,71 @@ pre {
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.5rem;
-	margin-top: auto;
 	padding-top: 0.8rem;
 	border-top: 1px solid var(--borde);
 }
 
 .pie-lateral form {
 	margin: 0;
+}
+
+/* --- conmutador de tema -------------------------------------------------- */
+
+/* Tres radios como un grupo de botones segmentado: lo marcado se ve hundido
+   sobre el fondo del papel, y el foco se ve aunque el radio esté escondido. */
+fieldset.tema {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.3rem;
+	margin: auto 0 0.6rem;
+	padding: 0.2rem;
+	border: 1px solid var(--borde);
+	border-radius: var(--radio);
+}
+
+fieldset.tema legend {
+	padding: 0;
+	color: var(--texto-suave);
+	font-size: 0.8125rem;
+}
+
+fieldset.tema label {
+	flex: 1 1 auto;
+	margin: 0;
+	padding: 0.1rem 0.4rem;
+	border: 1px solid transparent;
+	border-radius: var(--radio);
+	color: var(--texto-suave);
+	font-size: 0.8125rem;
+	text-align: center;
+	cursor: pointer;
+}
+
+fieldset.tema label:hover {
+	color: var(--texto);
+}
+
+/* El radio no se ve: lo que se pulsa es su rótulo. Sigue siendo un radio, así
+   que el teclado y los lectores de pantalla lo recorren como un grupo. */
+fieldset.tema input[type="radio"] {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: 0;
+	opacity: 0;
+}
+
+fieldset.tema label:has(input:checked) {
+	background: var(--fondo);
+	border-color: var(--borde);
+	color: var(--texto);
+	font-weight: 600;
+}
+
+fieldset.tema label:has(input:focus-visible) {
+	outline: 2px solid var(--acento);
+	outline-offset: 1px;
 }
 
 /* La cabecera con el botón «☰» solo existe cuando la barra se esconde. */
@@ -206,7 +290,7 @@ pre {
 
 .contenido {
 	margin-left: var(--lateral);
-	padding: 3rem 2.5rem 5rem;
+	padding: 2.5rem 2.5rem 5rem;
 }
 
 .dentro {
@@ -296,6 +380,14 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 	margin: 0;
 }
 
+/* Para qué sirve esta pantalla, escrito desde el punto de vista de quien mira.
+   Va pegada al título: es parte de la cabecera, no un párrafo suelto. */
+.proposito {
+	margin: 0.35rem 0 0;
+	max-width: 46rem;
+	color: var(--texto-suave);
+}
+
 /* Solo hueco entre filas: entre etiquetas ya separa el margen de «.insignia». */
 .etiquetas {
 	display: flex;
@@ -367,16 +459,37 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 .color-rosa { background: #f5e0e9; color: #4c2337; }
 .color-rojo { background: #ffe2dd; color: #5d1715; }
 
+/* Los nueve en oscuro, dos veces: siguiendo al sistema y elegido a mano. Las
+   dos listas son la misma, y el selector de raíz las hace ganar a las de
+   arriba sin depender del orden de la hoja. */
 @media (prefers-color-scheme: dark) {
-	.color-gris { background: #373737; color: rgba(255, 255, 255, 0.81); }
-	.color-marron { background: #603b2c; color: rgba(255, 255, 255, 0.81); }
-	.color-naranja { background: #854c1d; color: rgba(255, 255, 255, 0.81); }
-	.color-amarillo { background: #89632a; color: rgba(255, 255, 255, 0.81); }
-	.color-verde { background: #2b593f; color: rgba(255, 255, 255, 0.81); }
-	.color-azul { background: #28456c; color: rgba(255, 255, 255, 0.81); }
-	.color-morado { background: #492f64; color: rgba(255, 255, 255, 0.81); }
-	.color-rosa { background: #69314c; color: rgba(255, 255, 255, 0.81); }
-	.color-rojo { background: #6e3630; color: rgba(255, 255, 255, 0.81); }
+	:root:not([data-tema="claro"]) .color-gris { background: #373737; color: rgba(255, 255, 255, 0.81); }
+	:root:not([data-tema="claro"]) .color-marron { background: #603b2c; color: rgba(255, 255, 255, 0.81); }
+	:root:not([data-tema="claro"]) .color-naranja { background: #854c1d; color: rgba(255, 255, 255, 0.81); }
+	:root:not([data-tema="claro"]) .color-amarillo { background: #89632a; color: rgba(255, 255, 255, 0.81); }
+	:root:not([data-tema="claro"]) .color-verde { background: #2b593f; color: rgba(255, 255, 255, 0.81); }
+	:root:not([data-tema="claro"]) .color-azul { background: #28456c; color: rgba(255, 255, 255, 0.81); }
+	:root:not([data-tema="claro"]) .color-morado { background: #492f64; color: rgba(255, 255, 255, 0.81); }
+	:root:not([data-tema="claro"]) .color-rosa { background: #69314c; color: rgba(255, 255, 255, 0.81); }
+	:root:not([data-tema="claro"]) .color-rojo { background: #6e3630; color: rgba(255, 255, 255, 0.81); }
+}
+
+:root[data-tema="oscuro"] .color-gris { background: #373737; color: rgba(255, 255, 255, 0.81); }
+:root[data-tema="oscuro"] .color-marron { background: #603b2c; color: rgba(255, 255, 255, 0.81); }
+:root[data-tema="oscuro"] .color-naranja { background: #854c1d; color: rgba(255, 255, 255, 0.81); }
+:root[data-tema="oscuro"] .color-amarillo { background: #89632a; color: rgba(255, 255, 255, 0.81); }
+:root[data-tema="oscuro"] .color-verde { background: #2b593f; color: rgba(255, 255, 255, 0.81); }
+:root[data-tema="oscuro"] .color-azul { background: #28456c; color: rgba(255, 255, 255, 0.81); }
+:root[data-tema="oscuro"] .color-morado { background: #492f64; color: rgba(255, 255, 255, 0.81); }
+:root[data-tema="oscuro"] .color-rosa { background: #69314c; color: rgba(255, 255, 255, 0.81); }
+:root[data-tema="oscuro"] .color-rojo { background: #6e3630; color: rgba(255, 255, 255, 0.81); }
+
+/* La señal: lo que espera por el humano. Va después de los nueve colores
+   porque no es uno de ellos, es el único color de turno. */
+.insignia.turno {
+	background: var(--turno-fondo);
+	color: var(--turno);
+	font-weight: 600;
 }
 
 /* --- avisos, cajas y texto secundario ------------------------------------ */
@@ -429,14 +542,33 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 	margin: 0;
 }
 
+/* Cuántas cosas hay. En una columna es un dato más y va en texto suave. */
 .contador {
 	color: var(--texto-suave);
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+}
+
+/* De quién es el turno mientras la tarea está en esa columna. Es un dato de
+   apoyo del rótulo: se lee si se busca, no compite con el nombre. */
+.dueno {
+	color: var(--texto-suave);
+	font-size: 0.8125rem;
 	font-weight: 400;
 }
 
+/* En la bandeja y en su entrada de la barra lateral, en cambio, es lo que
+   espera por el humano: ahí, y solo ahí, lleva el color de la señal. */
+.enlace-nav .contador, .bloque-bandeja .contador {
+	color: var(--turno);
+	font-weight: 600;
+}
+
+/* Un identificador es una cifra, no código: alineado por columnas y con la
+   misma tipografía que el resto. La monoespaciada es solo para comandos. */
 .id-tarea {
-	font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
 }
 
@@ -503,10 +635,8 @@ th, td {
 
 thead th {
 	color: var(--texto-suave);
-	font-size: 0.72rem;
+	font-size: 0.8125rem;
 	font-weight: 500;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
 }
 
 /* Las tablas de dos columnas (la ficha) usan «th» como nombre de la fila. */
@@ -515,8 +645,6 @@ tbody th {
 	color: var(--texto-suave);
 	font-size: inherit;
 	font-weight: 400;
-	letter-spacing: normal;
-	text-transform: none;
 }
 
 tbody tr:hover td {
@@ -548,9 +676,7 @@ fieldset {
 legend {
 	padding: 0 0.35rem;
 	color: var(--texto-suave);
-	font-size: 0.72rem;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
+	font-size: 0.8125rem;
 }
 
 label {
@@ -935,6 +1061,12 @@ button.enlace:hover {
 	white-space: nowrap;
 }
 
+/* La misma señal que la etiqueta, pero visible de lejos: de un vistazo se ve
+   cuáles de todo el tablero esperan por el humano. */
+.tarjeta.espera {
+	border-left: 3px solid var(--turno);
+}
+
 /* El hueco que SortableJS deja donde caería la tarjeta. */
 .tarjeta.arrastrando {
 	border-style: dashed;
@@ -1044,9 +1176,13 @@ button.enlace:hover {
 	}
 }
 
+/* Quien pide menos movimiento no lo tiene: ni el panel lateral ni el arrastre
+   ni nada que se anime. Es la regla entera, no una excepción por elemento. */
 @media (prefers-reduced-motion: reduce) {
-	.lateral {
-		transition: none;
+	*, *::before, *::after {
+		transition: none !important;
+		animation: none !important;
+		scroll-behavior: auto !important;
 	}
 }
 
@@ -1295,18 +1431,11 @@ button.pequeno, .boton.pequeno {
 
 /* --- actividad ----------------------------------------------------------- */
 
-/* La explicación es parte de la cabecera: se pega al título en vez de quedarse
-   flotando entre él y el primer día. */
-.cabecera-pagina + .explicacion {
-	margin: -1.2rem 0 1.6rem;
-}
-
 .dia h2 {
 	margin: 1.6rem 0 0.2rem;
 	color: var(--texto-suave);
-	font-size: 0.78rem;
+	font-size: 0.8125rem;
 	font-weight: 600;
-	letter-spacing: 0.06em;
 	font-variant-numeric: tabular-nums;
 }
 
@@ -1370,6 +1499,37 @@ button.pequeno, .boton.pequeno {
 
 .fila-filtros .filtros {
 	margin-bottom: 0;
+}
+
+/* Las dos vistas de la sección Tareas, como un solo control segmentado: son
+   la misma cosa mirada de dos maneras, no dos filtros que se suman. */
+.vistas {
+	display: flex;
+	border: 1px solid var(--borde);
+	border-radius: var(--radio);
+	overflow: hidden;
+}
+
+.vistas a {
+	padding: 0.3rem 0.8rem;
+	color: var(--texto-suave);
+	font-size: 0.85rem;
+	text-decoration: none;
+}
+
+.vistas a + a {
+	border-left: 1px solid var(--borde);
+}
+
+.vistas a:hover {
+	background: var(--fondo-hover);
+	color: var(--texto);
+}
+
+.vistas a[aria-current="page"] {
+	background: var(--fondo-hover);
+	color: var(--texto);
+	font-weight: 600;
 }
 
 .filtros-rapidos {
@@ -1664,6 +1824,85 @@ details.caja[open] > summary {
 	font-size: 0.95rem;
 }
 
+/* --- el ciclo de la tarea ------------------------------------------------ */
+
+/* Los cinco pasos en fila, cada uno con su nombre y su dueño debajo. Es el
+   primer bloque de la ficha: dónde está la tarea y qué pasa ahora. */
+.ciclo {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+	max-width: 78rem;
+	margin: 0 0 1.8rem;
+	padding: 0;
+	list-style: none;
+}
+
+.ciclo li {
+	flex: 1 1 8rem;
+	padding: 0.45rem 0.7rem;
+	border-radius: var(--radio);
+	border: 1px solid var(--borde);
+	color: var(--texto-suave);
+}
+
+.paso-nombre {
+	display: block;
+	color: var(--texto);
+	font-weight: 600;
+}
+
+.paso-dueno, .paso-ahora {
+	display: block;
+	font-size: 0.8125rem;
+}
+
+/* Lo que ya pasó no se borra, pero deja de pedir atención. */
+.ciclo .pasado .paso-nombre {
+	color: var(--texto-suave);
+	font-weight: 400;
+	text-decoration: line-through;
+}
+
+/* Una pregunta no se ejecuta: su paso En curso está ahí para que se vea que se
+   salta, no para leerlo. */
+.ciclo .omitido {
+	border-style: dashed;
+	opacity: 0.5;
+}
+
+/* El paso actual, en el color de quien tiene el turno. Es la única vez que el
+   color del turno sale fuera de una etiqueta. */
+.ciclo .turno {
+	background: var(--turno-fondo);
+	border-color: var(--turno);
+}
+
+.ciclo .turno .paso-nombre, .ciclo .turno .paso-ahora {
+	color: var(--turno);
+}
+
+.ciclo .agente {
+	background: var(--fondo-hover);
+	border-color: var(--acento);
+}
+
+.ciclo .agente .paso-nombre, .ciclo .agente .paso-ahora {
+	color: var(--acento);
+}
+
+.ciclo .paso-ahora {
+	margin-top: 0.2rem;
+	font-weight: 600;
+}
+
+/* En estrecho no caben cinco columnas: los pasos van uno debajo de otro. */
+@media (max-width: 48rem) {
+	.ciclo {
+		flex-direction: column;
+	}
+}
+
 /* Las preguntas abiertas son lo primero de la ficha, antes del panel. */
 .preguntas-arriba {
 	display: flex;
@@ -1702,6 +1941,14 @@ details.caja[open] > summary {
 }
 
 /* --- bandeja ------------------------------------------------------------- */
+
+/* Qué es el bloque, debajo de su verbo: el verbo dice qué hacer y esta línea,
+   con qué. */
+.que-es {
+	margin: -0.3rem 0 1rem;
+	color: var(--texto-suave);
+	font-size: 0.85rem;
+}
 
 /* Cada asunto: su línea y debajo la tarjeta que toca. Van separados entre sí
    más que dentro, que es lo que deja leer el bloque de un vistazo. */

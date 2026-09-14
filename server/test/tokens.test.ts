@@ -17,14 +17,14 @@ test("crear usuario y terminal sube la revisión y el token encuentra el termina
 	try {
 		assert.equal(revisionActual(db), 0);
 
-		const { valor: usuario, revision: trasUsuario } = crearUsuario(db, "xinux", hashPassword("secreta"));
+		const { valor: usuario, revision: trasUsuario } = crearUsuario(db, "ana", hashPassword("secreta"));
 		assert.equal(trasUsuario, 1);
 
 		const { valor, revision: trasTerminal } = crearTerminalConToken(
 			db,
 			usuario.id,
-			"portatil-xinux",
-			"xinux@ejemplo.com",
+			"portatil-ana",
+			"ana@ejemplo.com",
 		);
 		assert.equal(trasTerminal, 2);
 		assert.equal(revisionActual(db), 2);
@@ -33,8 +33,8 @@ test("crear usuario y terminal sube la revisión y el token encuentra el termina
 		const encontrado = buscarTerminalPorToken(db, valor.token);
 		assert.ok(encontrado, "el token válido tiene que encontrar el terminal");
 		assert.equal(encontrado.id, valor.terminal.id);
-		assert.equal(encontrado.nombre, "portatil-xinux");
-		assert.equal(encontrado.cuenta, "xinux@ejemplo.com");
+		assert.equal(encontrado.nombre, "portatil-ana");
+		assert.equal(encontrado.cuenta, "ana@ejemplo.com");
 
 		// En la base de datos solo está el hash, nunca el token en claro.
 		assert.equal(encontrado.tokenHash, hashToken(valor.token));
@@ -50,8 +50,8 @@ test("crear usuario y terminal sube la revisión y el token encuentra el termina
 test("un terminal revocado deja de encontrarse por su token", () => {
 	const db = abrirBaseDeDatos(":memory:");
 	try {
-		const { valor: usuario } = crearUsuario(db, "xinux", hashPassword("secreta"));
-		const { valor } = crearTerminalConToken(db, usuario.id, "sobremesa", "xinux@ejemplo.com");
+		const { valor: usuario } = crearUsuario(db, "ana", hashPassword("secreta"));
+		const { valor } = crearTerminalConToken(db, usuario.id, "sobremesa", "ana@ejemplo.com");
 		assert.ok(buscarTerminalPorToken(db, valor.token));
 
 		db.prepare("UPDATE terminales SET revocado_en = ? WHERE id = ?").run("2026-09-04T00:00:00.000Z", valor.terminal.id);
@@ -75,8 +75,8 @@ test("scrypt guarda la contraseña en el formato scrypt$sal$hash y la verifica",
 test("la telemetría del terminal se escribe pero no sube la revisión", () => {
 	const db = abrirBaseDeDatos(":memory:");
 	try {
-		const { valor: usuario } = crearUsuario(db, "xinux", hashPassword("secreta"));
-		const { valor } = crearTerminalConToken(db, usuario.id, "portatil-xinux", "xinux@ejemplo.com");
+		const { valor: usuario } = crearUsuario(db, "ana", hashPassword("secreta"));
+		const { valor } = crearTerminalConToken(db, usuario.id, "portatil-ana", "ana@ejemplo.com");
 		const antes = revisionActual(db);
 		assert.equal(antes, 2);
 

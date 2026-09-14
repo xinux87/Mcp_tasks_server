@@ -35,11 +35,11 @@ function enAnalisis(banco: Banco, modelos: { analisis?: string; ejecucion?: stri
 	const tarea = crearTareaHumana(banco.db, {
 		titulo: "Exportar el listado",
 		descripcion: "Hoy lo copian a mano.",
-		usuarioId: banco.xinux,
+		usuarioId: banco.ana,
 		analisisModelo: modelos.analisis ?? "sonnet",
 		ejecucionModelo: modelos.ejecucion ?? "opus",
 	});
-	moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+	moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 	return tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
 }
 
@@ -65,7 +65,7 @@ test("el comentario de análisis lo firma el modelo de la fase, da el análisis 
 			texto: "qué hay que hacer, plan y riesgos",
 		});
 		assert.equal(comentario.tipo, "analisis");
-		assert.equal(comentario.autor, "sonnet@portatil-xinux");
+		assert.equal(comentario.autor, "sonnet@portatil-ana");
 
 		const despues = exigirTarea(banco.db, tarea.id);
 		assert.equal(despues.analisisHecho, true);
@@ -86,11 +86,11 @@ test("el comentario de análisis lo firma el modelo de la fase, da el análisis 
 test("sin modelo asignado a la fase el autor del agente es agente@terminal", () => {
 	const banco = montar();
 	try {
-		const tarea = crearTareaHumana(banco.db, { titulo: "Una", descripcion: "d", usuarioId: banco.xinux });
-		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		const tarea = crearTareaHumana(banco.db, { titulo: "Una", descripcion: "d", usuarioId: banco.ana });
+		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
 		const comentario = comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "plan" });
-		assert.equal(comentario.autor, "agente@portatil-xinux");
+		assert.equal(comentario.autor, "agente@portatil-ana");
 	} finally {
 		banco.cerrar();
 	}
@@ -110,7 +110,7 @@ test("avance no mueve la tarea y resultado la pasa a done soltando la marca", ()
 			terminalId: banco.portatil,
 			texto: "Botón añadido. Faltan los tests.",
 		});
-		assert.equal(avance.autor, "opus@portatil-xinux");
+		assert.equal(avance.autor, "opus@portatil-ana");
 		assert.equal(exigirTarea(banco.db, tarea.id).estado, "doing");
 
 		comentarResultado(banco.db, {
@@ -230,40 +230,40 @@ test("la respuesta guarda el texto de la opción, y no admite otra ni una segund
 		});
 
 		assert.equal(
-			codigoDe(() => responder(banco.db, { preguntaId: p1.id, usuarioId: banco.xinux, opcion: "Tabulador" })),
+			codigoDe(() => responder(banco.db, { preguntaId: p1.id, usuarioId: banco.ana, opcion: "Tabulador" })),
 			"opcion_inexistente",
 		);
 		// Ni por posición: se guarda el texto exacto.
 		assert.equal(
-			codigoDe(() => responder(banco.db, { preguntaId: p1.id, usuarioId: banco.xinux, opcion: "1" })),
+			codigoDe(() => responder(banco.db, { preguntaId: p1.id, usuarioId: banco.ana, opcion: "1" })),
 			"opcion_inexistente",
 		);
 		assert.equal(
-			codigoDe(() => responder(banco.db, { preguntaId: 404, usuarioId: banco.xinux, opcion: "Coma" })),
+			codigoDe(() => responder(banco.db, { preguntaId: 404, usuarioId: banco.ana, opcion: "Coma" })),
 			"pregunta_inexistente",
 		);
 
 		const contestada = responder(banco.db, {
 			preguntaId: p1.id,
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			opcion: "Punto y coma",
 			nota: "si lo usa otro equipo, ya lo cambiaremos.",
 		});
 		assert.equal(contestada.respuestaOpcion, "Punto y coma");
 		assert.equal(contestada.respuestaNota, "si lo usa otro equipo, ya lo cambiaremos.");
-		assert.equal(contestada.respondidaPorUsuarioId, banco.xinux);
+		assert.equal(contestada.respondidaPorUsuarioId, banco.ana);
 		assert.equal(contestada.revision, revisionActual(banco.db));
 		assert.equal(preguntasAbiertas(banco.db, tarea.id), 0);
 
 		assert.equal(
-			codigoDe(() => responder(banco.db, { preguntaId: p1.id, usuarioId: banco.xinux, opcion: "Coma" })),
+			codigoDe(() => responder(banco.db, { preguntaId: p1.id, usuarioId: banco.ana, opcion: "Coma" })),
 			"pregunta_ya_respondida",
 		);
 
 		const completa = leerTarea(banco.db, tarea.id);
 		const respuesta = completa?.comentarios.at(-1);
 		assert.equal(respuesta?.tipo, "respuesta");
-		assert.equal(respuesta?.autor, "humano:xinux");
+		assert.equal(respuesta?.autor, "humano:ana");
 		assert.equal(respuesta?.texto, "Opción: **Punto y coma**\n\nNota: si lo usa otro equipo, ya lo cambiaremos.");
 	} finally {
 		banco.cerrar();
@@ -273,14 +273,14 @@ test("la respuesta guarda el texto de la opción, y no admite otra ni una segund
 test("el humano deja notas en cualquier estado menos finished", () => {
 	const banco = montar();
 	try {
-		const tarea = crearTareaHumana(banco.db, { titulo: "Una", descripcion: "d", usuarioId: banco.xinux });
-		const nota = notaHumana(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, texto: "y además esto" });
-		assert.equal(nota.autor, "humano:xinux");
+		const tarea = crearTareaHumana(banco.db, { titulo: "Una", descripcion: "d", usuarioId: banco.ana });
+		const nota = notaHumana(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "y además esto" });
+		assert.equal(nota.autor, "humano:ana");
 		assert.equal(exigirTarea(banco.db, tarea.id).revision, revisionActual(banco.db));
 
 		banco.db.prepare("UPDATE tareas SET estado = 'finished' WHERE id = ?").run(tarea.id);
 		assert.equal(
-			codigoDe(() => notaHumana(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, texto: "tarde" })),
+			codigoDe(() => notaHumana(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "tarde" })),
 			"tarea_archivada",
 		);
 	} finally {
@@ -292,18 +292,18 @@ test("las novedades filtran por terminal y por revisión, y nunca traen backlog"
 	const banco = montar();
 	try {
 		// Una en backlog: no sale nunca, ni recién creada.
-		crearTareaHumana(banco.db, { titulo: "En backlog", descripcion: "d", usuarioId: banco.xinux });
+		crearTareaHumana(banco.db, { titulo: "En backlog", descripcion: "d", usuarioId: banco.ana });
 		// Una en prepared del otro terminal: tampoco.
 		const ajena = crearTareaHumana(banco.db, {
 			titulo: "Del sobremesa",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			analisisTerminalId: banco.sobremesa,
 		});
-		moverTareaHumano(banco.db, { tareaId: ajena.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: ajena.id, usuarioId: banco.ana, estado: "prepared" });
 		// Una en prepared sin terminal: la puede tomar cualquiera.
-		const libre = crearTareaHumana(banco.db, { titulo: "Sin terminal", descripcion: "d", usuarioId: banco.xinux });
-		moverTareaHumano(banco.db, { tareaId: libre.id, usuarioId: banco.xinux, estado: "prepared" });
+		const libre = crearTareaHumana(banco.db, { titulo: "Sin terminal", descripcion: "d", usuarioId: banco.ana });
+		moverTareaHumano(banco.db, { tareaId: libre.id, usuarioId: banco.ana, estado: "prepared" });
 
 		const mia = enEjecucion(banco);
 		assert.deepEqual(
@@ -337,7 +337,7 @@ test("las novedades filtran por terminal y por revisión, y nunca traen backlog"
 		assert.deepEqual(preguntasContestadasDesde(banco.db, { terminalId: banco.portatil, revision: 0 }), []);
 
 		const corte = revisionActual(banco.db);
-		responder(banco.db, { preguntaId: p1.id, usuarioId: banco.xinux, opcion: "Coma" });
+		responder(banco.db, { preguntaId: p1.id, usuarioId: banco.ana, opcion: "Coma" });
 		assert.deepEqual(preguntasContestadasDesde(banco.db, { terminalId: banco.portatil, revision: corte }), [
 			{ tareaId: mia.id, numero: 1, opcion: "Coma" },
 		]);

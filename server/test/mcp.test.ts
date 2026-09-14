@@ -27,8 +27,8 @@ type Montaje = {
 /** Base en memoria, app montada y un terminal con su token, sin abrir puerto. */
 function montar(): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
-	const { valor: usuario } = crearUsuario(db, "xinux", hashPassword("secreta"));
-	const { valor } = crearTerminalConToken(db, usuario.id, "portatil-xinux", "xinux@ejemplo.com");
+	const { valor: usuario } = crearUsuario(db, "ana", hashPassword("secreta"));
+	const { valor } = crearTerminalConToken(db, usuario.id, "portatil-ana", "ana@ejemplo.com");
 	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
 	return {
 		db,
@@ -94,7 +94,7 @@ test("sin bearer válido, /mcp responde 401", async () => {
 	const llamar = fetchContraApp(montaje.app);
 	const cuerpo = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
 	try {
-		for (const cabeceras of [{}, { Authorization: "Bearer token-inventado" }, { Authorization: "Basic xinux:secreta" }]) {
+		for (const cabeceras of [{}, { Authorization: "Bearer token-inventado" }, { Authorization: "Basic ana:secreta" }]) {
 			const respuesta = await llamar(URL_MCP, {
 				method: "POST",
 				headers: { "Content-Type": "application/json", Accept: "application/json", ...cabeceras },
@@ -142,7 +142,7 @@ test("registrar_terminal devuelve nombre, cuenta, proyecto y revisión, y marca 
 
 		const resultado = await cliente.callTool({
 			name: "registrar_terminal",
-			arguments: { ruta: "/Users/xinux/Proyectos/tareas" },
+			arguments: { ruta: "/home/ana/proyectos/tareas" },
 		});
 		// Sin repositorio en el proyecto principal no se comprueba nada, y sin
 		// comando de verificación esa línea no se pinta.
@@ -164,7 +164,7 @@ test("registrar_terminal devuelve nombre, cuenta, proyecto y revisión, y marca 
 			.prepare("SELECT conectado_en, ruta FROM terminales WHERE nombre = ?")
 			.get(montaje.nombreTerminal);
 		assert.equal(typeof terminal?.conectado_en, "string");
-		assert.equal(terminal?.ruta, "/Users/xinux/Proyectos/tareas");
+		assert.equal(terminal?.ruta, "/home/ana/proyectos/tareas");
 	} finally {
 		await cliente.close();
 		await montaje.cerrar();
@@ -176,14 +176,14 @@ test("registrar_terminal comprueba el repositorio del proyecto y para la sesión
 	const web = crearProyecto(montaje.db, {
 		clave: "WEB",
 		nombre: "La web",
-		repositorio: "https://github.com/xinux87/web.git",
+		repositorio: "https://github.com/ejemplo/web.git",
 		verificacion: "npm test",
 	});
 	const { valor } = crearTerminalConToken(
 		montaje.db,
 		montaje.usuarioId,
 		"portatil-web",
-		"xinux@ejemplo.com",
+		"ana@ejemplo.com",
 		undefined,
 		undefined,
 		web.id,
@@ -195,14 +195,14 @@ test("registrar_terminal comprueba el repositorio del proyecto y para la sesión
 		// Otro repositorio: error de regla y el terminal no queda conectado.
 		const otro = await cliente.callTool({
 			name: "registrar_terminal",
-			arguments: { ruta: "/Users/xinux/Proyectos/otra", repositorio: "https://github.com/xinux87/otra.git" },
+			arguments: { ruta: "/home/ana/proyectos/otra", repositorio: "https://github.com/ejemplo/otra.git" },
 		});
 		assert.equal(otro.isError, true);
 		assert.match(textoDe(otro.content), /^proyecto_no_coincide: /);
 		assert.equal(conectadoEn(), null);
 
 		// El mismo, con y sin el sufijo `.git`: las dos formas son el mismo remote.
-		for (const repositorio of ["https://github.com/xinux87/web.git", "https://github.com/xinux87/web"]) {
+		for (const repositorio of ["https://github.com/ejemplo/web.git", "https://github.com/ejemplo/web"]) {
 			const bien = await cliente.callTool({ name: "registrar_terminal", arguments: { repositorio } });
 			assert.notEqual(bien.isError, true);
 			assert.match(textoDe(bien.content), /^proyecto: WEB · La web$/m);

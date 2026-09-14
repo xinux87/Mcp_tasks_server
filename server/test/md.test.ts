@@ -40,13 +40,13 @@ function ejemplo(banco: Banco): { padre: number; hija: number } {
 		titulo: "Exportar el listado de clientes a CSV",
 		descripcion:
 			"Los comerciales necesitan bajarse el listado de clientes filtrado\npara trabajarlo en su hoja de cálculo. Hoy lo copian a mano.",
-		usuarioId: banco.xinux,
+		usuarioId: banco.ana,
 		analisisModelo: "sonnet",
 		analisisTerminalId: terminal,
 		ejecucionModelo: "opus",
 		ejecucionTerminalId: terminal,
 	});
-	moverTareaHumano(banco.db, { tareaId: padre.id, usuarioId: banco.xinux, estado: "prepared" });
+	moverTareaHumano(banco.db, { tareaId: padre.id, usuarioId: banco.ana, estado: "prepared" });
 	tomarTarea(banco.db, { tareaId: padre.id, fase: "analisis", terminalId: terminal });
 	comentarAnalisis(banco.db, {
 		tareaId: padre.id,
@@ -72,7 +72,7 @@ function ejemplo(banco: Banco): { padre: number; hija: number } {
 	});
 	responder(banco.db, {
 		preguntaId: p1.id,
-		usuarioId: banco.xinux,
+		usuarioId: banco.ana,
 		opcion: "Punto y coma",
 		nota: "si algún día lo usa otro equipo, ya lo cambiaremos.",
 	});
@@ -149,10 +149,10 @@ autoejecucion: true
 marcas: []
 analisis:
   modelo: sonnet
-  terminal: portatil-xinux
+  terminal: portatil-ana
 ejecucion:
   modelo: opus
-  terminal: portatil-xinux
+  terminal: portatil-ana
 creada: <fecha>
 consumo:
   analisis:
@@ -182,12 +182,12 @@ para trabajarlo en su hoja de cálculo. Hoy lo copian a mano.
 
 ## Hilo
 
-### analisis · sonnet@portatil-xinux · <fecha>
+### analisis · sonnet@portatil-ana · <fecha>
 
 Hay que añadir un botón en el listado que descargue lo que se ve en
 pantalla con los filtros aplicados. Riesgo: listados muy grandes.
 
-### pregunta · opus@portatil-xinux · <fecha> · P1
+### pregunta · opus@portatil-ana · <fecha> · P1
 
 **¿Qué separador usamos en el CSV?**
 
@@ -201,17 +201,17 @@ Opciones:
 
 Recomendación: Punto y coma.
 
-### respuesta · humano:xinux · <fecha> · P1
+### respuesta · humano:ana · <fecha> · P1
 
 Opción: **Punto y coma**
 
 Nota: si algún día lo usa otro equipo, ya lo cambiaremos.
 
-### avance · opus@portatil-xinux · <fecha>
+### avance · opus@portatil-ana · <fecha>
 
 Botón añadido y fichero generándose. Faltan los tests.
 
-### resultado · opus@portatil-xinux · <fecha>
+### resultado · opus@portatil-ana · <fecha>
 
 Qué se construyó: botón «Exportar CSV» en el listado de clientes,
 respeta los filtros activos y separa por punto y coma.
@@ -252,7 +252,7 @@ test("el documento de una hija lleva su padre y el de una tarea nueva va vacío"
 		assert.match(documentoHija, /^padre: T-0001$/m);
 		assert.match(documentoHija, /^marcas: \[en marcha\]$/m);
 
-		const nueva = crearTareaHumana(banco.db, { titulo: "Una nueva", descripcion: "d", usuarioId: banco.xinux });
+		const nueva = crearTareaHumana(banco.db, { titulo: "Una nueva", descripcion: "d", usuarioId: banco.ana });
 		const documentoNueva = sinFechas(documentoTarea(leerTarea(banco.db, nueva.id) ?? assert.fail("sin tarea")));
 		assert.equal(
 			documentoNueva,
@@ -299,7 +299,7 @@ test("el proyecto va en el frontmatter justo debajo del id, y no en la línea de
 		const suya = crearTareaHumana(banco.db, {
 			titulo: "Pintar el tablero",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			proyectoId: web.id,
 		});
 		assert.match(
@@ -308,7 +308,7 @@ test("el proyecto va en el frontmatter justo debajo del id, y no en la línea de
 		);
 
 		// Sin decir proyecto, la tarea nace en el principal.
-		const principal = crearTareaHumana(banco.db, { titulo: "Otra", descripcion: "d", usuarioId: banco.xinux });
+		const principal = crearTareaHumana(banco.db, { titulo: "Otra", descripcion: "d", usuarioId: banco.ana });
 		assert.match(
 			sinFechas(documentoTarea(leerTarea(banco.db, principal.id) ?? assert.fail("sin tarea"))),
 			/^id: T-0002\nproyecto: PRI\n/m,
@@ -330,31 +330,31 @@ test("una pregunta se ve en el frontmatter y no lleva bloque ni segmento de ejec
 		const pregunta = crearTareaHumana(banco.db, {
 			titulo: "¿Cuánto se tarda hoy en cerrar el mes?",
 			descripcion: "Quiero saberlo antes de pedir nada.",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			tipo: "pregunta",
 			analisisModelo: "sonnet",
 			analisisTerminalId: banco.portatil,
 		});
-		moverTareaHumano(banco.db, { tareaId: pregunta.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: pregunta.id, usuarioId: banco.ana, estado: "prepared" });
 
 		const documento = sinFechas(documentoTarea(leerTarea(banco.db, pregunta.id) ?? assert.fail("sin tarea")));
 		assert.match(documento, /^titulo: "¿Cuánto se tarda hoy en cerrar el mes\?"\ntipo: pregunta\nestado: prepared$/m);
-		assert.match(documento, /^analisis:\n {2}modelo: sonnet\n {2}terminal: portatil-xinux$/m);
+		assert.match(documento, /^analisis:\n {2}modelo: sonnet\n {2}terminal: portatil-ana$/m);
 		assert.doesNotMatch(documento, /^ejecucion:$/m);
 
 		assert.equal(
 			lineaIndice(itemIndiceDe(banco.db, pregunta.id)),
-			"- T-0001 · prepared · pregunta · ¿Cuánto se tarda hoy en cerrar el mes? · analisis: sonnet@portatil-xinux",
+			"- T-0001 · prepared · pregunta · ¿Cuánto se tarda hoy en cerrar el mes? · analisis: sonnet@portatil-ana",
 		);
 
 		// Las marcas van después de «pregunta», nunca antes.
 		const sinAsignar = crearTareaHumana(banco.db, {
 			titulo: "¿Y el cierre de año?",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			tipo: "pregunta",
 		});
-		moverTareaHumano(banco.db, { tareaId: sinAsignar.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: sinAsignar.id, usuarioId: banco.ana, estado: "prepared" });
 		assert.equal(
 			lineaIndice(itemIndiceDe(banco.db, sinAsignar.id)),
 			"- T-0002 · prepared · pregunta · sin terminal · ¿Y el cierre de año? · analisis: sin asignar",
@@ -371,14 +371,14 @@ test("la línea de índice pone las marcas entre el estado y el título", () => 
 		crearTareaHumana(banco.db, {
 			titulo: "Migrar el envío de correos a la cola",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 		});
 		const lineas = listarTareas(banco.db, {}).map(lineaIndice);
 		assert.deepEqual(lineas, [
 			"- T-0004 · backlog · Migrar el envío de correos a la cola · analisis: sin asignar · ejecucion: sin asignar",
-			"- T-0002 · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-xinux · padre: T-0001",
-			"- T-0003 · done · Tests de la exportación · analisis: sonnet · ejecucion: opus@portatil-xinux · padre: T-0001",
-			"- T-0001 · done · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-xinux · ejecucion: opus@portatil-xinux",
+			"- T-0002 · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-ana · padre: T-0001",
+			"- T-0003 · done · Tests de la exportación · analisis: sonnet · ejecucion: opus@portatil-ana · padre: T-0001",
+			"- T-0001 · done · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-ana · ejecucion: opus@portatil-ana",
 		]);
 	} finally {
 		banco.cerrar();
@@ -391,7 +391,7 @@ test("el presupuesto va tras la autoejecución, y pasarse es una marca más", ()
 		const tarea = crearTareaHumana(banco.db, {
 			titulo: "Exportar el listado",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			presupuesto: 200_000,
 		});
 		const documento = (): string => sinFechas(documentoTarea(leerTarea(banco.db, tarea.id) ?? assert.fail("sin tarea")));
@@ -418,7 +418,7 @@ test("el presupuesto va tras la autoejecución, y pasarse es una marca más", ()
 		);
 
 		// Sin tope no hay línea en el frontmatter: no diría nada.
-		const sinTope = crearTareaHumana(banco.db, { titulo: "Sin tope", descripcion: "d", usuarioId: banco.xinux });
+		const sinTope = crearTareaHumana(banco.db, { titulo: "Sin tope", descripcion: "d", usuarioId: banco.ana });
 		assert.doesNotMatch(
 			sinFechas(documentoTarea(leerTarea(banco.db, sinTope.id) ?? assert.fail("sin tarea"))),
 			/presupuesto/,
@@ -443,7 +443,7 @@ test("novedades lista lo cambiado y las preguntas contestadas, y sin nada solo l
 
 ## Tareas nuevas o cambiadas
 
-- T-0002 · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-xinux · padre: T-0001
+- T-0002 · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-ana · padre: T-0001
 
 ## Preguntas contestadas
 
@@ -462,7 +462,7 @@ test("una funcionalidad enseña su rama, su progreso y sus partes; una parte, su
 		const evolutivo = crearTareaHumana(banco.db, {
 			titulo: "Que los comerciales se bajen sus listados",
 			descripcion: "Hoy copian los datos a mano y se equivocan.",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			tipo: "funcionalidad",
 			rama: "evolutivo/csv",
 			analisisModelo: "sonnet",
@@ -470,7 +470,7 @@ test("una funcionalidad enseña su rama, su progreso y sus partes; una parte, su
 			ejecucionModelo: "opus",
 			ejecucionTerminalId: banco.portatil,
 		});
-		moverTareaHumano(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: evolutivo.id, usuarioId: banco.ana, estado: "prepared" });
 		tomarTarea(banco.db, { tareaId: evolutivo.id, fase: "analisis", terminalId: banco.portatil });
 		const datos = crearParte(banco.db, {
 			titulo: "Sacar los datos del listado",
@@ -490,7 +490,7 @@ test("una funcionalidad enseña su rama, su progreso y sus partes; una parte, su
 			terminalId: banco.portatil,
 			texto: "Dos partes: los datos y el botón.",
 		});
-		aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux });
+		aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.ana });
 
 		// La funcionalidad: rama, progreso, sin bloque de ejecución y con sus
 		// partes en el bloque de hijas, cada una con lo que la precede.
@@ -510,7 +510,7 @@ partes: 3
 partesCerradas: 0
 analisis:
   modelo: sonnet
-  terminal: portatil-xinux
+  terminal: portatil-ana
 creada: <fecha>
 revision: 10
 ---
@@ -527,7 +527,7 @@ Hoy copian los datos a mano y se equivocan.
 
 ## Hilo
 
-### analisis · sonnet@portatil-xinux · <fecha>
+### analisis · sonnet@portatil-ana · <fecha>
 
 Dos partes: los datos y el botón.`,
 		);
@@ -540,11 +540,11 @@ Dos partes: los datos y el botón.`,
 
 		assert.equal(
 			lineaIndice(itemIndiceDe(banco.db, evolutivo.id)),
-			"- T-0001 · doing · funcionalidad 0/3 · Que los comerciales se bajen sus listados · analisis: sonnet@portatil-xinux",
+			"- T-0001 · doing · funcionalidad 0/3 · Que los comerciales se bajen sus listados · analisis: sonnet@portatil-ana",
 		);
 		assert.equal(
 			lineaIndice(itemIndiceDe(banco.db, boton.id)),
-			"- T-0003 · prepared · esperando · Poner el botón de descarga · analisis: sonnet@portatil-xinux · ejecucion: opus@portatil-xinux · padre: T-0001",
+			"- T-0003 · prepared · esperando · Poner el botón de descarga · analisis: sonnet@portatil-ana · ejecucion: opus@portatil-ana · padre: T-0001",
 		);
 	} finally {
 		banco.cerrar();

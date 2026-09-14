@@ -20,7 +20,7 @@ export const CONFIG_PRUEBA: Config = {
 /** Base en memoria con un humano y dos terminales, que es lo mínimo para probar las reglas. */
 export type Banco = {
 	db: DatabaseSync;
-	xinux: number;
+	ana: number;
 	portatil: number;
 	sobremesa: number;
 	cerrar: () => void;
@@ -28,12 +28,12 @@ export type Banco = {
 
 export function montar(): Banco {
 	const db = abrirBaseDeDatos(":memory:");
-	const { valor: usuario } = crearUsuario(db, "xinux", hashPassword("secreta"));
-	const { valor: uno } = crearTerminalConToken(db, usuario.id, "portatil-xinux", "xinux@ejemplo.com");
-	const { valor: dos } = crearTerminalConToken(db, usuario.id, "sobremesa-xinux", "xinux@ejemplo.com");
+	const { valor: usuario } = crearUsuario(db, "ana", hashPassword("secreta"));
+	const { valor: uno } = crearTerminalConToken(db, usuario.id, "portatil-ana", "ana@ejemplo.com");
+	const { valor: dos } = crearTerminalConToken(db, usuario.id, "sobremesa-ana", "ana@ejemplo.com");
 	return {
 		db,
-		xinux: usuario.id,
+		ana: usuario.id,
 		portatil: uno.terminal.id,
 		sobremesa: dos.terminal.id,
 		cerrar: () => db.close(),

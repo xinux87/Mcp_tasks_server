@@ -18,6 +18,12 @@ RUN npm run build \
 FROM node:24-slim AS runtime
 WORKDIR /app
 
+LABEL org.opencontainers.image.title="MCP Tareas" \
+	org.opencontainers.image.description="Servidor MCP de tareas: MCP, API y web en un solo proceso" \
+	org.opencontainers.image.source="https://github.com/xinux87/Mcp_tasks_server" \
+	org.opencontainers.image.version="0.1.0" \
+	org.opencontainers.image.licenses="MIT"
+
 ENV NODE_ENV=production \
 	PORT=3000 \
 	DATA_DIR=/data

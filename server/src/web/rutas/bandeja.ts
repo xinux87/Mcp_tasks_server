@@ -7,7 +7,7 @@ import { type Comentario, comentariosDeTarea, preguntasDeTarea, type TipoComenta
 import { listarProyectos } from "../../db/proyectos.ts";
 import { type ItemIndice, listarTareas } from "../../db/tareas.ts";
 import { formatearId } from "../../md/ids.ts";
-import { buscadorDeColor, cabeceraPagina, chipProyecto, edadEnColumna } from "../componentes.ts";
+import { buscadorDeColor, chipProyecto, edadEnColumna } from "../componentes.ts";
 import { edad } from "../formatos.ts";
 import { ESTADO_AVISO } from "../formulario.ts";
 import { type ColorDe, tarjetaComentario, tarjetaPreguntaAbierta } from "../hilo.ts";
@@ -59,10 +59,15 @@ function linea(item: ItemIndice, claves: Claves, cuanto?: Html): Html {
 		</p>`;
 }
 
-/** Un bloque de la bandeja: su título con el contador y lo que haya dentro. */
-function bloque(titulo: string, items: ItemIndice[], pintar: (item: ItemIndice) => Html): Html {
+/**
+ * Un bloque de la bandeja: el verbo que le toca al humano con su contador, una
+ * línea que dice qué es, y lo que haya dentro. El título es lo que hay que
+ * hacer, no cómo se llama la columna de la que sale.
+ */
+function bloque(titulo: string, queEs: string, items: ItemIndice[], pintar: (item: ItemIndice) => Html): Html {
 	return html`<section class="grupo bloque-bandeja">
 			<h2>${titulo} <span class="contador">(${items.length})</span></h2>
+			<p class="que-es">${queEs}</p>
 			${
 				items.length === 0
 					? html`<p class="silencio">Nada pendiente.</p>`
@@ -147,12 +152,19 @@ export function paginaBandeja(c: Context, deps: DependenciasWeb, aviso: string |
 		colorDe: buscadorDeColor(db),
 		items: listarTareas(db),
 	};
-	const cuerpo = html`${cabeceraPagina({ titulo: "Bandeja" })}
-		<p class="explicacion silencio">Lo que espera por ti, de todos los proyectos.</p>
-		${bloque("Preguntas sin contestar", bandeja.bloqueadas, (item) => preguntasSinContestar(item, entorno))}
-		${bloque("Por aprobar", bandeja.porAprobar, (item) => porAprobar(item, entorno))}
-		${bloque("Resultados por revisar", bandeja.porRevisar, (item) => porRevisar(item, entorno))}
-		${bloque("Backlog sin definir", bandeja.sinDefinir, (item) =>
+	const cuerpo = html`${bloque(
+		"Contesta",
+		"Preguntas de los agentes que no pueden seguir sin ti.",
+		bandeja.bloqueadas,
+		(item) => preguntasSinContestar(item, entorno),
+	)}
+		${bloque("Aprueba", "Análisis y descomposiciones que esperan tu visto bueno.", bandeja.porAprobar, (item) =>
+			porAprobar(item, entorno),
+		)}
+		${bloque("Revisa", "Resultados terminados que esperan tu revisión.", bandeja.porRevisar, (item) =>
+			porRevisar(item, entorno),
+		)}
+		${bloque("Define", "Tareas que llevan más de siete días sin definir.", bandeja.sinDefinir, (item) =>
 			// En backlog la edad en columna no se pinta sola: aquí es el dato.
 			linea(
 				item,
@@ -164,6 +176,7 @@ export function paginaBandeja(c: Context, deps: DependenciasWeb, aviso: string |
 		pagina({
 			...navProyectos(c, db),
 			titulo: "Bandeja",
+			proposito: "Lo que espera por ti, de todos los proyectos.",
 			usuario: usuarioActual(c),
 			vista: "bandeja",
 			revision: revisionActual(db),

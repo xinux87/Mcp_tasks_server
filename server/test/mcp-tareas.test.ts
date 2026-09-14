@@ -34,9 +34,9 @@ type Montaje = {
  */
 function montar(): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
-	const { valor: usuario } = crearUsuario(db, "xinux", hashPassword("secreta"));
-	const { valor: a } = crearTerminalConToken(db, usuario.id, "portatil-a", "xinux@ejemplo.com");
-	const { valor: b } = crearTerminalConToken(db, usuario.id, "sobremesa-b", "xinux@ejemplo.com");
+	const { valor: usuario } = crearUsuario(db, "ana", hashPassword("secreta"));
+	const { valor: a } = crearTerminalConToken(db, usuario.id, "portatil-a", "ana@ejemplo.com");
+	const { valor: b } = crearTerminalConToken(db, usuario.id, "sobremesa-b", "ana@ejemplo.com");
 	const tarea = crearTareaHumana(db, {
 		titulo: "Exportar el listado de clientes a CSV",
 		descripcion: "Hoy lo copian a mano.",
@@ -299,7 +299,7 @@ test("un terminal solo ve, toma y crea tareas de su proyecto", async () => {
 		montaje.db,
 		montaje.usuarioId,
 		"portatil-web",
-		"xinux@ejemplo.com",
+		"ana@ejemplo.com",
 		undefined,
 		undefined,
 		web.id,

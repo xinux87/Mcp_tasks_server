@@ -44,9 +44,9 @@ function otroProyecto(banco: Banco, clave = "WEB"): { proyectoId: number; termin
 	const proyecto = crearProyecto(banco.db, { clave, nombre: `Proyecto ${clave}` });
 	const { valor } = crearTerminalConToken(
 		banco.db,
-		banco.xinux,
+		banco.ana,
 		`terminal-${clave}`,
-		"xinux@ejemplo.com",
+		"ana@ejemplo.com",
 		undefined,
 		undefined,
 		proyecto.id,
@@ -55,7 +55,7 @@ function otroProyecto(banco: Banco, clave = "WEB"): { proyectoId: number; termin
 }
 
 function tareaEn(banco: Banco, proyectoId: number, titulo: string): Tarea {
-	return crearTareaHumana(banco.db, { titulo, descripcion: "d", usuarioId: banco.xinux, proyectoId });
+	return crearTareaHumana(banco.db, { titulo, descripcion: "d", usuarioId: banco.ana, proyectoId });
 }
 
 // --- el proyecto principal ----------------------------------------------------
@@ -81,7 +81,7 @@ test("las tareas y los terminales nacen en el proyecto principal si no se dice o
 	try {
 		assert.equal(tareaEn(banco, PROYECTO_PRINCIPAL, "Suelta").proyectoId, PROYECTO_PRINCIPAL);
 		assert.equal(
-			crearTareaHumana(banco.db, { titulo: "Sin proyecto", descripcion: "d", usuarioId: banco.xinux }).proyectoId,
+			crearTareaHumana(banco.db, { titulo: "Sin proyecto", descripcion: "d", usuarioId: banco.ana }).proyectoId,
 			PROYECTO_PRINCIPAL,
 		);
 		assert.equal(buscarTerminalPorId(banco.db, banco.portatil)?.proyectoId, PROYECTO_PRINCIPAL);
@@ -103,12 +103,12 @@ test("la clave son de dos a seis caracteres en mayúsculas empezando por letra",
 });
 
 test("dos URLs que solo difieren en espacios, barra final o .git son el mismo repositorio", () => {
-	const esperado = "https://github.com/xinux87/Mcp_tasks_server";
+	const esperado = "https://github.com/ejemplo/repositorio";
 	for (const forma of [
-		"  https://github.com/xinux87/Mcp_tasks_server  ",
-		"https://github.com/xinux87/Mcp_tasks_server/",
-		"https://github.com/xinux87/Mcp_tasks_server.git",
-		"  https://github.com/xinux87/Mcp_tasks_server.git/ ",
+		"  https://github.com/ejemplo/repositorio  ",
+		"https://github.com/ejemplo/repositorio/",
+		"https://github.com/ejemplo/repositorio.git",
+		"  https://github.com/ejemplo/repositorio.git/ ",
 	]) {
 		assert.equal(normalizarRepositorio(forma), esperado);
 	}
@@ -214,7 +214,7 @@ test("un proyecto se borra vacío: nunca el principal, nunca con tareas ni termi
 			codigoDe(() => borrarProyecto(banco.db, proyectoId, ACTOR)),
 			"proyecto_con_terminales",
 		);
-		borrarTerminal(banco.db, terminalId, banco.xinux);
+		borrarTerminal(banco.db, terminalId, banco.ana);
 
 		const tarea = tareaEn(banco, proyectoId, "Suya");
 		assert.equal(
@@ -235,16 +235,16 @@ test("un proyecto se borra vacío: nunca el principal, nunca con tareas ni termi
 test("registrar un terminal guarda su carpeta y devuelve su proyecto", () => {
 	const banco = montar();
 	try {
-		const registrado = registrarTerminal(banco.db, banco.portatil, { ruta: "/home/xinux/repo" });
+		const registrado = registrarTerminal(banco.db, banco.portatil, { ruta: "/home/ana/repo" });
 		assert.equal(registrado.proyecto.clave, "PRI");
-		assert.equal(registrado.terminal.ruta, "/home/xinux/repo");
+		assert.equal(registrado.terminal.ruta, "/home/ana/repo");
 		assert.notEqual(registrado.terminal.conectadoEn, null);
 		// Es telemetría: no sube la revisión.
 		const revision = revisionActual(banco.db);
 		registrarTerminal(banco.db, banco.portatil, {});
 		assert.equal(revisionActual(banco.db), revision);
 		// Sin ruta nueva se conserva la que reportó antes.
-		assert.equal(buscarTerminalPorId(banco.db, banco.portatil)?.ruta, "/home/xinux/repo");
+		assert.equal(buscarTerminalPorId(banco.db, banco.portatil)?.ruta, "/home/ana/repo");
 	} finally {
 		banco.cerrar();
 	}
@@ -260,9 +260,9 @@ test("un terminal en otro repositorio no se registra: el proyecto no coincide", 
 		});
 		const { valor } = crearTerminalConToken(
 			banco.db,
-			banco.xinux,
+			banco.ana,
 			"terminal-web",
-			"xinux@ejemplo.com",
+			"ana@ejemplo.com",
 			undefined,
 			undefined,
 			web.id,
@@ -292,9 +292,9 @@ test("el alta de un terminal elige proyecto y la lista lo enseña con su ruta", 
 	try {
 		const web = crearProyecto(banco.db, { clave: "WEB", nombre: "La web" });
 		const creado = altaTerminal(banco.db, {
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			nombre: "sobremesa-web",
-			cuenta: "xinux@ejemplo.com",
+			cuenta: "ana@ejemplo.com",
 			proyectoId: web.id,
 		});
 		registrarTerminal(banco.db, creado.terminal.id, { ruta: "/srv/web" });
@@ -322,7 +322,7 @@ test("una tarea nace en el proyecto de quien la crea, y sus hijas y partes lo he
 
 		// Una hija de trabajo hereda el de su padre.
 		const madre = tareaEn(banco, proyectoId, "La madre");
-		moverTareaHumano(banco.db, { tareaId: madre.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: madre.id, usuarioId: banco.ana, estado: "prepared" });
 		tomarTarea(banco.db, { tareaId: madre.id, fase: "analisis", terminalId });
 		comentarAnalisis(banco.db, { tareaId: madre.id, terminalId, texto: "hecho" });
 		tomarTarea(banco.db, { tareaId: madre.id, fase: "ejecucion", terminalId });
@@ -335,11 +335,11 @@ test("una tarea nace en el proyecto de quien la crea, y sus hijas y partes lo he
 		const evolutivo = crearTareaHumana(banco.db, {
 			titulo: "Un evolutivo",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			proyectoId,
 			tipo: "funcionalidad",
 		});
-		moverTareaHumano(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: evolutivo.id, usuarioId: banco.ana, estado: "prepared" });
 		tomarTarea(banco.db, { tareaId: evolutivo.id, fase: "analisis", terminalId });
 		const parte = crearParte(banco.db, {
 			titulo: "Una parte",
@@ -385,9 +385,9 @@ test("las novedades de un terminal solo traen tareas y respuestas de su proyecto
 		// Una tarea sin terminal en cada proyecto: «sin terminal» es «cualquier
 		// terminal de este proyecto», no de cualquiera.
 		const ajena = tareaEn(banco, PROYECTO_PRINCIPAL, "Del principal");
-		moverTareaHumano(banco.db, { tareaId: ajena.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: ajena.id, usuarioId: banco.ana, estado: "prepared" });
 		const suya = tareaEn(banco, proyectoId, "De la web");
-		moverTareaHumano(banco.db, { tareaId: suya.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: suya.id, usuarioId: banco.ana, estado: "prepared" });
 
 		assert.deepEqual(
 			tareasParaTerminalDesde(banco.db, { terminalId, revision: 0 }).map((item) => item.id),
@@ -411,7 +411,7 @@ test("las novedades de un terminal solo traen tareas y respuestas de su proyecto
 			],
 			recomendacion: "Sí",
 		});
-		responder(banco.db, { preguntaId: pregunta.id, usuarioId: banco.xinux, opcion: "Sí" });
+		responder(banco.db, { preguntaId: pregunta.id, usuarioId: banco.ana, opcion: "Sí" });
 		assert.deepEqual(
 			preguntasContestadasDesde(banco.db, { terminalId: banco.portatil, revision: 0 }).map((item) => item.tareaId),
 			[ajena.id],
@@ -432,7 +432,7 @@ test("tomar una tarea de otro proyecto falla antes que cualquier otra comprobaci
 			codigoDe(() => tomarTarea(banco.db, { tareaId: ajena.id, fase: "analisis", terminalId })),
 			"otro_proyecto",
 		);
-		moverTareaHumano(banco.db, { tareaId: ajena.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: ajena.id, usuarioId: banco.ana, estado: "prepared" });
 		assert.equal(
 			codigoDe(() => tomarTarea(banco.db, { tareaId: ajena.id, fase: "ejecucion", terminalId })),
 			"otro_proyecto",
@@ -462,7 +462,7 @@ test("una dependencia no cruza de proyecto, venga por donde venga", () => {
 				crearTareaHumana(banco.db, {
 					titulo: "Otra de la web",
 					descripcion: "d",
-					usuarioId: banco.xinux,
+					usuarioId: banco.ana,
 					proyectoId,
 					dependeDe: [ajena.id],
 				}),
@@ -480,11 +480,11 @@ test("una dependencia no cruza de proyecto, venga por donde venga", () => {
 		const evolutivo = crearTareaHumana(banco.db, {
 			titulo: "Un evolutivo",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			proyectoId,
 			tipo: "funcionalidad",
 		});
-		moverTareaHumano(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: evolutivo.id, usuarioId: banco.ana, estado: "prepared" });
 		tomarTarea(banco.db, { tareaId: evolutivo.id, fase: "analisis", terminalId });
 		const primera = crearParte(banco.db, { titulo: "Una", descripcion: "d", padreId: evolutivo.id, terminalId });
 		assert.equal(
@@ -523,13 +523,13 @@ test("una tarea suelta cambia de proyecto en backlog y pierde sus terminales", (
 		const tarea = crearTareaHumana(banco.db, {
 			titulo: "Se muda",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			analisisTerminalId: banco.portatil,
 			ejecucionTerminalId: banco.portatil,
 		});
 		const mudada = editarTareaBacklog(banco.db, {
 			tareaId: tarea.id,
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			titulo: "Se muda",
 			descripcion: "d",
 			tipo: "tarea",
@@ -560,21 +560,21 @@ test("una tarea con padre, con hijas o con dependencias no cambia de proyecto", 
 		const evolutivo = crearTareaHumana(banco.db, {
 			titulo: "Un evolutivo",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			tipo: "funcionalidad",
 		});
 		const parte = crearTareaHumana(banco.db, {
 			titulo: "Una parte",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			padreId: evolutivo.id,
 		});
-		const suelta = crearTareaHumana(banco.db, { titulo: "Suelta", descripcion: "d", usuarioId: banco.xinux });
+		const suelta = crearTareaHumana(banco.db, { titulo: "Suelta", descripcion: "d", usuarioId: banco.ana });
 
 		const mudanza = (tareaId: number, titulo: string) => () =>
 			editarTareaBacklog(banco.db, {
 				tareaId,
-				usuarioId: banco.xinux,
+				usuarioId: banco.ana,
 				titulo,
 				descripcion: "d",
 				tipo: "tarea",
@@ -593,7 +593,7 @@ test("una tarea con padre, con hijas o con dependencias no cambia de proyecto", 
 			codigoDe(() =>
 				editarTareaBacklog(banco.db, {
 					tareaId: evolutivo.id,
-					usuarioId: banco.xinux,
+					usuarioId: banco.ana,
 					titulo: "Un evolutivo",
 					descripcion: "d",
 					tipo: "funcionalidad",
@@ -661,11 +661,11 @@ test("borrar un terminal o un usuario sigue funcionando con proyectos de por med
 		const tarea = crearTareaHumana(banco.db, {
 			titulo: "De la web",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			proyectoId,
 			analisisTerminalId: terminalId,
 		});
-		borrarTerminal(banco.db, terminalId, banco.xinux);
+		borrarTerminal(banco.db, terminalId, banco.ana);
 		// La tarea se queda donde estaba, sin terminal: cualquiera del proyecto la toma.
 		const suelta = leerTarea(banco.db, tarea.id);
 		assert.equal(suelta?.tarea.proyectoId, proyectoId);
@@ -673,9 +673,9 @@ test("borrar un terminal o un usuario sigue funcionando con proyectos de por med
 
 		// Y el usuario se borra igual, mientras quede otro y no tenga terminales.
 		const { valor: otro } = crearUsuario(banco.db, "otro", "hash");
-		borrarTerminal(banco.db, banco.portatil, banco.xinux);
-		borrarTerminal(banco.db, banco.sobremesa, banco.xinux);
-		assert.equal(borrarUsuario(banco.db, otro.id, banco.xinux).nombre, "otro");
+		borrarTerminal(banco.db, banco.portatil, banco.ana);
+		borrarTerminal(banco.db, banco.sobremesa, banco.ana);
+		assert.equal(borrarUsuario(banco.db, otro.id, banco.ana).nombre, "otro");
 	} finally {
 		banco.cerrar();
 	}

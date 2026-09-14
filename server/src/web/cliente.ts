@@ -3,7 +3,7 @@
  * en disco: lo sirve `GET /static/app.js` como módulo ES. Es lo único que
  * corre en el navegador, aparte de SortableJS.
  *
- * Hace seis cosas, y ninguna más:
+ * Hace siete cosas, y ninguna más:
  *
  * 1. Refresco en vivo: escucha `/eventos` (SSE con la revisión global) y,
  *    según la vista, recarga el fragmento del tablero, recarga la página o
@@ -16,6 +16,8 @@
  * 5. Copia al portapapeles los bloques de comandos del tutorial de conexión.
  * 6. Navega al cambiar el selector de proyecto de la barra lateral, y esconde
  *    su botón «Ir», que solo hace falta sin JavaScript.
+ * 7. El conmutador de tema: marca el radio que toca al cargar y, al cambiarlo,
+ *    guarda la preferencia en el navegador y la aplica en el acto.
  *
  * Escrito sin acentos graves ni interpolaciones para que quepa tal cual en
  * esta plantilla de TypeScript. Nunca escribe `innerHTML` con nada que no
@@ -175,10 +177,10 @@ function cargarSortable() {
 /** Las vueltas atrás del humano exigen una nota que explique por qué. */
 function notaObligatoria(origen, destino) {
 	if (origen === "prepared" && destino === "backlog") {
-		return "Volver a backlog es repensar la tarea. Nota: por qué vuelve.";
+		return "Devolver a por definir es repensar la tarea. Nota: por qué vuelve.";
 	}
 	if (origen === "done" && destino === "doing") {
-		return "Devolver a doing rechaza el resultado. Nota: qué falta.";
+		return "Rechazar el resultado. Nota: qué falta.";
 	}
 	return null;
 }
@@ -352,6 +354,59 @@ function prepararLateral() {
 	});
 }
 
+// --- tema --------------------------------------------------------------------
+
+/** Lo guardado, o "sistema" cuando no hay nada o el almacén no deja leer. */
+function temaGuardado() {
+	try {
+		const valor = window.localStorage.getItem("tema");
+		return valor === "claro" || valor === "oscuro" ? valor : "sistema";
+	} catch (error) {
+		return "sistema";
+	}
+}
+
+/** Pone o quita el atributo del que cuelga la paleta. Sin él manda el sistema. */
+function aplicarTema(valor) {
+	if (valor === "sistema") {
+		delete document.documentElement.dataset.tema;
+		return;
+	}
+	document.documentElement.dataset.tema = valor;
+}
+
+/**
+ * Los tres radios de la barra lateral. El servidor no sabe qué tema quiere
+ * quien mira (es del navegador, no del usuario), así que pinta "Sistema"
+ * marcado y aquí se corrige con lo que haya guardado. Cambiarlo se ve en el
+ * acto: el atributo del <html> es lo único que decide la paleta.
+ */
+function prepararTema() {
+	const radios = document.querySelectorAll('input[name="tema"]');
+	if (radios.length === 0) {
+		return;
+	}
+	const actual = temaGuardado();
+	for (const radio of radios) {
+		radio.checked = radio.value === actual;
+		radio.addEventListener("change", function () {
+			if (!radio.checked) {
+				return;
+			}
+			try {
+				if (radio.value === "sistema") {
+					window.localStorage.removeItem("tema");
+				} else {
+					window.localStorage.setItem("tema", radio.value);
+				}
+			} catch (error) {
+				// Sin almacén el tema no persiste, pero la página sí cambia.
+			}
+			aplicarTema(radio.value);
+		});
+	}
+}
+
 // --- selector de proyecto ----------------------------------------------------
 
 /**
@@ -492,6 +547,7 @@ function escucharEventos() {
 
 // --- arranque ----------------------------------------------------------------
 
+prepararTema();
 prepararLateral();
 prepararSelectorProyecto();
 prepararCopias();

@@ -44,7 +44,7 @@ test("sin color se reparte el menos usado, y el elegido se respeta o se rechaza"
 	const banco = montar();
 	try {
 		// El usuario del banco ya tiene el primero de la lista.
-		assert.equal(buscarUsuarioPorNombre(banco.db, "xinux")?.color, COLORES_USUARIO[0]);
+		assert.equal(buscarUsuarioPorNombre(banco.db, "ana")?.color, COLORES_USUARIO[0]);
 
 		// Los siguientes van cogiendo el primero que nadie usa, en orden.
 		for (let indice = 1; indice < COLORES_USUARIO.length; indice += 1) {
@@ -60,11 +60,11 @@ test("sin color se reparte el menos usado, y el elegido se respeta o se rechaza"
 
 		const { valor: elegido } = crearUsuario(banco.db, "morada", hashPassword("clave"), {
 			color: "morado",
-			actor: { usuarioId: banco.xinux },
+			actor: { usuarioId: banco.ana },
 		});
 		assert.equal(elegido.color, "morado");
 		assert.equal(detalleDe(banco.db, "usuario", elegido.id, "alta_usuario"), "color morado");
-		assert.equal(altaPor(banco.db, "usuario", elegido.id), "xinux");
+		assert.equal(altaPor(banco.db, "usuario", elegido.id), "ana");
 
 		assert.equal(
 			codigoDe(() => crearUsuario(banco.db, "fucsia", hashPassword("clave"), { color: "fucsia" })),
@@ -80,18 +80,18 @@ test("cambiar el color y la contraseña dejan rastro sin mover la revisión", ()
 	try {
 		const antes = revisionActual(banco.db);
 
-		const cambiado = cambiarColor(banco.db, { usuarioId: banco.xinux, color: "rojo", actorId: banco.xinux });
+		const cambiado = cambiarColor(banco.db, { usuarioId: banco.ana, color: "rojo", actorId: banco.ana });
 		assert.equal(cambiado.color, "rojo");
-		assert.equal(detalleDe(banco.db, "usuario", banco.xinux, "cambiar_color"), `${COLORES_USUARIO[0]} → rojo`);
+		assert.equal(detalleDe(banco.db, "usuario", banco.ana, "cambiar_color"), `${COLORES_USUARIO[0]} → rojo`);
 		assert.equal(revisionActual(banco.db), antes, "cambiar el color no es contenido: ningún agente lo ve");
 
 		assert.equal(
-			codigoDe(() => cambiarColor(banco.db, { usuarioId: banco.xinux, color: "turquesa", actorId: banco.xinux })),
+			codigoDe(() => cambiarColor(banco.db, { usuarioId: banco.ana, color: "turquesa", actorId: banco.ana })),
 			"color_invalido",
 		);
 
-		cambiarPassword(banco.db, { usuarioId: banco.xinux, actual: "secreta", nueva: "otra", repetida: "otra" });
-		assert.equal(detalleDe(banco.db, "usuario", banco.xinux, "cambiar_password"), "");
+		cambiarPassword(banco.db, { usuarioId: banco.ana, actual: "secreta", nueva: "otra", repetida: "otra" });
+		assert.equal(detalleDe(banco.db, "usuario", banco.ana, "cambiar_password"), "");
 		assert.equal(revisionActual(banco.db), antes);
 	} finally {
 		banco.cerrar();
@@ -104,13 +104,13 @@ test("cada acción humana sobre una tarea deja su fila, y reordenar no", () => {
 		const tarea = crearTareaHumana(banco.db, {
 			titulo: "Exportar clientes",
 			descripcion: "Lo copian a mano.",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 		});
 		assert.equal(detalleDe(banco.db, "tarea", tarea.id, "crear_tarea"), "");
 
 		const edicion = {
 			tareaId: tarea.id,
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			titulo: "Exportar clientes a CSV",
 			descripcion: "Con los filtros aplicados.",
 			tipo: "tarea" as const,
@@ -124,7 +124,7 @@ test("cada acción humana sobre una tarea deja su fila, y reordenar no", () => {
 		assert.equal(
 			detalleDe(banco.db, "tarea", tarea.id, "editar_tarea"),
 			"título: «Exportar clientes» → «Exportar clientes a CSV»; descripción; " +
-				"autoejecución: activada → desactivada; análisis: sin asignar → sonnet@portatil-xinux",
+				"autoejecución: activada → desactivada; análisis: sin asignar → sonnet@portatil-ana",
 		);
 		// Guardar el formulario sin tocar nada no es una acción: no repite fila.
 		editarTareaBacklog(banco.db, edicion);
@@ -135,7 +135,7 @@ test("cada acción humana sobre una tarea deja su fila, y reordenar no", () => {
 		assert.equal(ediciones.at(-1)?.detalle, "tipo: tarea → pregunta");
 		editarTareaBacklog(banco.db, edicion);
 
-		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 		assert.equal(detalleDe(banco.db, "tarea", tarea.id, "mover_tarea"), "backlog → prepared");
 
 		// Lo que hace el agente no deja actividad: ya está en el hilo con su autor.
@@ -155,14 +155,14 @@ test("cada acción humana sobre una tarea deja su fila, y reordenar no", () => {
 		});
 		assert.equal(actividadDe(banco.db, "tarea", tarea.id).length, rastroAntesDelAgente);
 
-		responder(banco.db, { preguntaId: pregunta.id, usuarioId: banco.xinux, opcion: "Punto y coma" });
+		responder(banco.db, { preguntaId: pregunta.id, usuarioId: banco.ana, opcion: "Punto y coma" });
 		assert.equal(detalleDe(banco.db, "tarea", tarea.id, "responder_pregunta"), "P1: Punto y coma");
 
-		aprobarEjecucion(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux });
+		aprobarEjecucion(banco.db, { tareaId: tarea.id, usuarioId: banco.ana });
 		assert.equal(detalleDe(banco.db, "tarea", tarea.id, "aprobar_ejecucion"), "");
 
 		const larga = "n".repeat(100);
-		notaHumana(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, texto: larga });
+		notaHumana(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: larga });
 		assert.equal(detalleDe(banco.db, "tarea", tarea.id, "nota"), "n".repeat(80));
 
 		// El orden es prioridad, no configuración: arrastrar no deja rastro.
@@ -181,11 +181,11 @@ test("cada acción humana sobre una tarea deja su fila, y reordenar no", () => {
 			"aprobar_ejecucion",
 			"nota",
 		]);
-		assert.equal(altaPor(banco.db, "tarea", tarea.id), "xinux");
+		assert.equal(altaPor(banco.db, "tarea", tarea.id), "ana");
 		const rastro = actividadDe(banco.db, "tarea", tarea.id);
 		for (const fila of rastro) {
-			assert.equal(fila.usuarioNombre, "xinux");
-			assert.equal(fila.usuarioId, banco.xinux);
+			assert.equal(fila.usuarioNombre, "ana");
+			assert.equal(fila.usuarioId, banco.ana);
 		}
 		// `objeto_nombre` es el título de entonces, para que la lista global se
 		// lea sin buscar: el alta guarda el viejo y lo posterior, el nuevo.
@@ -206,15 +206,15 @@ test("los terminales dejan rastro de su alta y de su revocación", () => {
 	const banco = montar();
 	try {
 		const creado = altaTerminal(banco.db, {
-			usuarioId: banco.xinux,
-			nombre: "torre-xinux",
-			cuenta: "xinux@ejemplo.com",
+			usuarioId: banco.ana,
+			nombre: "torre-ana",
+			cuenta: "ana@ejemplo.com",
 		});
 		const terminalId = creado.terminal.id;
-		assert.equal(detalleDe(banco.db, "terminal", terminalId, "alta_terminal"), "cuenta xinux@ejemplo.com, de xinux");
-		assert.equal(altaPor(banco.db, "terminal", terminalId), "xinux");
+		assert.equal(detalleDe(banco.db, "terminal", terminalId, "alta_terminal"), "cuenta ana@ejemplo.com, de ana");
+		assert.equal(altaPor(banco.db, "terminal", terminalId), "ana");
 
-		revocarTerminal(banco.db, terminalId, banco.xinux);
+		revocarTerminal(banco.db, terminalId, banco.ana);
 		assert.equal(detalleDe(banco.db, "terminal", terminalId, "revocar_terminal"), "");
 		assert.deepEqual(acciones(banco.db, terminalId, "terminal"), ["alta_terminal", "revocar_terminal"]);
 
@@ -230,19 +230,19 @@ test("los agentes en paralelo se eligen en el alta y se cambian después, sin su
 	try {
 		// En el alta, con un entero de 1 en adelante; sin él, uno.
 		const tres = altaTerminal(banco.db, {
-			usuarioId: banco.xinux,
-			nombre: "torre-xinux",
-			cuenta: "xinux@ejemplo.com",
+			usuarioId: banco.ana,
+			nombre: "torre-ana",
+			cuenta: "ana@ejemplo.com",
 			agentes: 3,
 		});
 		assert.equal(tres.terminal.agentes, 3);
 		assert.equal(
-			altaTerminal(banco.db, { usuarioId: banco.xinux, nombre: "otra", cuenta: "xinux@ejemplo.com" }).terminal.agentes,
+			altaTerminal(banco.db, { usuarioId: banco.ana, nombre: "otra", cuenta: "ana@ejemplo.com" }).terminal.agentes,
 			1,
 		);
 		for (const agentes of [0, -1, 1.5, "x"] as (number | string)[]) {
 			assert.equal(
-				codigoDe(() => altaTerminal(banco.db, { usuarioId: banco.xinux, nombre: "mala", cuenta: "c", agentes })),
+				codigoDe(() => altaTerminal(banco.db, { usuarioId: banco.ana, nombre: "mala", cuenta: "c", agentes })),
 				"agentes_invalido",
 				`se esperaba agentes_invalido con ${agentes}`,
 			);
@@ -250,27 +250,27 @@ test("los agentes en paralelo se eligen en el alta y se cambian después, sin su
 
 		// Cambiarlo es configuración del terminal: deja rastro y nadie más lo ve.
 		const antes = revisionActual(banco.db);
-		assert.equal(cambiarAgentes(banco.db, { terminalId: banco.portatil, agentes: "3", actorId: banco.xinux }).agentes, 3);
+		assert.equal(cambiarAgentes(banco.db, { terminalId: banco.portatil, agentes: "3", actorId: banco.ana }).agentes, 3);
 		assert.equal(revisionActual(banco.db), antes);
 		assert.equal(detalleDe(banco.db, "terminal", banco.portatil, "cambiar_agentes"), "1 → 3");
 
 		// El mismo valor no escribe nada: arrastrar el formulario no es un cambio.
-		cambiarAgentes(banco.db, { terminalId: banco.portatil, agentes: 3, actorId: banco.xinux });
+		cambiarAgentes(banco.db, { terminalId: banco.portatil, agentes: 3, actorId: banco.ana });
 		assert.deepEqual(acciones(banco.db, banco.portatil, "terminal"), ["cambiar_agentes"]);
 
 		assert.equal(
-			codigoDe(() => cambiarAgentes(banco.db, { terminalId: banco.portatil, agentes: 0, actorId: banco.xinux })),
+			codigoDe(() => cambiarAgentes(banco.db, { terminalId: banco.portatil, agentes: 0, actorId: banco.ana })),
 			"agentes_invalido",
 		);
 		assert.equal(
-			codigoDe(() => cambiarAgentes(banco.db, { terminalId: 999, agentes: 2, actorId: banco.xinux })),
+			codigoDe(() => cambiarAgentes(banco.db, { terminalId: 999, agentes: 2, actorId: banco.ana })),
 			"terminal_inexistente",
 		);
 
 		// Un terminal revocado ya no va a tomar nada: no se le cambian.
-		revocarTerminal(banco.db, tres.terminal.id, banco.xinux);
+		revocarTerminal(banco.db, tres.terminal.id, banco.ana);
 		assert.equal(
-			codigoDe(() => cambiarAgentes(banco.db, { terminalId: tres.terminal.id, agentes: 2, actorId: banco.xinux })),
+			codigoDe(() => cambiarAgentes(banco.db, { terminalId: tres.terminal.id, agentes: 2, actorId: banco.ana })),
 			"terminal_revocado",
 		);
 	} finally {
@@ -282,12 +282,12 @@ test("borrar un usuario conserva su nombre en el rastro y le quita el id", () =>
 	const banco = montar();
 	try {
 		const { valor: otro } = crearUsuario(banco.db, "otro", hashPassword("clave"), {
-			actor: { usuarioId: banco.xinux },
+			actor: { usuarioId: banco.ana },
 		});
 		// Una acción firmada por el usuario que se va a borrar.
 		const tarea = crearTareaHumana(banco.db, { titulo: "Suya", descripcion: "", usuarioId: otro.id });
 
-		borrarUsuario(banco.db, otro.id, banco.xinux);
+		borrarUsuario(banco.db, otro.id, banco.ana);
 		assert.equal(buscarUsuarioPorNombre(banco.db, "otro"), undefined);
 
 		const suya = actividadDe(banco.db, "tarea", tarea.id)[0];
@@ -296,7 +296,7 @@ test("borrar un usuario conserva su nombre en el rastro y le quita el id", () =>
 
 		// La baja la firma quien la hizo y guarda el nombre del borrado.
 		const baja = actividadDe(banco.db, "usuario", otro.id).find((fila) => fila.accion === "baja_usuario");
-		assert.equal(baja?.usuarioNombre, "xinux");
+		assert.equal(baja?.usuarioNombre, "ana");
 		assert.equal(baja?.objetoNombre, "otro");
 	} finally {
 		banco.cerrar();
@@ -309,7 +309,7 @@ type Montaje = { db: DatabaseSync; app: Hono; cerrar: () => Promise<void> };
 
 function montarWeb(): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
-	crearUsuario(db, "xinux", hashPassword("secreta"));
+	crearUsuario(db, "ana", hashPassword("secreta"));
 	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
 	return {
 		db,
@@ -345,7 +345,7 @@ async function pedir(
 
 async function entrar(montaje: Montaje): Promise<string> {
 	const respuesta = await pedir(montaje, "/login", {
-		formulario: { usuario: "xinux", password: "secreta", volver: "/tareas" },
+		formulario: { usuario: "ana", password: "secreta", volver: "/tareas" },
 	});
 	assert.equal(respuesta.status, 302);
 	return (respuesta.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
@@ -374,7 +374,7 @@ test("la web da de alta con color, lo cambia desde la lista y enseña la activid
 		assert.match(cuerpoLista, /<th>Alta por<\/th>/);
 		assert.match(cuerpoLista, /action="\/usuarios\/\d+\/color"/);
 		// Quien dio el alta también va como chip, con su propio color.
-		assert.match(cuerpoLista, /<span class="chip color-azul"><span class="inicial">X<\/span>xinux<\/span>/);
+		assert.match(cuerpoLista, /<span class="chip color-azul"><span class="inicial">A<\/span>ana<\/span>/);
 		assert.match(cuerpoLista, /<label class="muestra color-verde">/);
 
 		const cambio = await pedir(montaje, `/usuarios/${otro?.id ?? 0}/color`, { cookie, formulario: { color: "rosa" } });
@@ -399,9 +399,9 @@ test("la web da de alta con color, lo cambia desde la lista y enseña la activid
 		assert.match(cuerpo, /<section class="dia">\s*<h2>\d{4}-\d{2}-\d{2}<\/h2>/);
 		assert.match(cuerpo, /<ol class="actividad">/);
 		assert.match(cuerpo, /<time class="hora silencio" datetime="[^"]+">\d{2}:\d{2}<\/time>/);
-		// Quien hizo cada cosa, como chip con su color: xinux es azul y ya cambió
+		// Quien hizo cada cosa, como chip con su color: ana es azul y ya cambió
 		// el de «otro» a rosa, así que el nombre del objeto va en negrita.
-		assert.match(cuerpo, /<span class="chip color-azul"><span class="inicial">X<\/span>xinux<\/span>/);
+		assert.match(cuerpo, /<span class="chip color-azul"><span class="inicial">A<\/span>ana<\/span>/);
 		assert.match(cuerpo, /<strong class="objeto">otro<\/strong>/);
 	} finally {
 		await montaje.cerrar();
@@ -434,16 +434,16 @@ test("el rastro de un terminal empieza en su alta aunque otro haya usado antes e
 	const banco = montar();
 	try {
 		const viejo = altaTerminal(banco.db, {
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			nombre: "el-de-antes",
 			cuenta: "antes@ejemplo.com",
 		}).terminal.id;
-		revocarTerminal(banco.db, viejo, banco.xinux);
-		borrarTerminal(banco.db, viejo, banco.xinux);
+		revocarTerminal(banco.db, viejo, banco.ana);
+		borrarTerminal(banco.db, viejo, banco.ana);
 
 		// Solo `tareas` lleva AUTOINCREMENT: el id del borrado se vuelve a dar.
 		const { valor: otro } = crearUsuario(banco.db, "otro", hashPassword("clave"), {
-			actor: { usuarioId: banco.xinux },
+			actor: { usuarioId: banco.ana },
 		});
 		const nuevo = altaTerminal(banco.db, {
 			usuarioId: otro.id,

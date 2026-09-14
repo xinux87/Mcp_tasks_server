@@ -25,10 +25,14 @@ import {
 	accionNuevaTarea,
 	barraProgreso,
 	chipProyecto,
+	conmutadorVistas,
 	edadEnColumna,
 	enlaceFuncionalidad,
+	esperaPorElHumano,
+	esperaPorTi,
 	filtroSelect,
 	filtrosRapidos,
+	type Miga,
 	type OpcionesFiltro,
 	rotuloColumna,
 } from "../componentes.ts";
@@ -37,6 +41,7 @@ import { campo, ESTADO_AVISO, leerFormulario } from "../formulario.ts";
 import {
 	COLUMNAS,
 	type Html,
+	insigniaColumna,
 	insigniaEstado,
 	insigniasMarcas,
 	insigniaTipoDeItem,
@@ -44,6 +49,7 @@ import {
 	type RespuestaHtml,
 } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
+import { NOMBRE_MARCA } from "../vocabulario.ts";
 import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
 
 /** Las marcas por las que se puede filtrar, en el orden en que se muestran. */
@@ -58,6 +64,16 @@ export const MARCAS: readonly Marca[] = [
 
 /** Cuántas cerradas se enseñan en su columna. El resto, en la lista filtrada. */
 const CERRADAS_VISIBLES = 10;
+
+/** Para qué sirve la sección Tareas. La comparten sus dos vistas. */
+export const PROPOSITO_TAREAS = "Todas las tareas del proyecto, por columna.";
+
+/** `PRI › Tareas` cuando la vista está acotada; sin proyecto no hay camino que contar. */
+export function migasDeTareas(acotado: Proyecto | undefined): Miga[] | undefined {
+	return acotado === undefined
+		? undefined
+		: [{ texto: acotado.clave, href: `/p/${acotado.clave}/tareas` }, { texto: "Tareas" }];
+}
 
 function esMarca(valor: string): valor is Marca {
 	const nombres: readonly string[] = MARCAS;
@@ -78,8 +94,13 @@ function idDeRuta(c: Context): number | null {
 
 // --- filtros -----------------------------------------------------------------
 
-/** Los filtros del kanban: los mismos que la lista, sin `estado`. */
+/** Los filtros de las dos vistas de Tareas. Vacío es no filtrar por ese campo. */
 export type Filtros = {
+	/**
+	 * La columna. Solo filtra en la lista: en el tablero el estado es la columna
+	 * y ahí solo viaja, para que el conmutador de vistas no lo pierda al volver.
+	 */
+	estado: string;
 	terminal: string;
 	marca: string;
 	/** Identificador visible de la funcionalidad de la que se enseñan las partes. */
@@ -112,6 +133,7 @@ function enCarriles(filtros: Filtros): boolean {
  */
 export function filtrosDe(c: Context): Filtros {
 	return {
+		estado: c.req.query("estado") ?? "",
 		terminal: c.req.query("terminal") ?? "",
 		marca: c.req.query("marca") ?? "",
 		padre: c.req.query("padre") ?? "",
@@ -215,10 +237,12 @@ function formularioFiltros(
 		filtros.terminal !== "" || filtros.marca !== "" || filtros.padre !== "" || filtros.rapido !== "" || filtros.q !== "";
 	const base = `${prefijo(acotado)}/tareas/kanban`;
 	return html`<div class="fila-filtros">
+		${conmutadorVistas("tablero", prefijo(acotado), consultaDe(filtros, acotado))}
 		${filtrosRapidos(filtros.rapido, base, consultaDe(filtros, acotado))}
 		${conmutadorCarriles(filtros, acotado)}
 		<form class="filtros" method="get" action="${base}">
 			${filtros.rapido === "" ? html`` : html`<input type="hidden" name="rapido" value="${filtros.rapido}">`}
+			${filtros.estado === "" ? html`` : html`<input type="hidden" name="estado" value="${filtros.estado}">`}
 			${enCarriles(filtros) ? html`<input type="hidden" name="agrupar" value="${POR_FUNCIONALIDAD}">` : html``}
 			<input type="search" name="q" value="${filtros.q}" placeholder="Buscar">
 			${acotado !== undefined ? html`` : filtroSelect(opcionesProyecto(db, filtros.proyecto))}
@@ -233,7 +257,7 @@ function formularioFiltros(
 				nombre: "marca",
 				titulo: "Marca",
 				todas: "todas",
-				valores: MARCAS.map((valor) => ({ valor, texto: valor })),
+				valores: MARCAS.map((valor) => ({ valor, texto: NOMBRE_MARCA[valor] })),
 				seleccionado: filtros.marca,
 			})}
 			${filtroSelect(opcionesFuncionalidad(db, filtros.padre))}
@@ -255,7 +279,7 @@ export function opcionesProyecto(db: DatabaseSync, seleccionado: string): Opcion
 		todas: "todos",
 		valores: listarProyectos(db).map((proyecto) => ({
 			valor: proyecto.clave,
-			texto: `${proyecto.clave} · ${abreviar(proyecto.nombre, 24)}`,
+			texto: `${proyecto.clave} — ${abreviar(proyecto.nombre, 24)}`,
 		})),
 		seleccionado,
 	};
@@ -279,19 +303,19 @@ export function opcionesFuncionalidad(db: DatabaseSync, seleccionado: string): O
 }
 
 /**
- * Las dos fases abreviadas: `sonnet@portatil · opus@portatil`, o «sin asignar».
+ * Las dos fases: «análisis sonnet@portatil, ejecución opus@portatil», o «sin asignar».
  * Una pregunta solo tiene análisis, así que enseña esa sola.
  */
 function fasesLegibles(item: ItemIndice): string {
 	const analisis = faseLegible(item.analisisModelo, item.analisisTerminal);
 	if (item.tipo === "pregunta") {
-		return analisis;
+		return `análisis ${analisis}`;
 	}
 	const ejecucion = faseLegible(item.ejecucionModelo, item.ejecucionTerminal);
 	if (analisis === "sin asignar" && ejecucion === "sin asignar") {
 		return "sin asignar";
 	}
-	return `${analisis} · ${ejecucion}`;
+	return `análisis ${analisis}, ejecución ${ejecucion}`;
 }
 
 /**
@@ -360,10 +384,14 @@ function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
 	const funcionalidad = item.padreId === null ? undefined : vecindad.funcionalidades.get(item.padreId);
 	const clave = vecindad.proyectos?.get(item.proyectoId);
 	const tokens = tokensConPresupuesto(item.tokensConHijas, item.presupuesto);
-	return html`<article class="tarjeta" data-id="${id}" data-estado="${item.estado}">
+	// El filete de la izquierda es la misma señal que la etiqueta: se ve de lejos
+	// cuáles de todo el tablero esperan por el humano.
+	const espera = esperaPorElHumano(item.estado, item.marcas);
+	return html`<article class="tarjeta${espera ? " espera" : ""}" data-id="${id}" data-estado="${item.estado}">
 			<div class="linea">
 				<a class="id-tarea" href="/tareas/${id}">${id}</a>
 				${clave === undefined ? html`` : chipProyecto(clave)}
+				${esperaPorTi(item.estado, item.marcas)}
 				${insigniaTipoDeItem(item)}
 				${insigniasMarcas(item.marcas)}
 				${edadEnColumna(item)}
@@ -387,7 +415,7 @@ function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
  * Una columna. El contenedor de tarjetas lleva el `data-estado`: es la zona
  * donde suelta SortableJS, y de ahí sale la columna de destino.
  */
-function columna(titulo: string, estado: Estado, items: ItemIndice[], total: number, vecindad: Vecindad): Html {
+function columna(estado: Estado, items: ItemIndice[], total: number, vecindad: Vecindad): Html {
 	// Las cerradas están archivadas y son muchas: se enseñan las últimas y el
 	// resto se ve en la lista filtrada. Dentro de una franja caben todas, y
 	// entonces no hay ninguna que ir a ver a otro sitio.
@@ -396,7 +424,7 @@ function columna(titulo: string, estado: Estado, items: ItemIndice[], total: num
 			? html`<p class="pequeno"><a href="/tareas?estado=finished">ver todas (${total})</a></p>`
 			: html``;
 	return html`<section class="columna">
-			<h2>${rotuloColumna(insigniaEstado(estado), titulo, total)}</h2>
+			<h2>${rotuloColumna(insigniaColumna(estado), estado, total)}</h2>
 			<div class="tarjetas" data-estado="${estado}">${items.map((item) => tarjeta(item, vecindad))}</div>
 			${pie}
 		</section>`;
@@ -426,10 +454,10 @@ function ultimasCerradas(db: DatabaseSync, items: ItemIndice[]): ItemIndice[] {
  */
 function columnas(db: DatabaseSync, items: ItemIndice[], vecindad: Vecindad, recortarCerradas: boolean): Html {
 	return html`<div class="columnas">
-			${COLUMNAS.map((cual) => {
-				const propias = items.filter((item) => item.estado === cual.estado);
-				const visibles = cual.estado === "finished" && recortarCerradas ? ultimasCerradas(db, propias) : propias;
-				return columna(cual.titulo, cual.estado, visibles, propias.length, vecindad);
+			${COLUMNAS.map((estado) => {
+				const propias = items.filter((item) => item.estado === estado);
+				const visibles = estado === "finished" && recortarCerradas ? ultimasCerradas(db, propias) : propias;
+				return columna(estado, visibles, propias.length, vecindad);
 			})}
 		</div>`;
 }
@@ -566,7 +594,11 @@ function paginaKanban(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	return c.html(
 		pagina({
 			...navProyectos(c, db),
-			titulo: acotado === undefined ? "Kanban" : `Kanban · ${acotado.clave}`,
+			// Lista y tablero son la misma sección vista de dos maneras: el título
+			// es el de la sección y el proyecto va en las migas.
+			titulo: "Tareas",
+			proposito: PROPOSITO_TAREAS,
+			migas: migasDeTareas(acotado),
 			usuario: usuarioActual(c),
 			vista: "kanban",
 			revision: revisionActual(db),

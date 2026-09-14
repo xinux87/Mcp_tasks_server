@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { html } from "hono/html";
 import { type Actividad, actividadReciente } from "../../db/actividad.ts";
 import { formatearId } from "../../md/ids.ts";
-import { buscadorDeColor, type Color, cabeceraPagina, chipUsuario, fraseDeAccion } from "../componentes.ts";
+import { buscadorDeColor, type Color, chipUsuario, fraseDeAccion } from "../componentes.ts";
 import { fechaLegible } from "../formatos.ts";
 import { type Html, pagina } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
@@ -96,16 +96,15 @@ export function registrarRutasActividad(app: Hono, deps: DependenciasWeb): void 
 				? html`<p class="silencio">Todavía no hay nada.</p>`
 				: html`${dias.map((dia) => seccionDia(dia, colorDe))}`;
 
-		// La cabecera se pinta aquí y no desde `pagina` porque esta página no
-		// tiene migas ni acciones, pero sí una explicación pegada al título.
-		const cuerpo = html`${cabeceraPagina({ titulo: "Actividad" })}
-			<p class="explicacion silencio">
-				Las últimas ${CUANTAS} acciones del equipo. Lo que hacen los agentes está en el hilo de cada tarea.
-			</p>
-			${lista}`;
-
 		return c.html(
-			pagina({ ...navProyectos(c, deps.db), titulo: "Actividad", usuario: usuarioActual(c), vista: "actividad", cuerpo }),
+			pagina({
+				...navProyectos(c, deps.db),
+				titulo: "Actividad",
+				proposito: "Quién hizo qué, de más reciente a más antiguo.",
+				usuario: usuarioActual(c),
+				vista: "actividad",
+				cuerpo: lista,
+			}),
 		);
 	});
 }

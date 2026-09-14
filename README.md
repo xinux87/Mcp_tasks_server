@@ -23,10 +23,13 @@ Una **funcionalidad** es una tarea que se descompone en partes; una **pregunta**
 respuesta es la respuesta misma, sin código.
 
 **La web abre en la bandeja**: lo que espera por el humano, de todos los proyectos, en cuatro bloques
-—preguntas sin contestar, análisis por aprobar, resultados por revisar y lo que lleva más de una semana
-en `backlog`—. Se contesta y se aprueba desde ahí mismo, sin abrir la ficha, y el número de pendientes va
-en la barra lateral y en el título de la pestaña. Las tareas se ven además como lista y como kanban,
-con filtros de un clic, búsqueda por texto y el kanban agrupado en carriles por funcionalidad. Cada
+por lo que le toca hacer —Contesta, Aprueba, Revisa, Define—. Se contesta y se aprueba desde ahí mismo,
+sin abrir la ficha, y el número de pendientes va en la barra lateral y en el título de la pestaña. La web
+habla en castellano llano (Por definir, Preparadas, En curso, Hechas, Cerradas), un único color ámbar
+señala todo lo que espera por el humano, la ficha enseña el ciclo de la tarea como cinco pasos con su
+dueño, y el tema es claro, oscuro o el del sistema, a elegir en la barra lateral. Las tareas se ven
+además como lista y como tablero, con filtros de un clic, búsqueda por texto y el tablero agrupado en
+carriles por funcionalidad. Cada
 tarjeta enseña cuánto lleva en su columna, el progreso de sus hijas y los tokens que ha costado, contra
 su presupuesto si lo tiene. La página de informes dice qué cuesta cada modelo, cuánto interrumpe, dónde
 se atasca el flujo y qué modelo entrega resultados que no valen.
@@ -44,8 +47,7 @@ claude mcp add --transport http --scope local tareas <url>/mcp --header "Authori
 
 ## Requisitos
 
-Docker (o Node 24 si se levanta a mano) y, en la máquina del terminal, Claude Code con acceso git a este
-repositorio.
+Docker (o Node 24 si se levanta a mano) y, en la máquina del terminal, Claude Code.
 
 ## Levantarlo
 
@@ -97,6 +99,21 @@ DATA_DIR=./data npm run dev
 
 Dentro de `server/`: `npm test`, `npm run typecheck` y `npm run lint`. El plugin se comprueba con
 `claude plugin validate ./plugin --strict`.
+
+### Publicar una versión
+
+La versión va en cuatro sitios a la vez: `server/package.json`, `plugin/.claude-plugin/plugin.json`,
+`.claude-plugin/marketplace.json` y `server/Dockerfile` (etiqueta `org.opencontainers.image.version`).
+Cada versión lleva su etiqueta `vX.Y.Z` en git, que es lo que fija `xinux87/Mcp_tasks_server#vX.Y.Z` al
+instalar el plugin. La imagen se construye y se sube con el nombre del registro que toque:
+
+```sh
+cd server
+docker build -t <registro>/mcp-tareas-server:0.1.0 .
+docker push <registro>/mcp-tareas-server:0.1.0
+```
+
+Para usarla sin construir, `IMAGEN=<registro>/mcp-tareas-server:0.1.0 docker compose up` la descarga.
 
 ## Dónde está el detalle
 

@@ -141,7 +141,7 @@ test("la migración de dependencias reconstruye tareas sin perder ids ni referen
 		// `tareas`: es lo que hay en una base en marcha cuando llega el cambio.
 		hasta(carpeta, migraciones, cual);
 		aplicarMigraciones(db, carpeta);
-		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('xinux', 'h', 'azul', ?)").run(FECHA);
+		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('ana', 'h', 'azul', ?)").run(FECHA);
 		db
 			.prepare(
 				"INSERT INTO terminales (usuario_id, nombre, cuenta, token_hash, creado) VALUES (1, 'portatil-a', 'c', 'hash', ?)",
@@ -239,7 +239,7 @@ test("la migración del borrado de terminales deja anulable el terminal del cons
 		// verdad y el borrado no puede llevárselos por delante.
 		hasta(carpeta, migraciones, cual);
 		aplicarMigraciones(db, carpeta);
-		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('xinux', 'h', 'azul', ?)").run(FECHA);
+		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('ana', 'h', 'azul', ?)").run(FECHA);
 		db
 			.prepare(
 				"INSERT INTO terminales (usuario_id, nombre, cuenta, token_hash, creado) VALUES (1, 'portatil-a', 'c', 'hash', ?)",
@@ -310,7 +310,7 @@ test("la migración de proyectos cuelga del principal todo lo que ya había", ()
 		// Una base en marcha: usuario, dos terminales, dos tareas y su rastro.
 		hasta(carpeta, migraciones, cual);
 		aplicarMigraciones(db, carpeta);
-		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('xinux', 'h', 'azul', ?)").run(FECHA);
+		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('ana', 'h', 'azul', ?)").run(FECHA);
 		for (const nombre of ["portatil-a", "sobremesa-b"]) {
 			db
 				.prepare("INSERT INTO terminales (usuario_id, nombre, cuenta, token_hash, creado) VALUES (1, ?, 'c', ?, ?)")
@@ -325,7 +325,7 @@ test("la migración de proyectos cuelga del principal todo lo que ya había", ()
 		db
 			.prepare(
 				`INSERT INTO actividad (usuario_id, usuario_nombre, accion, objeto, objeto_id, objeto_nombre, detalle, creado)
-				VALUES (1, 'xinux', 'crear_tarea', 'tarea', 7, 'De antes', '', ?)`,
+				VALUES (1, 'ana', 'crear_tarea', 'tarea', 7, 'De antes', '', ?)`,
 			)
 			.run(FECHA);
 
@@ -354,7 +354,7 @@ test("la migración de proyectos cuelga del principal todo lo que ya había", ()
 		db
 			.prepare(
 				`INSERT INTO actividad (usuario_id, usuario_nombre, accion, objeto, objeto_id, objeto_nombre, detalle, creado)
-				VALUES (1, 'xinux', 'alta_proyecto', 'proyecto', 1, 'Principal', 'clave PRI', ?)`,
+				VALUES (1, 'ana', 'alta_proyecto', 'proyecto', 1, 'Principal', 'clave PRI', ?)`,
 			)
 			.run(FECHA);
 		assert.throws(() => {
@@ -395,7 +395,7 @@ test("la migración de los agentes deja a 1 los terminales de antes y no admite 
 		// Un terminal ya conectado, que es lo que hay en una base en marcha.
 		hasta(carpeta, migraciones, cual);
 		aplicarMigraciones(db, carpeta);
-		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('xinux', 'h', 'azul', ?)").run(FECHA);
+		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('ana', 'h', 'azul', ?)").run(FECHA);
 		db
 			.prepare(
 				"INSERT INTO terminales (usuario_id, nombre, cuenta, token_hash, creado) VALUES (1, 'portatil-a', 'c', 'hash', ?)",

@@ -57,16 +57,16 @@ function bien(dataDir: string, ...argumentos: string[]): string {
 test("el CLI crea usuario, terminal y tarea, la mueve y la enseña", () => {
 	const dataDir = mkdtempSync(join(tmpdir(), "mcp-tareas-cli-"));
 	try {
-		assert.match(bien(dataDir, "crear-usuario", "xinux", "secreta"), /^usuario creado: xinux \(id 1\)$/m);
+		assert.match(bien(dataDir, "crear-usuario", "ana", "secreta"), /^usuario creado: ana \(id 1\)$/m);
 		assert.match(
-			bien(dataDir, "crear-terminal", "xinux", "portatil-a", "xinux@ejemplo.com"),
+			bien(dataDir, "crear-terminal", "ana", "portatil-a", "ana@ejemplo.com"),
 			/^terminal creado: portatil-a \(id 1\)$/m,
 		);
 
 		const creada = bien(
 			dataDir,
 			"crear-tarea",
-			"xinux",
+			"ana",
 			"Exportar el listado de clientes a CSV",
 			"Hoy lo copian a mano.",
 			"--analisis",
@@ -83,7 +83,7 @@ test("el CLI crea usuario, terminal y tarea, la mueve y la enseña", () => {
 		);
 		assert.equal(bien(dataDir, "listar", "prepared").trim(), "Ninguna.");
 
-		assert.match(bien(dataDir, "mover-tarea", "xinux", "T-0001", "prepared"), /^movida: T-0001 · prepared$/m);
+		assert.match(bien(dataDir, "mover-tarea", "ana", "T-0001", "prepared"), /^movida: T-0001 · prepared$/m);
 
 		const documento = bien(dataDir, "ver-tarea", "T-0001");
 		assert.match(documento, /^id: T-0001$/m);
@@ -98,18 +98,18 @@ test("el CLI crea usuario, terminal y tarea, la mueve y la enseña", () => {
 test("el CLI crea proyectos y pone cada terminal en el suyo", () => {
 	const dataDir = mkdtempSync(join(tmpdir(), "mcp-tareas-cli-"));
 	try {
-		bien(dataDir, "crear-usuario", "xinux", "secreta");
+		bien(dataDir, "crear-usuario", "ana", "secreta");
 		assert.match(bien(dataDir, "crear-proyecto", "WEB", "La web"), /^proyecto creado: WEB · La web \(id 2\)$/m);
 
 		// Sin clave, el principal.
-		assert.match(bien(dataDir, "crear-terminal", "xinux", "portatil-a", "xinux@ejemplo.com"), /^proyecto: PRI$/m);
+		assert.match(bien(dataDir, "crear-terminal", "ana", "portatil-a", "ana@ejemplo.com"), /^proyecto: PRI$/m);
 		assert.match(
-			bien(dataDir, "crear-terminal", "xinux", "portatil-web", "xinux@ejemplo.com", "WEB"),
+			bien(dataDir, "crear-terminal", "ana", "portatil-web", "ana@ejemplo.com", "WEB"),
 			/^proyecto: WEB$/m,
 		);
 
 		// Una clave que no existe se dice con su código, como cualquier regla.
-		const sinProyecto = cli(dataDir, "crear-terminal", "xinux", "portatil-c", "xinux@ejemplo.com", "NADA");
+		const sinProyecto = cli(dataDir, "crear-terminal", "ana", "portatil-c", "ana@ejemplo.com", "NADA");
 		assert.equal(sinProyecto.codigo, 1);
 		assert.match(sinProyecto.salida, /proyecto_inexistente/);
 
@@ -129,19 +129,19 @@ test("el CLI crea proyectos y pone cada terminal en el suyo", () => {
 test("el CLI crea una pregunta que solo tiene análisis y se cierra al responderla", () => {
 	const dataDir = mkdtempSync(join(tmpdir(), "mcp-tareas-cli-"));
 	try {
-		bien(dataDir, "crear-usuario", "xinux", "secreta");
-		bien(dataDir, "crear-terminal", "xinux", "portatil-a", "xinux@ejemplo.com");
+		bien(dataDir, "crear-usuario", "ana", "secreta");
+		bien(dataDir, "crear-terminal", "ana", "portatil-a", "ana@ejemplo.com");
 		bien(
 			dataDir,
 			"crear-tarea",
-			"xinux",
+			"ana",
 			"¿Cuánto se tarda hoy en cerrar el mes?",
 			"Quiero saberlo antes de pedir nada.",
 			"--pregunta",
 			"--analisis",
 			"sonnet@portatil-a",
 		);
-		bien(dataDir, "mover-tarea", "xinux", "T-0001", "prepared");
+		bien(dataDir, "mover-tarea", "ana", "T-0001", "prepared");
 
 		const documento = bien(dataDir, "ver-tarea", "T-0001");
 		assert.match(documento, /^tipo: pregunta$/m);
@@ -171,22 +171,22 @@ test("el CLI crea una pregunta que solo tiene análisis y se cierra al responder
 test("un error de regla en el CLI sale con su código y termina en 1", () => {
 	const dataDir = mkdtempSync(join(tmpdir(), "mcp-tareas-cli-"));
 	try {
-		bien(dataDir, "crear-usuario", "xinux", "secreta");
-		bien(dataDir, "crear-tarea", "xinux", "Una", "d");
+		bien(dataDir, "crear-usuario", "ana", "secreta");
+		bien(dataDir, "crear-tarea", "ana", "Una", "d");
 
 		// De backlog no se pasa a done: no es una de las cuatro transiciones.
-		const salto = cli(dataDir, "mover-tarea", "xinux", "T-0001", "done");
+		const salto = cli(dataDir, "mover-tarea", "ana", "T-0001", "done");
 		assert.equal(salto.codigo, 1);
 		assert.match(salto.salida, /^transicion_no_permitida: /m);
 
 		// Volver atrás sin nota tampoco.
-		bien(dataDir, "mover-tarea", "xinux", "T-0001", "prepared");
-		const sinNota = cli(dataDir, "mover-tarea", "xinux", "T-0001", "backlog");
+		bien(dataDir, "mover-tarea", "ana", "T-0001", "prepared");
+		const sinNota = cli(dataDir, "mover-tarea", "ana", "T-0001", "backlog");
 		assert.equal(sinNota.codigo, 1);
 		assert.match(sinNota.salida, /^nota_obligatoria: /m);
 
 		// Un terminal que no existe se detecta antes de escribir nada.
-		const fantasma = cli(dataDir, "crear-tarea", "xinux", "Otra", "d", "--analisis", "sonnet@fantasma");
+		const fantasma = cli(dataDir, "crear-tarea", "ana", "Otra", "d", "--analisis", "sonnet@fantasma");
 		assert.equal(fantasma.codigo, 1);
 		assert.match(fantasma.salida, /^no existe el terminal fantasma$/m);
 	} finally {
@@ -197,10 +197,10 @@ test("un error de regla en el CLI sale con su código y termina en 1", () => {
 test("el CLI contesta una pregunta por el texto de la opción y aprueba el análisis", () => {
 	const dataDir = mkdtempSync(join(tmpdir(), "mcp-tareas-cli-"));
 	try {
-		bien(dataDir, "crear-usuario", "xinux", "secreta");
-		bien(dataDir, "crear-terminal", "xinux", "portatil-a", "xinux@ejemplo.com");
-		bien(dataDir, "crear-tarea", "xinux", "Una", "d", "--analisis", "sonnet@portatil-a", "--sin-autoejecucion");
-		bien(dataDir, "mover-tarea", "xinux", "T-0001", "prepared");
+		bien(dataDir, "crear-usuario", "ana", "secreta");
+		bien(dataDir, "crear-terminal", "ana", "portatil-a", "ana@ejemplo.com");
+		bien(dataDir, "crear-tarea", "ana", "Una", "d", "--analisis", "sonnet@portatil-a", "--sin-autoejecucion");
+		bien(dataDir, "mover-tarea", "ana", "T-0001", "prepared");
 
 		// La pregunta y el análisis los escribe el agente por el MCP: aquí se
 		// dejan puestos con las funciones de dominio para probar solo los dos
@@ -225,21 +225,21 @@ test("el CLI contesta una pregunta por el texto de la opción y aprueba el anál
 		}
 
 		assert.match(bien(dataDir, "listar"), / · bloqueada · /);
-		const contestada = bien(dataDir, "responder", "xinux", "T-0001", "P1", "Punto y coma", "ya lo cambiaremos");
+		const contestada = bien(dataDir, "responder", "ana", "T-0001", "P1", "Punto y coma", "ya lo cambiaremos");
 		assert.match(contestada, /^contestada: T-0001 · P1 · Punto y coma$/m);
 
 		const documento = bien(dataDir, "ver-tarea", "T-0001");
-		assert.match(documento, /^### respuesta · humano:xinux · .+ · P1$/m);
+		assert.match(documento, /^### respuesta · humano:ana · .+ · P1$/m);
 		assert.match(documento, /^Opción: \*\*Punto y coma\*\*$/m);
 		assert.match(documento, /^Nota: ya lo cambiaremos$/m);
 
 		// Sin autoejecución la tarea espera aprobación: la marca lo dice.
 		assert.match(bien(dataDir, "listar"), / · análisis listo · /);
-		assert.match(bien(dataDir, "aprobar", "xinux", "T-0001"), /^aprobada: T-0001$/m);
+		assert.match(bien(dataDir, "aprobar", "ana", "T-0001"), /^aprobada: T-0001$/m);
 		assert.doesNotMatch(bien(dataDir, "listar"), /análisis listo/);
 
 		// Una pregunta ya contestada no se vuelve a contestar.
-		const otraVez = cli(dataDir, "responder", "xinux", "T-0001", "P1", "No hacer nada");
+		const otraVez = cli(dataDir, "responder", "ana", "T-0001", "P1", "No hacer nada");
 		assert.equal(otraVez.codigo, 1);
 		assert.match(otraVez.salida, /^pregunta_ya_respondida: /m);
 	} finally {
@@ -250,12 +250,12 @@ test("el CLI contesta una pregunta por el texto de la opción y aprueba el anál
 test("el CLI crea una funcionalidad con rama y dependencias, la aprueba y borra en backlog", () => {
 	const dataDir = mkdtempSync(join(tmpdir(), "mcp-tareas-cli-"));
 	try {
-		bien(dataDir, "crear-usuario", "xinux", "secreta");
-		bien(dataDir, "crear-terminal", "xinux", "portatil-a", "xinux@ejemplo.com");
+		bien(dataDir, "crear-usuario", "ana", "secreta");
+		bien(dataDir, "crear-terminal", "ana", "portatil-a", "ana@ejemplo.com");
 		bien(
 			dataDir,
 			"crear-tarea",
-			"xinux",
+			"ana",
 			"Que los comerciales se bajen sus listados",
 			"Hoy copian los datos a mano.",
 			"--funcionalidad",
@@ -274,26 +274,26 @@ test("el CLI crea una funcionalidad con rama y dependencias, la aprueba y borra 
 		assert.match(bien(dataDir, "listar"), /^- T-0001 · backlog · funcionalidad 0\/0 · /m);
 
 		// Dependencias y padre desde la línea de comandos.
-		bien(dataDir, "crear-tarea", "xinux", "Primera", "d");
-		bien(dataDir, "crear-tarea", "xinux", "Segunda", "d", "--depende-de", "T-0002");
+		bien(dataDir, "crear-tarea", "ana", "Primera", "d");
+		bien(dataDir, "crear-tarea", "ana", "Segunda", "d", "--depende-de", "T-0002");
 		assert.match(bien(dataDir, "ver-tarea", "T-0003"), /^dependeDe: \[T-0002\]$/m);
-		bien(dataDir, "crear-tarea", "xinux", "Una parte a mano", "d", "--padre", "T-0001");
+		bien(dataDir, "crear-tarea", "ana", "Una parte a mano", "d", "--padre", "T-0001");
 		assert.match(bien(dataDir, "ver-tarea", "T-0004"), /^padre: T-0001$/m);
 
 		// Solo una funcionalidad puede ser padre.
-		const padreMalo = cli(dataDir, "crear-tarea", "xinux", "Otra", "d", "--padre", "T-0002");
+		const padreMalo = cli(dataDir, "crear-tarea", "ana", "Otra", "d", "--padre", "T-0002");
 		assert.equal(padreMalo.codigo, 1);
 		assert.match(padreMalo.salida, /^padre_no_es_funcionalidad: /m);
 
 		// Borrar: lo que permite podar la descomposición.
-		assert.match(bien(dataDir, "borrar-tarea", "xinux", "T-0004"), /^borrada: T-0004 · Una parte a mano$/m);
+		assert.match(bien(dataDir, "borrar-tarea", "ana", "T-0004"), /^borrada: T-0004 · Una parte a mano$/m);
 		assert.doesNotMatch(bien(dataDir, "listar"), /Una parte a mano/);
 
 		// Fuera de backlog también se borra; lo que frena es tener hijas.
-		bien(dataDir, "mover-tarea", "xinux", "T-0002", "prepared");
-		assert.match(bien(dataDir, "borrar-tarea", "xinux", "T-0002"), /^borrada: T-0002 · Primera$/m);
+		bien(dataDir, "mover-tarea", "ana", "T-0002", "prepared");
+		assert.match(bien(dataDir, "borrar-tarea", "ana", "T-0002"), /^borrada: T-0002 · Primera$/m);
 
-		bien(dataDir, "mover-tarea", "xinux", "T-0001", "prepared");
+		bien(dataDir, "mover-tarea", "ana", "T-0001", "prepared");
 
 		// La descomposición la hace el agente por el MCP: aquí con las funciones
 		// de dominio, para probar solo la aprobación del humano.
@@ -307,7 +307,7 @@ test("el CLI crea una funcionalidad con rama y dependencias, la aprueba y borra 
 		}
 
 		assert.match(bien(dataDir, "listar"), /^- T-0001 · prepared · funcionalidad 0\/1 · análisis listo · /m);
-		assert.match(bien(dataDir, "aprobar", "xinux", "T-0001"), /^aprobada: T-0001$/m);
+		assert.match(bien(dataDir, "aprobar", "ana", "T-0001"), /^aprobada: T-0001$/m);
 		const tras = bien(dataDir, "listar");
 		// La parte sale del backlog, y con ella la de integrar la rama, que ya
 		// cuenta en el progreso de la funcionalidad. Los identificadores empiezan

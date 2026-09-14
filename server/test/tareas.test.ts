@@ -34,12 +34,12 @@ function tareaPreparada(banco: ReturnType<typeof montar>, extra: Partial<{ autoe
 	const tarea = crearTareaHumana(banco.db, {
 		titulo: "Exportar el listado",
 		descripcion: "Hoy lo copian a mano.",
-		usuarioId: banco.xinux,
+		usuarioId: banco.ana,
 		autoejecucion: extra.autoejecucion,
 		analisisModelo: "sonnet",
 		ejecucionModelo: "opus",
 	});
-	return moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+	return moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 }
 
 /** Igual, pero con las dos fases sin modelo: es la tarea que el humano deja a medio asignar. */
@@ -47,23 +47,23 @@ function tareaSinModelos(banco: ReturnType<typeof montar>): Tarea {
 	const tarea = crearTareaHumana(banco.db, {
 		titulo: "Exportar el listado",
 		descripcion: "Hoy lo copian a mano.",
-		usuarioId: banco.xinux,
+		usuarioId: banco.ana,
 	});
-	return moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+	return moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 }
 
 test("una tarea humana nace en backlog, al final de la columna y con la revisión de su escritura", () => {
 	const banco = montar();
 	try {
-		const primera = crearTareaHumana(banco.db, { titulo: "Una", descripcion: "d", usuarioId: banco.xinux });
+		const primera = crearTareaHumana(banco.db, { titulo: "Una", descripcion: "d", usuarioId: banco.ana });
 		assert.equal(primera.estado, "backlog");
 		assert.equal(primera.orden, 1);
 		assert.equal(primera.autoejecucion, true);
-		assert.equal(primera.creadaPorUsuarioId, banco.xinux);
+		assert.equal(primera.creadaPorUsuarioId, banco.ana);
 		assert.equal(primera.creadaPorTerminalId, null);
 		assert.equal(primera.revision, revisionActual(banco.db));
 
-		const segunda = crearTareaHumana(banco.db, { titulo: "Otra", descripcion: "d", usuarioId: banco.xinux });
+		const segunda = crearTareaHumana(banco.db, { titulo: "Otra", descripcion: "d", usuarioId: banco.ana });
 		assert.equal(segunda.orden, 2);
 		assert.equal(segunda.revision, primera.revision + 1);
 	} finally {
@@ -90,15 +90,15 @@ test("una propuesta del agente también nace en backlog, pero creada por un term
 test("el humano hace las cuatro transiciones permitidas y ninguna más", () => {
 	const banco = montar();
 	try {
-		const tarea = crearTareaHumana(banco.db, { titulo: "Una", descripcion: "d", usuarioId: banco.xinux });
+		const tarea = crearTareaHumana(banco.db, { titulo: "Una", descripcion: "d", usuarioId: banco.ana });
 
-		const preparada = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		const preparada = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 		assert.equal(preparada.estado, "prepared");
 		assert.equal(preparada.orden, 1);
 
 		const devuelta = moverTareaHumano(banco.db, {
 			tareaId: tarea.id,
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			estado: "backlog",
 			nota: "hay que repensarla",
 		});
@@ -106,11 +106,11 @@ test("el humano hace las cuatro transiciones permitidas y ninguna más", () => {
 
 		// El agente nunca mueve hacia atrás, y saltarse una columna tampoco vale.
 		assert.equal(
-			codigoDe(() => moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "doing" })),
+			codigoDe(() => moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "doing" })),
 			"transicion_no_permitida",
 		);
 		assert.equal(
-			codigoDe(() => moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "finished" })),
+			codigoDe(() => moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "finished" })),
 			"transicion_no_permitida",
 		);
 	} finally {
@@ -123,13 +123,13 @@ test("las vueltas atrás exigen nota y la dejan en el hilo firmada por el humano
 	try {
 		const tarea = tareaPreparada(banco);
 		assert.equal(
-			codigoDe(() => moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "backlog" })),
+			codigoDe(() => moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "backlog" })),
 			"nota_obligatoria",
 		);
 
 		moverTareaHumano(banco.db, {
 			tareaId: tarea.id,
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			estado: "backlog",
 			nota: "falta decidir el alcance",
 		});
@@ -137,7 +137,7 @@ test("las vueltas atrás exigen nota y la dejan en el hilo firmada por el humano
 		assert.ok(completa);
 		assert.equal(completa.comentarios.length, 1);
 		assert.equal(completa.comentarios[0]?.tipo, "nota");
-		assert.equal(completa.comentarios[0]?.autor, "humano:xinux");
+		assert.equal(completa.comentarios[0]?.autor, "humano:ana");
 		assert.equal(completa.comentarios[0]?.texto, "falta decidir el alcance");
 	} finally {
 		banco.cerrar();
@@ -150,12 +150,12 @@ test("volver a backlog caduca el análisis y la aprobación, pero deja el coment
 		const tarea = tareaPreparada(banco, { autoejecucion: false });
 		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
 		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "plan" });
-		aprobarEjecucion(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux });
+		aprobarEjecucion(banco.db, { tareaId: tarea.id, usuarioId: banco.ana });
 		assert.equal(faseQueToca(exigirTarea(banco.db, tarea.id)), "ejecucion");
 
 		moverTareaHumano(banco.db, {
 			tareaId: tarea.id,
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			estado: "backlog",
 			nota: "la descripción cambia",
 		});
@@ -165,7 +165,7 @@ test("volver a backlog caduca el análisis y la aprobación, pero deja el coment
 
 		// Al salir de nuevo, la tarea vuelve a necesitar análisis: la descripción
 		// puede haber cambiado y el plan anterior ya no vale.
-		const otraVez = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		const otraVez = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 		assert.equal(faseQueToca(otraVez), "analisis");
 
 		// El comentario de análisis se queda: el hilo no se edita nunca.
@@ -183,11 +183,11 @@ test("volver a backlog caduca el análisis y la aprobación, pero deja el coment
 test("la marca «sin terminal» solo se calcula en prepared y en doing", () => {
 	const banco = montar();
 	try {
-		const tarea = crearTareaHumana(banco.db, { titulo: "Sin asignar", descripcion: "d", usuarioId: banco.xinux });
+		const tarea = crearTareaHumana(banco.db, { titulo: "Sin asignar", descripcion: "d", usuarioId: banco.ana });
 		// En backlog el agente no la ve, así que no dice nada que no tenga terminal.
 		assert.deepEqual(marcasDe(tarea, 0), []);
 
-		const preparada = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		const preparada = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 		assert.deepEqual(marcasDe(preparada, 0), ["sin terminal"]);
 
 		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
@@ -197,7 +197,7 @@ test("la marca «sin terminal» solo se calcula en prepared y en doing", () => {
 
 		tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil });
 		comentarResultado(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "hecho" });
-		const terminada = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "finished" });
+		const terminada = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "finished" });
 		assert.deepEqual(marcasDe(terminada, 0), []);
 	} finally {
 		banco.cerrar();
@@ -215,7 +215,7 @@ test("de done se sale a finished, o de vuelta a doing con nota y sin terminal en
 
 		const rechazada = moverTareaHumano(banco.db, {
 			tareaId: tarea.id,
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			estado: "doing",
 			nota: "faltan los tests",
 		});
@@ -225,7 +225,7 @@ test("de done se sale a finished, o de vuelta a doing con nota y sin terminal en
 		assert.equal(rechazada.ejecucionTerminalId, banco.portatil);
 
 		banco.db.prepare("UPDATE tareas SET estado = 'done' WHERE id = ?").run(tarea.id);
-		const aceptada = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "finished" });
+		const aceptada = moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "finished" });
 		assert.equal(aceptada.estado, "finished");
 	} finally {
 		banco.cerrar();
@@ -295,7 +295,7 @@ test("el modelo de la toma se fija en la fase que no tenía ninguno y firma los 
 		assert.equal(enAnalisis.analisisModelo, "sonnet");
 		assert.equal(
 			comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "plan" }).autor,
-			"sonnet@portatil-xinux",
+			"sonnet@portatil-ana",
 		);
 
 		// Sin modelo en la toma, la fase se queda como estaba: sin modelo.
@@ -314,7 +314,7 @@ test("el modelo de la toma se fija en la fase que no tenía ninguno y firma los 
 		assert.equal(retomada.ejecucionModelo, "opus");
 		assert.equal(
 			comentarResultado(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "hecho" }).autor,
-			"opus@portatil-xinux",
+			"opus@portatil-ana",
 		);
 	} finally {
 		banco.cerrar();
@@ -389,7 +389,7 @@ test("sin autoejecución la ejecución espera a que el humano apruebe el anális
 			"ejecucion_no_aprobada",
 		);
 
-		const aprobada = aprobarEjecucion(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux });
+		const aprobada = aprobarEjecucion(banco.db, { tareaId: tarea.id, usuarioId: banco.ana });
 		assert.equal(aprobada.ejecucionAprobada, true);
 		assert.deepEqual(marcasDe(aprobada, 0), ["sin terminal"]);
 		assert.equal(
@@ -398,7 +398,7 @@ test("sin autoejecución la ejecución espera a que el humano apruebe el anális
 		);
 		// Ya en doing, aprobar deja de tener sentido.
 		assert.equal(
-			codigoDe(() => aprobarEjecucion(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux })),
+			codigoDe(() => aprobarEjecucion(banco.db, { tareaId: tarea.id, usuarioId: banco.ana })),
 			"estado_no_permite_aprobar",
 		);
 	} finally {
@@ -485,7 +485,7 @@ test("una pregunta solo tiene fase de análisis: nace con su tipo y sin marcas d
 		const pregunta = crearTareaHumana(banco.db, {
 			titulo: "¿Cuánto se tarda hoy en cerrar el mes?",
 			descripcion: "Quiero saberlo antes de pedir nada.",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			tipo: "pregunta",
 			autoejecucion: false,
 			analisisModelo: "sonnet",
@@ -494,9 +494,9 @@ test("una pregunta solo tiene fase de análisis: nace con su tipo y sin marcas d
 		assert.equal(pregunta.estado, "backlog");
 
 		// Una tarea normal sigue naciendo como `tarea` sin decir nada.
-		assert.equal(crearTareaHumana(banco.db, { titulo: "Otra", descripcion: "d", usuarioId: banco.xinux }).tipo, "tarea");
+		assert.equal(crearTareaHumana(banco.db, { titulo: "Otra", descripcion: "d", usuarioId: banco.ana }).tipo, "tarea");
 
-		const preparada = moverTareaHumano(banco.db, { tareaId: pregunta.id, usuarioId: banco.xinux, estado: "prepared" });
+		const preparada = moverTareaHumano(banco.db, { tareaId: pregunta.id, usuarioId: banco.ana, estado: "prepared" });
 		// «sin terminal» mira solo el análisis: la ejecución no existe aquí.
 		assert.deepEqual(marcasDe(preparada, 0), ["sin terminal"]);
 
@@ -514,13 +514,13 @@ test("el análisis de una pregunta es la respuesta: la deja en done y nunca sale
 	try {
 		// Una tarea normal ya en done, para comprobar que la pregunta entra
 		// detrás de ella en la columna.
-		const hecha = crearTareaHumana(banco.db, { titulo: "Ya hecha", descripcion: "d", usuarioId: banco.xinux });
+		const hecha = crearTareaHumana(banco.db, { titulo: "Ya hecha", descripcion: "d", usuarioId: banco.ana });
 		banco.db.prepare("UPDATE tareas SET estado = 'done', orden = 1 WHERE id = ?").run(hecha.id);
 
 		const pregunta = crearTareaHumana(banco.db, {
 			titulo: "¿Cuánto se tarda hoy en cerrar el mes?",
 			descripcion: "Quiero saberlo antes de pedir nada.",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			tipo: "pregunta",
 			// Sin autoejecución una tarea normal esperaría aprobación; una
 			// pregunta no, porque no hay ejecución que aprobar.
@@ -528,7 +528,7 @@ test("el análisis de una pregunta es la respuesta: la deja en done y nunca sale
 			analisisModelo: "sonnet",
 			analisisTerminalId: banco.portatil,
 		});
-		moverTareaHumano(banco.db, { tareaId: pregunta.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: pregunta.id, usuarioId: banco.ana, estado: "prepared" });
 		tomarTarea(banco.db, { tareaId: pregunta.id, fase: "analisis", terminalId: banco.portatil });
 
 		comentarAnalisis(banco.db, {
@@ -547,7 +547,7 @@ test("el análisis de una pregunta es la respuesta: la deja en done y nunca sale
 		const completa = leerTarea(banco.db, pregunta.id);
 		assert.equal(completa?.comentarios.length, 1);
 		assert.equal(completa?.comentarios[0]?.tipo, "analisis");
-		assert.equal(completa?.comentarios[0]?.autor, "sonnet@portatil-xinux");
+		assert.equal(completa?.comentarios[0]?.autor, "sonnet@portatil-ana");
 	} finally {
 		banco.cerrar();
 	}
@@ -559,7 +559,7 @@ test("una pregunta llega al terminal mientras está en prepared y deja de llegar
 		const pregunta = crearTareaHumana(banco.db, {
 			titulo: "¿Cuánto se tarda hoy en cerrar el mes?",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			tipo: "pregunta",
 			analisisModelo: "sonnet",
 			analisisTerminalId: banco.portatil,
@@ -567,7 +567,7 @@ test("una pregunta llega al terminal mientras está en prepared y deja de llegar
 		// En backlog el agente no la ve.
 		assert.deepEqual(tareasParaTerminalDesde(banco.db, { terminalId: banco.portatil, revision: 0 }), []);
 
-		moverTareaHumano(banco.db, { tareaId: pregunta.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: pregunta.id, usuarioId: banco.ana, estado: "prepared" });
 		assert.deepEqual(
 			tareasParaTerminalDesde(banco.db, { terminalId: banco.portatil, revision: 0 }).map((item) => item.id),
 			[pregunta.id],
@@ -586,7 +586,7 @@ test("reordenar desplaza al resto de la columna y sube la revisión de lo que mu
 	const banco = montar();
 	try {
 		const ids = ["A", "B", "C", "D"].map(
-			(titulo) => crearTareaHumana(banco.db, { titulo, descripcion: "d", usuarioId: banco.xinux }).id,
+			(titulo) => crearTareaHumana(banco.db, { titulo, descripcion: "d", usuarioId: banco.ana }).id,
 		);
 		const cuarta = ids[3];
 		assert.ok(cuarta !== undefined);
@@ -622,11 +622,11 @@ function columnaIntercalada(banco: ReturnType<typeof montar>): Intercalada {
 	const evolutivo = crearTareaHumana(banco.db, {
 		titulo: "Que los comerciales se bajen sus listados",
 		descripcion: "Hoy copian los datos a mano.",
-		usuarioId: banco.xinux,
+		usuarioId: banco.ana,
 		tipo: "funcionalidad",
 	});
 	const crear = (titulo: string, padreId?: number): number =>
-		crearTareaHumana(banco.db, { titulo, descripcion: "d", usuarioId: banco.xinux, padreId }).id;
+		crearTareaHumana(banco.db, { titulo, descripcion: "d", usuarioId: banco.ana, padreId }).id;
 	const orden = [
 		crear("Suelta A"),
 		crear("Parte 1", evolutivo.id),
@@ -636,7 +636,7 @@ function columnaIntercalada(banco: ReturnType<typeof montar>): Intercalada {
 	];
 	// El orden de la columna es el orden en que entran en ella.
 	for (const tareaId of orden) {
-		moverTareaHumano(banco.db, { tareaId, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId, usuarioId: banco.ana, estado: "prepared" });
 	}
 	const [, parte1, , parte2, parte3] = orden;
 	assert.ok(parte1 !== undefined && parte2 !== undefined && parte3 !== undefined);
@@ -693,7 +693,7 @@ test("el índice sale ordenado por columna y por orden, y se puede filtrar por t
 	try {
 		const enCurso = tareaPreparada(banco);
 		tomarTarea(banco.db, { tareaId: enCurso.id, fase: "analisis", terminalId: banco.portatil });
-		crearTareaHumana(banco.db, { titulo: "Sin tocar", descripcion: "d", usuarioId: banco.xinux });
+		crearTareaHumana(banco.db, { titulo: "Sin tocar", descripcion: "d", usuarioId: banco.ana });
 
 		const todas = listarTareas(banco.db, {});
 		assert.deepEqual(
@@ -713,16 +713,16 @@ test("el índice sale ordenado por columna y por orden, y se puede filtrar por t
 test("un id de tarea no se reutiliza nunca, ni después de borrar la última", () => {
 	const banco = montar();
 	try {
-		const primera = crearTareaHumana(banco.db, { titulo: "La que se queda", descripcion: "d", usuarioId: banco.xinux });
-		const segunda = crearTareaHumana(banco.db, { titulo: "La que sobra", descripcion: "d", usuarioId: banco.xinux });
+		const primera = crearTareaHumana(banco.db, { titulo: "La que se queda", descripcion: "d", usuarioId: banco.ana });
+		const segunda = crearTareaHumana(banco.db, { titulo: "La que sobra", descripcion: "d", usuarioId: banco.ana });
 		assert.equal(segunda.id, primera.id + 1);
 
-		borrarTarea(banco.db, { tareaId: segunda.id, actor: { usuarioId: banco.xinux } });
+		borrarTarea(banco.db, { tareaId: segunda.id, actor: { usuarioId: banco.ana } });
 		assert.equal(leerTarea(banco.db, segunda.id), undefined);
 
 		// El id borrado queda quemado: el hilo, la actividad y los commits ya lo
 		// citan, y otra tarea con ese número cambiaría de dueño lo ya escrito.
-		const tercera = crearTareaHumana(banco.db, { titulo: "La siguiente", descripcion: "d", usuarioId: banco.xinux });
+		const tercera = crearTareaHumana(banco.db, { titulo: "La siguiente", descripcion: "d", usuarioId: banco.ana });
 		assert.ok(tercera.id > segunda.id, `el id ${tercera.id} reutiliza el de la tarea borrada`);
 	} finally {
 		banco.cerrar();
@@ -761,7 +761,7 @@ function exigirRefrescada(banco: ReturnType<typeof montar>, tareaId: number, cam
 test("una tarea nace con estado_desde puesto, y es su misma fecha de creación", () => {
 	const banco = montar();
 	try {
-		const tarea = crearTareaHumana(banco.db, { titulo: "Una", descripcion: "d", usuarioId: banco.xinux });
+		const tarea = crearTareaHumana(banco.db, { titulo: "Una", descripcion: "d", usuarioId: banco.ana });
 		assert.equal(tarea.estadoDesde, tarea.creada);
 	} finally {
 		banco.cerrar();
@@ -775,12 +775,12 @@ test("todo camino que cambia el estado refresca estado_desde, y un avance no lo 
 		const tarea = crearTareaHumana(banco.db, {
 			titulo: "Exportar el listado",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			analisisModelo: "sonnet",
 			ejecucionModelo: "opus",
 		});
 		envejecerEstado(banco, tarea.id);
-		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 		exigirRefrescada(banco, tarea.id, "mover desde la web");
 
 		// Tomar la ejecución, que es lo que la lleva a `doing`.
@@ -801,7 +801,7 @@ test("todo camino que cambia el estado refresca estado_desde, y un avance no lo 
 
 		// Y la aceptación del humano.
 		envejecerEstado(banco, tarea.id);
-		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "finished" });
+		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "finished" });
 		exigirRefrescada(banco, tarea.id, "finalizar desde la web");
 	} finally {
 		banco.cerrar();
@@ -814,10 +814,10 @@ test("el análisis de una pregunta la cierra y refresca su estado_desde", () => 
 		const creada = crearTareaHumana(banco.db, {
 			titulo: "¿Cuánto cuesta una tarea?",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			tipo: "pregunta",
 		});
-		moverTareaHumano(banco.db, { tareaId: creada.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: creada.id, usuarioId: banco.ana, estado: "prepared" });
 		tomarTarea(banco.db, { tareaId: creada.id, fase: "analisis", terminalId: banco.portatil, modelo: "sonnet" });
 		envejecerEstado(banco, creada.id);
 		comentarAnalisis(banco.db, { tareaId: creada.id, terminalId: banco.portatil, texto: "unos 200.000 tokens." });
@@ -835,14 +835,14 @@ test("aprobar la descomposición refresca la funcionalidad y sus partes, y cerra
 		const creada = crearTareaHumana(banco.db, {
 			titulo: "Que los comerciales se bajen sus listados",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			tipo: "funcionalidad",
 			analisisModelo: "sonnet",
 			analisisTerminalId: banco.portatil,
 			ejecucionModelo: "opus",
 			ejecucionTerminalId: banco.portatil,
 		});
-		moverTareaHumano(banco.db, { tareaId: creada.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: creada.id, usuarioId: banco.ana, estado: "prepared" });
 		tomarTarea(banco.db, { tareaId: creada.id, fase: "analisis", terminalId: banco.portatil });
 		const parte = crearParte(banco.db, {
 			titulo: "Sacar los datos",
@@ -854,7 +854,7 @@ test("aprobar la descomposición refresca la funcionalidad y sus partes, y cerra
 
 		envejecerEstado(banco, creada.id);
 		envejecerEstado(banco, parte.id);
-		aprobarEjecucion(banco.db, { tareaId: creada.id, usuarioId: banco.xinux });
+		aprobarEjecucion(banco.db, { tareaId: creada.id, usuarioId: banco.ana });
 		exigirRefrescada(banco, creada.id, "aprobar la descomposición");
 		exigirRefrescada(banco, parte.id, "sacar la parte del backlog");
 
@@ -864,7 +864,7 @@ test("aprobar la descomposición refresca la funcionalidad y sus partes, y cerra
 		tomarTarea(banco.db, { tareaId: parte.id, fase: "ejecucion", terminalId: banco.portatil });
 		comentarResultado(banco.db, { tareaId: parte.id, terminalId: banco.portatil, texto: "hecho" });
 		envejecerEstado(banco, creada.id);
-		moverTareaHumano(banco.db, { tareaId: parte.id, usuarioId: banco.xinux, estado: "finished" });
+		moverTareaHumano(banco.db, { tareaId: parte.id, usuarioId: banco.ana, estado: "finished" });
 
 		assert.equal(exigirTarea(banco.db, creada.id).estado, "done");
 		exigirRefrescada(banco, creada.id, "el cierre automático de la funcionalidad");
@@ -922,7 +922,7 @@ test("el índice cuenta las hijas cerradas y suma los tokens de todo el árbol",
 		comentarResultado(banco.db, { tareaId: hecha.id, terminalId: banco.portatil, texto: "Hecho. Commit: a1b2c3d" });
 		const aceptada = hija("La que se acepta");
 		comentarResultado(banco.db, { tareaId: aceptada.id, terminalId: banco.portatil, texto: "Hecho. Commit: b2c3d4e" });
-		moverTareaHumano(banco.db, { tareaId: aceptada.id, usuarioId: banco.xinux, estado: "finished" });
+		moverTareaHumano(banco.db, { tareaId: aceptada.id, usuarioId: banco.ana, estado: "finished" });
 		const enCurso = hija("La que sigue");
 
 		// Una nieta: el consumo sube por todo el árbol, no solo por las hijas.
@@ -968,7 +968,7 @@ test("el índice cuenta las hijas cerradas y suma los tokens de todo el árbol",
 		// La hija intermedia lleva lo suyo y lo de su nieta.
 		assert.equal(itemIndiceDe(banco.db, enCurso.id).tokensConHijas, 230);
 
-		const suelta = crearTareaHumana(banco.db, { titulo: "Sin nada", descripcion: "d", usuarioId: banco.xinux });
+		const suelta = crearTareaHumana(banco.db, { titulo: "Sin nada", descripcion: "d", usuarioId: banco.ana });
 		const sola = itemIndiceDe(banco.db, suelta.id);
 		assert.equal(sola.hijas, 0);
 		assert.equal(sola.hijasCerradas, 0);
@@ -986,14 +986,14 @@ test("los conmutadores de un clic filtran por lo que espera, lo que está en mar
 			const tarea = crearTareaHumana(banco.db, {
 				titulo,
 				descripcion: "d",
-				usuarioId: banco.xinux,
+				usuarioId: banco.ana,
 				autoejecucion,
 				analisisModelo: "sonnet",
 				analisisTerminalId: banco.portatil,
 				ejecucionModelo: "opus",
 				ejecucionTerminalId: banco.portatil,
 			});
-			return moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+			return moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 		};
 
 		// Bloqueada: una pregunta sin contestar.
@@ -1048,17 +1048,17 @@ test("la búsqueda mira el título y la descripción, no distingue mayúsculas y
 		const csv = crearTareaHumana(banco.db, {
 			titulo: "Exportar el listado a CSV",
 			descripcion: "Los comerciales lo copian a mano.",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 		});
 		const cola = crearTareaHumana(banco.db, {
 			titulo: "Migrar el envío de correos",
 			descripcion: "Se manda todo por una cola.",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 		});
 		const descuento = crearTareaHumana(banco.db, {
 			titulo: "Aplicar un 100% de descuento",
 			descripcion: "Solo para el primer pedido.",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 		});
 
 		const ids = (q: string): number[] => listarTareas(banco.db, { q }).map((item) => item.id);
@@ -1084,7 +1084,7 @@ test("cada salto de columna deja su transición, y borrar la tarea se las lleva"
 		const tarea = crearTareaHumana(banco.db, {
 			titulo: "Exportar el listado",
 			descripcion: "Hoy lo copian a mano.",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			analisisModelo: "sonnet",
 			ejecucionModelo: "opus",
 		});
@@ -1098,7 +1098,7 @@ test("cada salto de columna deja su transición, y borrar la tarea se las lleva"
 		// de ninguna parte.
 		assert.deepEqual(saltos(), ["— → backlog"]);
 
-		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 		tomarTarea(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, fase: "analisis" });
 		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "Plan." });
 		tomarTarea(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, fase: "ejecucion" });
@@ -1108,7 +1108,7 @@ test("cada salto de columna deja su transición, y borrar la tarea se las lleva"
 
 		// El comentario de análisis no mueve la tarea, así que no anota nada: en
 		// la lista de arriba no hay ningún salto entre `prepared` y `doing`.
-		borrarTarea(banco.db, { tareaId: tarea.id, actor: { usuarioId: banco.xinux } });
+		borrarTarea(banco.db, { tareaId: tarea.id, actor: { usuarioId: banco.ana } });
 		assert.deepEqual(saltos(), []);
 	} finally {
 		banco.cerrar();
@@ -1121,7 +1121,7 @@ test("el presupuesto marca la tarea cuando el árbol lo pasa, y solo cuando lo h
 		const tarea = crearTareaHumana(banco.db, {
 			titulo: "Con tope",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			presupuesto: 200_000,
 		});
 		assert.equal(tarea.presupuesto, 200_000);
@@ -1134,12 +1134,12 @@ test("el presupuesto marca la tarea cuando el árbol lo pasa, y solo cuando lo h
 		assert.deepEqual(marcasDe(tarea, 0, 0, 200_001), ["sobre presupuesto"]);
 
 		// Sin presupuesto no se marca nunca, gaste lo que gaste.
-		const sinTope = crearTareaHumana(banco.db, { titulo: "Sin tope", descripcion: "d", usuarioId: banco.xinux });
+		const sinTope = crearTareaHumana(banco.db, { titulo: "Sin tope", descripcion: "d", usuarioId: banco.ana });
 		assert.equal(sinTope.presupuesto, null);
 		assert.deepEqual(marcasDe(sinTope, 0, 0, 9_000_000), []);
 
 		// Y el índice y la ficha lo calculan con lo gastado de verdad en el árbol.
-		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 		tomarTarea(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, fase: "analisis", modelo: "sonnet" });
 		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "Plan." });
 		tomarTarea(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, fase: "ejecucion", modelo: "opus" });
@@ -1174,7 +1174,7 @@ test("un presupuesto que no es un entero de cero en adelante no se guarda", () =
 		for (const malo of [Number.NaN, -1, 1.5]) {
 			assert.equal(
 				codigoDe(() =>
-					crearTareaHumana(banco.db, { titulo: "Con tope", descripcion: "d", usuarioId: banco.xinux, presupuesto: malo }),
+					crearTareaHumana(banco.db, { titulo: "Con tope", descripcion: "d", usuarioId: banco.ana, presupuesto: malo }),
 				),
 				"presupuesto_invalido",
 			);
@@ -1183,7 +1183,7 @@ test("un presupuesto que no es un entero de cero en adelante no se guarda", () =
 		const cero = crearTareaHumana(banco.db, {
 			titulo: "A coste cero",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			presupuesto: 0,
 		});
 		assert.equal(cero.presupuesto, 0);

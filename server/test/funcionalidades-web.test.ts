@@ -28,8 +28,8 @@ type Montaje = {
 /** Base en memoria con un usuario y un terminal, y la app entera sin abrir puerto. */
 function montar(): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
-	crearUsuario(db, "xinux", hashPassword("secreta"));
-	crearTerminalConToken(db, 1, "portatil-xinux", "xinux@ejemplo.com");
+	crearUsuario(db, "ana", hashPassword("secreta"));
+	crearTerminalConToken(db, 1, "portatil-ana", "ana@ejemplo.com");
 	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
 	return {
 		db,
@@ -68,7 +68,7 @@ async function pedir(montaje: Montaje, ruta: string, opciones: Opciones = {}): P
 /** Entra con el usuario de prueba y devuelve su cookie de sesión. */
 async function entrar(montaje: Montaje): Promise<string> {
 	const respuesta = await pedir(montaje, "/login", {
-		formulario: { usuario: "xinux", password: "secreta", volver: "/tareas" },
+		formulario: { usuario: "ana", password: "secreta", volver: "/tareas" },
 	});
 	assert.equal(respuesta.status, 302);
 	const primera = (respuesta.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
@@ -121,7 +121,7 @@ test("una funcionalidad se crea con su rama y sale en su propia lista", async ()
 		assert.equal(creada.rama, "evolutivo/csv");
 
 		const ficha = await ver(montaje, cookie, `/tareas/${id}`);
-		assert.match(ficha, /<span class="insignia tipo-funcionalidad color-azul">funcionalidad<\/span>/);
+		assert.match(ficha, /<span class="insignia tipo-funcionalidad color-azul">Funcionalidad<\/span>/);
 		assert.match(ficha, /<dt>Rama<\/dt>\s*<dd><code>evolutivo\/csv<\/code><\/dd>/);
 		// Sin partes todavía no hay barra que pintar: se dice y ya está.
 		assert.match(ficha, /<dt>Partes<\/dt>\s*<dd><span class="silencio">ninguna<\/span><\/dd>/);
@@ -164,7 +164,7 @@ test("una parte creada desde la web hereda la rama y aparece en el tablero de su
 		assert.match(ficha, /<dt>Padre<\/dt>/);
 		assert.match(
 			ficha,
-			/<span class="insignia estado-backlog color-gris">backlog<\/span> <a class="id-tarea" href="\/tareas\/T-0001">T-0001<\/a> Listados para comerciales/,
+			/<span class="insignia estado-backlog color-gris">Por definir<\/span> <a class="id-tarea" href="\/tareas\/T-0001">T-0001<\/a> Listados para comerciales/,
 		);
 		assert.match(ficha, /<dt>Rama<\/dt>\s*<dd><code>evolutivo\/csv<\/code><\/dd>/);
 
@@ -176,7 +176,7 @@ test("una parte creada desde la web hereda la rama y aparece en el tablero de su
 		// Y en la lista global, la parte lleva el enlace a su funcionalidad.
 		const lista = await ver(montaje, cookie, "/tareas");
 		assert.match(lista, /<a class="parte-de" href="\/tareas\/T-0001">Listados para comerciales<\/a>/);
-		assert.match(lista, /<span class="insignia tipo-funcionalidad color-azul">funcionalidad · 0\/1<\/span>/);
+		assert.match(lista, /<span class="insignia tipo-funcionalidad color-azul">Funcionalidad 0\/1<\/span>/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -211,7 +211,7 @@ test("las dependencias se editan en backlog y dejan la tarea esperando hasta que
 		const ficha = await ver(montaje, cookie, `/tareas/${segunda}`);
 		assert.match(
 			ficha,
-			/<span class="insignia estado-backlog color-naranja">backlog<\/span> <a class="id-tarea" href="\/tareas\/T-0001">T-0001<\/a>/,
+			/<span class="insignia estado-backlog color-naranja">Por definir<\/span> <a class="id-tarea" href="\/tareas\/T-0001">T-0001<\/a>/,
 		);
 		// Y el rastro cuenta lo que se fijó.
 		assert.match(ficha, /dependencias: T-0001/);
@@ -219,7 +219,7 @@ test("las dependencias se editan en backlog y dejan la tarea esperando hasta que
 		// En prepared, la marca «esperando» hasta que la otra esté hecha.
 		await pedir(montaje, `/tareas/${segunda}/mover`, { cookie, formulario: { estado: "prepared" } });
 		const esperando = await ver(montaje, cookie, `/tareas/${segunda}`);
-		assert.match(esperando, /<span class="insignia marca-esperando color-naranja">esperando<\/span>/);
+		assert.match(esperando, /<span class="insignia marca-esperando color-naranja">Espera a otra tarea<\/span>/);
 		// Y se puede filtrar por ella en la lista.
 		assert.match(await ver(montaje, cookie, "/tareas?marca=esperando"), /T-0002/);
 
@@ -228,7 +228,7 @@ test("las dependencias se editan en backlog y dejan la tarea esperando hasta que
 		const suelta = await ver(montaje, cookie, `/tareas/${segunda}`);
 		assert.doesNotMatch(suelta, /marca-esperando/);
 		// Cerrada la dependencia, su etiqueta deja de ir en naranja.
-		assert.match(suelta, /<span class="insignia estado-finished color-marron">finished<\/span>/);
+		assert.match(suelta, /<span class="insignia estado-finished color-marron">Cerrada<\/span>/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -265,7 +265,7 @@ test("la descomposición se aprueba desde la ficha y la funcionalidad se cierra 
 		comentarAnalisis(montaje.db, { tareaId: 1, terminalId: 1, texto: "Dos partes: los datos y el botón." });
 
 		const listaParaAprobar = await ver(montaje, cookie, "/tareas/T-0001");
-		assert.match(listaParaAprobar, /<span class="insignia marca-analisis-listo color-rosa">análisis listo<\/span>/);
+		assert.match(listaParaAprobar, /<span class="insignia marca-analisis-listo color-rosa">Por aprobar<\/span>/);
 		assert.match(listaParaAprobar, /<button type="submit" class="principal">Aprobar descomposición<\/button>/);
 		// Las partes están en backlog, que es donde el humano las poda.
 		assert.equal(buscarTarea(montaje.db, 2)?.estado, "backlog");
@@ -277,13 +277,13 @@ test("la descomposición se aprueba desde la ficha y la funcionalidad se cierra 
 		assert.equal(exigirTarea(montaje.db, 3).estado, "prepared");
 
 		const enMarcha = await ver(montaje, cookie, "/funcionalidades");
-		assert.match(enMarcha, /<span class="insignia estado-doing color-amarillo">doing<\/span>/);
+		assert.match(enMarcha, /<span class="insignia estado-doing color-amarillo">En curso<\/span>/);
 		assert.match(
 			enMarcha,
 			/<progress class="progreso" value="0" max="2"><\/progress><span class="progreso-texto">partes 0\/2<\/span>/,
 		);
 		// Una parte espera a la otra: eso es lo que frena la funcionalidad.
-		assert.match(enMarcha, /<span class="insignia marca-esperando color-naranja">1 esperando<\/span>/);
+		assert.match(enMarcha, /<span class="insignia marca-esperando color-naranja">1 esperando a otra<\/span>/);
 
 		cerrarParte(montaje.db, Number.parseInt(datos.slice(2), 10));
 		cerrarParte(montaje.db, Number.parseInt(boton.slice(2), 10));
@@ -292,7 +292,7 @@ test("la descomposición se aprueba desde la ficha y la funcionalidad se cierra 
 		assert.equal(exigirTarea(montaje.db, 1).estado, "done");
 		const cerrada = await ver(montaje, cookie, "/funcionalidades");
 		assert.match(cerrada, /<span class="progreso-texto">partes 2\/2<\/span>/);
-		assert.match(cerrada, /<span class="insignia estado-done color-verde">done<\/span>/);
+		assert.match(cerrada, /<span class="insignia estado-done color-verde">Hecha<\/span>/);
 		// La barra llena: el valor iguala al máximo.
 		assert.match(cerrada, /<progress class="progreso" value="2" max="2"><\/progress>/);
 	} finally {
@@ -345,7 +345,7 @@ test("una tarea se borra con su confirmación esté en la columna que esté", as
 		// que la está trabajando y quién deja de esperarla.
 		const aviso = await ver(montaje, cookie, `/tareas/${suelta}/borrar`);
 		assert.match(aviso, /Se va su hilo entero: 1 comentario/);
-		assert.match(aviso, /la está trabajando portatil-xinux/);
+		assert.match(aviso, /la está trabajando portatil-ana/);
 		assert.match(aviso, /Dejan de esperarla/);
 		assert.match(aviso, /La que la espera/);
 

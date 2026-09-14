@@ -129,7 +129,7 @@ Cada tarea tiene un único hilo, abierto hasta que llega a `finished`. Cada iter
 
 Los comentarios se añaden, nunca se editan ni se borran. El hilo es lo que se ve en la web y lo que el agente lee con `leer_tarea`.
 
-El autor lo compone el servidor, nunca el que escribe: para un agente es el modelo asignado a la fase que toca y el nombre del terminal autenticado (`opus@portatil-xinux`); para una persona, su nombre de usuario en la web (`humano:xinux`).
+El autor lo compone el servidor, nunca el que escribe: para un agente es el modelo asignado a la fase que toca y el nombre del terminal autenticado (`opus@portatil-ana`); para una persona, su nombre de usuario en la web (`humano:ana`).
 
 ### Tareas hijas
 
@@ -267,10 +267,10 @@ autoejecucion: true
 marcas: []
 analisis:
   modelo: sonnet
-  terminal: portatil-xinux
+  terminal: portatil-ana
 ejecucion:
   modelo: opus
-  terminal: portatil-xinux
+  terminal: portatil-ana
 creada: 2026-09-04T08:30:00Z
 consumo:
   analisis:
@@ -300,12 +300,12 @@ para trabajarlo en su hoja de cálculo. Hoy lo copian a mano.
 
 ## Hilo
 
-### analisis · sonnet@portatil-xinux · 2026-09-04T08:35:00Z
+### analisis · sonnet@portatil-ana · 2026-09-04T08:35:00Z
 
 Hay que añadir un botón en el listado que descargue lo que se ve en
 pantalla con los filtros aplicados. Riesgo: listados muy grandes.
 
-### pregunta · opus@portatil-xinux · 2026-09-04T09:10:00Z · P1
+### pregunta · opus@portatil-ana · 2026-09-04T09:10:00Z · P1
 
 **¿Qué separador usamos en el CSV?**
 
@@ -319,17 +319,17 @@ Opciones:
 
 Recomendación: Punto y coma.
 
-### respuesta · humano:xinux · 2026-09-04T12:00:00Z · P1
+### respuesta · humano:ana · 2026-09-04T12:00:00Z · P1
 
 Opción: **Punto y coma**
 
 Nota: si algún día lo usa otro equipo, ya lo cambiaremos.
 
-### avance · opus@portatil-xinux · 2026-09-04T12:20:00Z
+### avance · opus@portatil-ana · 2026-09-04T12:20:00Z
 
 Botón añadido y fichero generándose. Faltan los tests.
 
-### resultado · opus@portatil-xinux · 2026-09-04T13:05:00Z
+### resultado · opus@portatil-ana · 2026-09-04T13:05:00Z
 
 Qué se construyó: botón «Exportar CSV» en el listado de clientes,
 respeta los filtros activos y separa por punto y coma.
@@ -355,10 +355,10 @@ Convenciones del documento:
 Es lo que devuelven `listar_tareas` y `novedades` por cada tarea. Una línea, sin cuerpo:
 
 ```markdown
-- T-0042 · doing · bloqueada · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-xinux · ejecucion: opus@portatil-xinux
+- T-0042 · doing · bloqueada · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-ana · ejecucion: opus@portatil-ana
 ```
 
-Las marcas van entre el estado y el título, separadas por `·`. Si no hay marcas, no aparece nada en esa posición. Una tarea de tipo `pregunta` lleva `pregunta` justo después del estado, antes de las marcas, y no lleva segmento `ejecucion:`. Una de tipo `funcionalidad` lleva `funcionalidad 3/7` en esa misma posición, con las partes cerradas sobre el total, y tampoco lleva `ejecucion:`. Una parte lleva `padre: T-0050` como último segmento. Una fase sin modelo ni terminal se escribe `analisis: sin asignar`; con solo uno de los dos, `analisis: sonnet` o `analisis: @portatil-xinux`.
+Las marcas van entre el estado y el título, separadas por `·`. Si no hay marcas, no aparece nada en esa posición. Una tarea de tipo `pregunta` lleva `pregunta` justo después del estado, antes de las marcas, y no lleva segmento `ejecucion:`. Una de tipo `funcionalidad` lleva `funcionalidad 3/7` en esa misma posición, con las partes cerradas sobre el total, y tampoco lleva `ejecucion:`. Una parte lleva `padre: T-0050` como último segmento. Una fase sin modelo ni terminal se escribe `analisis: sin asignar`; con solo uno de los dos, `analisis: sonnet` o `analisis: @portatil-ana`.
 
 ### Salida de `novedades`
 
@@ -367,7 +367,7 @@ revision: 190
 
 ## Tareas nuevas o cambiadas
 
-- T-0042 · doing · bloqueada · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-xinux · ejecucion: opus@portatil-xinux
+- T-0042 · doing · bloqueada · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-ana · ejecucion: opus@portatil-ana
 - T-0045 · prepared · sin terminal · Migrar el envío de correos a la cola · analisis: sin asignar · ejecucion: sin asignar
 
 ## Preguntas contestadas
@@ -401,7 +401,7 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 
 Por diseño el humano es el cuello de botella: es dueño de `backlog`, de `done`, de las aprobaciones y de las respuestas. La bandeja es la única pantalla que le dice qué espera por él, sin barrer el kanban buscando etiquetas. Es `GET /` y cruza todos los proyectos. Decidido el 14 de septiembre de 2026.
 
-Cuatro bloques, siempre los cuatro y en este orden, cada uno con su contador en el título y «Nada pendiente.» cuando está vacío:
+Cuatro bloques, siempre los cuatro y en este orden, cada uno con su contador en el título y «Nada pendiente.» cuando está vacío. En pantalla se titulan con el verbo que le toca al humano (Contesta, Aprueba, Revisa, Define; ver «Diseño visual › Pantallas › Bandeja»):
 
 1. **Preguntas sin contestar.** Cada tarea con la marca `bloqueada`, y por cada pregunta abierta la misma tarjeta que en el hilo de la ficha: la pregunta en negrita, por qué importa, las opciones como tarjetas seleccionables con la recomendada marcada, la nota y el botón de responder. Se contesta desde aquí sin abrir la ficha. Una funcionalidad bloqueada sale igual.
 2. **Por aprobar.** Las tareas con la marca `análisis listo`. Cada una con el comentario `analisis` renderizado y el botón «Aprobar ejecución» o, en una funcionalidad, «Aprobar descomposición» con la lista de sus partes debajo.
@@ -443,7 +443,7 @@ Jira pone en cada tarjeta el progreso de las subtareas y agrupa el tablero en ca
 
 **Filtros de un clic y búsqueda**
 
-- **Tres conmutadores** a la izquierda de los desplegables de la lista y del kanban, como enlaces con aspecto de botón: «Espera por mí» (tareas `bloqueadas`, con `análisis listo` o en `done`), «En marcha» y «Sin terminal». Van en el parámetro `?rapido=espera|en-marcha|sin-terminal`, uno cada vez; el activo lleva `aria-current="true"` y pulsarlo lo quita. Se combinan con los desplegables y con el ámbito del proyecto.
+- **Tres conmutadores** a la izquierda de los desplegables de la lista y del tablero, como enlaces con aspecto de botón: «Espera por ti» (tareas `bloqueadas`, con `análisis listo` o en `done`: las mismas que llevan la etiqueta), «Agente trabajando» y «Sin terminal». Van en el parámetro `?rapido=espera|en-marcha|sin-terminal`, uno cada vez; el activo lleva `aria-current="true"` y pulsarlo lo quita. Se combinan con los desplegables y con el ámbito del proyecto.
 - **Búsqueda por texto** en la misma fila: un `<input type="search" name="q">` dentro del formulario de filtros. Busca en título y descripción con `LIKE` sobre `lower()`, que en SQLite solo pliega ASCII: «Métrica» no encuentra «métrica» si se escribe con mayúscula acentuada. Es una limitación conocida y aceptada hasta que la cantidad de tareas o las quejas la hagan notar; el salto sería FTS5 con un tokenizador `unicode61`, que Node trae compilado. `ponytail: LIKE sobre lower(), FTS5 unicode61 cuando la búsqueda se quede corta.`
 - **Los filtros viven en `listarTareas`**: el filtro recibe `rapido` y `q` y la web no vuelve a filtrar en memoria.
 
@@ -557,7 +557,7 @@ Las acciones del humano sobre tareas llaman a las funciones de `src/db/`; la web
 
 ### Decisiones de la web
 
-- **El nombre visible del proyecto es «MCP Tareas».** Las columnas se titulan Backlog, Preparadas, En curso, Hechas y Cerradas; el estado crudo (`prepared`, `doing`…) aparece en el badge de la ficha.
+- **El nombre visible del proyecto es «MCP Tareas».** La web habla en castellano llano: las columnas se titulan Por definir, Preparadas, En curso, Hechas y Cerradas, y ningún nombre interno (`prepared`, `doing`, `analisis`, `bloqueada`…) llega a la pantalla. El mapa completo está en «Diseño visual › Vocabulario». Los valores de formularios, URLs y clases CSS siguen siendo los internos.
 - **El CSS y el JavaScript propio se sirven desde constantes** (`src/web/estilos.ts` en `/static/app.css`, `src/web/cliente.ts` en `/static/app.js`). SortableJS se instala como dependencia npm y se sirve desde `node_modules` en `/static/sortable.min.js`. No hay archivos estáticos en disco ni cambios en el Dockerfile.
 - **Arrastrar una tarjeta en el kanban** llama a `POST /tareas/T-0042/orden` con la columna y la posición de destino. Dentro de la misma columna es `reordenar`; a otra columna es `moverTareaHumano` seguido de `reordenar`, y si la transición exige nota el navegador la pide antes de enviar. Una transición no permitida devuelve 422 y el tablero se recarga tal como está en el servidor.
 - **Usuarios.** Borrar un usuario es contenido y sube la revisión; cambiar la contraseña no. No se puede borrar el último usuario (`ultimo_usuario`) ni uno con terminales a su nombre (`usuario_con_terminales`): el token quedaría sin dueño. Al borrar, las referencias en tareas y preguntas quedan a nulo; el autor ya está escrito como texto en el hilo.
@@ -572,31 +572,72 @@ Las acciones del humano sobre tareas llaman a las funciones de `src/db/`; la web
 
 ### Diseño visual
 
-La web se parece a Notion: página limpia, tipografía del sistema, colores neutros, etiquetas de color suave y una barra lateral fija con la navegación. Todo el estilo sale de `src/web/estilos.ts`; los componentes reutilizables (etiquetas, chips, cabecera de página, propiedades) de `src/web/componentes.ts`; el esqueleto de página de `src/web/plantilla.ts`. Ningún estilo en línea en las plantillas.
+La web es el puesto de mando de una persona que dirige agentes: lo que le importa es saber qué espera por ella y en qué punto del ciclo está cada tarea. Rediseñada el 14 de septiembre de 2026 con esa idea. Todo el estilo sale de `src/web/estilos.ts`; los componentes reutilizables (etiquetas, chips, cabecera de página, propiedades, pasos del ciclo) de `src/web/componentes.ts`; el esqueleto de página de `src/web/plantilla.ts`; las palabras de `src/web/vocabulario.ts`. Ningún estilo en línea en las plantillas.
+
+**Tres principios**
+
+1. **El color dice de quién es el turno.** Un único color de señal, `--turno` (ámbar), marca todo lo que espera por el humano: el contador de la bandeja, la etiqueta «Espera por ti» de las tarjetas, el paso actual del ciclo cuando es suyo. Ningún otro elemento lo usa. El acento de acciones y enlaces es otro color (`--acento`, verde petróleo) para que la señal no se confunda con un botón. Lo del agente y del servidor queda neutro.
+2. **Cada pantalla dice para qué sirve** en una frase debajo del título, en `--texto-suave`, escrita desde el punto de vista del humano («Lo que espera por ti, de todos los proyectos.»). Ningún rótulo en mayúsculas, ningún punto medio como separador de texto, ningún nombre interno.
+3. **El ciclo se ve.** La ficha enseña los cinco pasos con su dueño debajo y qué pasa ahora; la bandeja se ordena por lo que el humano tiene que hacer, no por columnas.
+
+**Vocabulario** (`src/web/vocabulario.ts`, un mapa por concepto; nada más traduce)
+
+| Interno | En la web |
+|---|---|
+| `backlog` | Por definir |
+| `prepared` | Preparada (columna: Preparadas) |
+| `doing` | En curso |
+| `done` | Hecha (columna: Hechas) |
+| `finished` | Cerrada (columna: Cerradas) |
+| marca `bloqueada` | Pregunta abierta |
+| marca `sin terminal` | Sin terminal |
+| marca `en marcha` | Agente trabajando |
+| marca `análisis listo` | Por aprobar |
+| marca `esperando` | Espera a otra tarea |
+| marca `sobre presupuesto` | Sobre presupuesto |
+| tipo de tarea `pregunta` | Pregunta |
+| tipo de tarea `funcionalidad` | Funcionalidad 3/7 |
+| comentario `analisis` / `pregunta` / `respuesta` / `avance` / `resultado` / `nota` | Análisis / Pregunta / Respuesta / Avance / Resultado / Nota |
+| fase `analisis` / `ejecucion` | Análisis / Ejecución |
+| dueño de columna | tú / el agente / nadie |
+| `done → doing` | Rechazar el resultado |
+| `prepared → backlog` | Devolver a por definir |
+
+Los filtros, los `<option value>`, las URLs (`?estado=prepared`), las clases CSS (`estado-prepared`, `marca-bloqueada`, `tipo-analisis`) y el Markdown del MCP no cambian: solo el texto que ve la persona.
 
 **Esqueleto**
 
-- **Barra lateral** a la izquierda, 15 rem, fondo `--fondo-lateral`. Arriba el nombre del proyecto; después la navegación en dos bloques: «Tareas» (Lista, Kanban) y «Sistema» (Terminales, Usuarios, Actividad); abajo el chip del usuario de la sesión y el botón «Salir». La entrada activa lleva fondo `--fondo-hover` y texto en negrita. La vista activa se deduce de `vista`.
-- **Por debajo de 48 rem** la barra se oculta y aparece una cabecera con el nombre del proyecto y un botón «☰» que la despliega como panel sobre el contenido; `cliente.ts` alterna la clase `lateral-abierta` en `<body>`. Los `data-vista` y `data-revision` del `<body>` no cambian.
-- **Contenido** con ancho máximo de 60 rem y relleno de 3 rem arriba, salvo el kanban, que ocupa todo el ancho (`ancho: "completo"` en `pagina`).
-- **Cada página empieza con `cabeceraPagina`**: migas (`Tareas › T-0042`), título en 2 rem y negrita, debajo las etiquetas de estado y marcas cuando las hay, y a la derecha las acciones principales como botones. Las páginas sin sesión (login) no tienen barra lateral: una tarjeta centrada de 22 rem con el nombre del proyecto y el formulario.
+- **Barra lateral** a la izquierda, 15 rem, fondo `--fondo-lateral`. Arriba el nombre de la aplicación y el selector de proyecto. Después la navegación: primero «Bandeja» sola, con el contador de pendientes en `--turno`; luego el bloque «Trabajo» (Tareas, Funcionalidades, Informes, Actividad) y el bloque «Configuración» (Proyectos, Terminales, Usuarios). Los títulos de bloque van en `--texto-suave`, tamaño pequeño, sin mayúsculas. La entrada activa lleva fondo `--fondo-hover` y texto en negrita. La vista activa se deduce de `vista`; «Tareas» está activa en la lista, el tablero, la ficha y el alta.
+- **Abajo en la barra**: el conmutador de tema y, debajo, el chip del usuario con el botón «Salir». Ver «Tema».
+- **Por debajo de 48 rem** la barra se oculta y aparece una cabecera con el nombre de la aplicación y un botón «☰» que la despliega como panel sobre el contenido; `cliente.ts` alterna la clase `lateral-abierta` en `<body>`. Los `data-vista` y `data-revision` del `<body>` no cambian.
+- **Contenido** con ancho máximo de 64 rem y relleno de 2.5 rem arriba, salvo las vistas de tablero, lista y ficha, que ocupan todo el ancho (`ancho: "completo"` en `pagina`).
+- **Cada página empieza con `cabeceraPagina`**: migas (`PRI › Tareas › T-0042`), título en 1.75 rem y peso 600, debajo la frase de propósito (`proposito`) en `--texto-suave`, y debajo las etiquetas de estado y marcas cuando las hay; a la derecha las acciones principales como botones. Las páginas sin sesión (login) no tienen barra lateral: una tarjeta centrada de 22 rem con el nombre de la aplicación y el formulario.
 
-**Tokens** (variables CSS en `:root`, con su versión en `prefers-color-scheme: dark`):
+**Tema**
 
-| Token | Claro | Oscuro |
-|---|---|---|
-| `--fondo` | `#ffffff` | `#191919` |
-| `--fondo-lateral` | `#f7f7f5` | `#202020` |
-| `--fondo-hover` | `rgba(55, 53, 47, 0.08)` | `rgba(255, 255, 255, 0.055)` |
-| `--texto` | `#37352f` | `rgba(255, 255, 255, 0.81)` |
-| `--texto-suave` | `rgba(55, 53, 47, 0.65)` | `rgba(255, 255, 255, 0.44)` |
-| `--borde` | `rgba(55, 53, 47, 0.16)` | `rgba(255, 255, 255, 0.13)` |
-| `--acento` | `#2383e2` | `#529cca` |
-| `--peligro` | `#eb5757` | `#ff7369` |
+- **Tres opciones**: Claro, Oscuro y Sistema, como un grupo de tres botones en la barra lateral (`fieldset.tema` con radios estilizados; el `legend` es «Tema»). Sistema es el valor por defecto y sigue a `prefers-color-scheme`.
+- **Se guarda en el navegador** (`localStorage`, clave `tema`, valores `claro` y `oscuro`; Sistema borra la clave). Es una preferencia de quien mira, no del usuario: no toca el servidor ni la revisión.
+- **Se aplica antes de pintar**: un `<script>` mínimo en el `<head>`, antes de la hoja de estilos, lee la clave y pone `data-tema="claro|oscuro"` en `<html>`. Sin él la página parpadearía en el tema del sistema al cargar. Es el único JavaScript en línea de la web; no usa `eval` ni `new Function`.
+- **En CSS**, `:root` define la paleta clara; `:root[data-tema="oscuro"]` y `@media (prefers-color-scheme: dark) { :root:not([data-tema="claro"]) }` redefinen los mismos tokens. `color-scheme` va con cada bloque (`light`, `dark`), para que los controles nativos y las barras de scroll sigan al tema. Ningún color se define fuera de los tokens y de la tabla de nueve colores.
 
-Tipografía `ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`, 15 px de base, interlineado 1.5. Radio de 4 px en controles y 6 px en tarjetas. Sin sombras salvo la tarjeta del kanban al arrastrar y el panel lateral en móvil. Los controles de formulario no tienen borde propio: fondo `--fondo-hover` suave, y al enfocar un anillo de 2 px en `--acento`.
+**Tokens** (variables CSS en `:root`):
 
-**Nueve colores de etiqueta**, los de Notion. Cada uno es una clase `.color-<nombre>`: fondo suave y texto oscuro en claro; fondo oscuro y texto `rgba(255, 255, 255, 0.81)` en oscuro.
+| Token | Claro | Oscuro | Para qué |
+|---|---|---|---|
+| `--fondo` | `#ffffff` | `#1b2027` | el papel: contenido, tarjetas, controles |
+| `--fondo-lateral` | `#f4f5f7` | `#14181d` | el suelo: barra lateral, cabeceras de franja, filas alternas |
+| `--fondo-hover` | `rgba(28, 36, 48, 0.06)` | `rgba(255, 255, 255, 0.06)` | al pasar, entrada activa, fondo de controles |
+| `--texto` | `#1c2430` | `rgba(255, 255, 255, 0.86)` | tinta |
+| `--texto-suave` | `rgba(28, 36, 48, 0.62)` | `rgba(255, 255, 255, 0.5)` | rótulos, frases de propósito, metadatos |
+| `--borde` | `rgba(28, 36, 48, 0.14)` | `rgba(255, 255, 255, 0.12)` | bordes de tarjeta, tabla y separadores |
+| `--acento` | `#0f766e` | `#34b8ab` | enlaces, botón principal, anillo de foco |
+| `--turno` | `#b45309` | `#f59e0b` | la señal: lo que espera por el humano |
+| `--turno-fondo` | `#fff4e5` | `rgba(245, 158, 11, 0.14)` | fondo suave de la etiqueta «Espera por ti» y del paso actual |
+| `--peligro` | `#b91c1c` | `#f87171` | borrar, rechazar, edades que duelen |
+
+Tipografía `"Avenir Next", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`, una sola familia, 15 px de base, interlineado 1.5. Escala: `h1` 1.75 rem / 600, `h2` 1.2 rem / 600, `h3` 1 rem / 600, texto pequeño 0.8125 rem. Los ids y las cifras van con `font-variant-numeric: tabular-nums`, no en monoespaciada; la monoespaciada es solo para código y comandos. Radio de 4 px en controles y 8 px en tarjetas. Sin sombras salvo la tarjeta del tablero al arrastrar y el panel lateral en móvil. Los controles de formulario no tienen borde propio: fondo `--fondo-hover`, y al enfocar un anillo de 2 px en `--acento`. `prefers-reduced-motion: reduce` apaga toda transición.
+
+**Nueve colores de etiqueta**, fijos e iguales en los dos temas salvo el fondo. Cada uno es una clase `.color-<nombre>`: fondo suave y texto oscuro en claro; fondo oscuro y texto `rgba(255, 255, 255, 0.81)` en oscuro.
 
 | Nombre | Claro (fondo / texto) | Oscuro (fondo) |
 |---|---|---|
@@ -617,27 +658,31 @@ Tipografía `ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helve
 - Tipos de comentario: `analisis` azul, `pregunta` rojo, `respuesta` verde, `avance` amarillo, `resultado` morado, `nota` gris.
 - Tipo de tarea `pregunta`: rosa.
 - Los usuarios eligen entre los ocho que no son gris. El gris es de quien no tiene color: agentes y usuarios borrados.
+- **«Espera por ti»** no es una marca guardada: es la etiqueta que la tarjeta, la fila y la ficha pintan en `--turno` sobre `--turno-fondo` (`insignia turno`) cuando la tarea está `done` o lleva `bloqueada` o `análisis listo`: exactamente lo que cuenta el contador de pendientes y lo que filtra el conmutador rápido, que se llama igual, «Espera por ti». `backlog` no la lleva: la columna entera es del humano y marcarla una a una sería ruido. Es lo único que va en ese color además del contador de la bandeja y el paso actual del ciclo.
 
 **Etiquetas y chips** (`src/web/componentes.ts`)
 
-- `etiqueta(texto, color, clase?)` pinta `<span class="insignia estado-prepared color-azul">prepared</span>`. Estado, marcas y tipos de comentario son etiquetas; las clases `estado-*`, `marca-*` y `tipo-*` se conservan para que los tests las encuentren, y el color va siempre en la última clase.
-- `chipUsuario(nombre, color)` es un círculo con la inicial en mayúscula sobre el color y el nombre al lado: `<span class="chip color-azul"><span class="inicial">X</span>xinux</span>`. Es la única forma de enseñar a un usuario en la web: navegación, hilo, actividad, listas.
-- `chipAutor(autor, colorDe)` traduce el autor de un comentario: `humano:xinux` es el chip de ese usuario, con su color actual o gris si ya no existe; `opus@portatil-xinux` es un chip gris con la inicial del modelo, el modelo y `@terminal` en texto suave. `colorDe` es la función que devuelve `buscadorDeColor(db)`: lee la tabla de usuarios una vez por página y da el color de un nombre, o `null`.
+- `etiqueta(texto, color, clase?)` pinta `<span class="insignia estado-prepared color-azul">Preparada</span>`. Estado, marcas y tipos de comentario son etiquetas; el texto sale del vocabulario, las clases `estado-*`, `marca-*` y `tipo-*` llevan el nombre interno para que los tests las encuentren, y el color va siempre en la última clase.
+- `pasosDelCiclo(tarea)` pinta el ciclo como `<ol class="ciclo">` con cinco `<li>`: el nombre de la columna, el dueño debajo («tú», «el agente», «nadie») y, en el paso actual (`aria-current="step"`), una frase de qué pasa ahora: «Termina de definirla y pásala a preparadas», «El agente de análisis la está estudiando», «Espera tu respuesta a P1», «Espera tu aprobación del análisis», «El agente la está ejecutando», «Revisa el resultado», «Cerrada». Los pasos pasados van tachados en `--texto-suave`; el actual en `--turno` si el turno es del humano y en `--acento` si es del agente, y su dueño dice a quién le toca de verdad («tú» en una Preparada bloqueada, aunque la columna sea del agente); en los demás pasos el dueño es el de la columna. Una pregunta salta el paso En curso; una funcionalidad dice «Revisa las partes» en Preparada y «Las partes se están trabajando» en En curso.
+- `chipUsuario(nombre, color)` es un círculo con la inicial en mayúscula sobre el color y el nombre al lado: `<span class="chip color-azul"><span class="inicial">A</span>ana</span>`. Es la única forma de enseñar a un usuario en la web: navegación, hilo, actividad, listas.
+- `chipAutor(autor, colorDe)` traduce el autor de un comentario: `humano:ana` es el chip de ese usuario, con su color actual o gris si ya no existe; `opus@portatil-ana` es un chip gris con la inicial del modelo, el modelo y `@terminal` en texto suave. `colorDe` es la función que devuelve `buscadorDeColor(db)`: lee la tabla de usuarios una vez por página y da el color de un nombre, o `null`.
 - Otras ayudas del mismo archivo: `fraseDeAccion(accion)` (la frase en pasado de cada acción del rastro, «movió la tarea»), `selectorDeColor(titulo, elegido)` (las ocho muestras como botones de radio, con «automático» cuando no hay color que respetar), `rotuloColumna`, `filtroSelect` y `accionNuevaTarea` (compartidos por la lista y el kanban) y `buscadorDeCreador(db)` (chip de quien creó la tarea, o el nombre del terminal en gris). `COLORES_USUARIO` se reexporta desde `src/db/colores.ts`: una sola lista.
 
 **Pantallas**
 
-- **Lista**: los mismos grupos por estado, como tabla de Notion: sin borde exterior, cabecera en `--texto-suave`, mayúsculas pequeñas, filas con borde inferior y fondo `--fondo-hover` al pasar. Columnas: Id, Título (con las marcas como etiquetas y el progreso de hijas), Análisis, Ejecución, Tokens, Creada por (chip) y En columna. Los filtros son una fila encima, sin caja: los tres conmutadores, la búsqueda y los desplegables compactos.
-- **Kanban**: columnas sin fondo; la cabecera de cada columna es la etiqueta de su estado con el contador al lado. Tarjetas con borde `--borde`, fondo `--fondo`, sombra suave al pasar y al arrastrar. Cada tarjeta: id, marcas y edad en una línea, título, la barra de progreso cuando hay hijas, y una última línea en texto suave con las fases a la izquierda y los tokens a la derecha. Agrupado por funcionalidad, cada franja lleva su cabecera de ancho completo con borde inferior `--borde` y las columnas debajo; ver «Un tablero que se lee de un vistazo».
-- **Ficha**: migas `PRI › Tareas › T-0042`, título, etiquetas de estado y marcas, y las acciones hacia delante a la derecha (Pasar a preparadas, Aprobar ejecución, Finalizar). Debajo, las preguntas abiertas con su formulario. Después el bloque de **propiedades**: filas de dos columnas con el nombre en `--texto-suave` y el valor al lado: Estado (con la edad), Proyecto, Tipo, Análisis, Ejecución, Autoejecución, Padre, Orden, Creada (chip de quien la creó, o el terminal si fue una propuesta, y la fecha), Revisión. Después Descripción, Hijas (cada una con su etiqueta de estado), Consumo, Hilo, Nota, Actividad. Las **vueltas atrás** (volver a backlog, devolver a doing), **Editar** y **Borrar** van al final como `<details>`, porque son excepcionales. En ancho, propiedades, consumo y `<details>` forman el panel de la derecha; ver «La ficha como vista de incidencia».
-- **Bandeja**: cuatro bloques con el contador en el título; en cada uno, líneas con chip de proyecto, id, título y edad, y debajo la tarjeta que toca (pregunta con formulario, análisis con botón de aprobar, resultado con botón de finalizar). Mismos componentes que la ficha: nada se pinta dos veces con dos plantillas.
+- **Tareas** es una sección con dos vistas de lo mismo, la lista (`/tareas`) y el tablero (`/tareas/kanban`), y se presenta como tal: título «Tareas», frase de propósito («Todas las tareas del proyecto, por columna.»), y en la fila de filtros, a la izquierda del todo, un conmutador de dos enlaces «Lista | Tablero» (`nav.vistas`, el activo con `aria-current="page"`) que cambia de vista conservando los parámetros de filtro. La entrada de navegación es una sola, «Tareas». La palabra «kanban» no aparece en pantalla; la ruta no cambia.
+- **Lista**: grupos por columna, cada uno con el rótulo de la columna: la etiqueta de estado con el nombre de la columna en plural («Preparadas»), el dueño en texto suave («la defines tú», «la trabaja el agente», «la revisas tú»; Cerradas no lleva dueño) y el contador. El nombre no se repite fuera de la etiqueta. Tabla sin borde exterior, cabecera en `--texto-suave` sin mayúsculas, filas con borde inferior y fondo `--fondo-hover` al pasar. Columnas: Id, Título (con «Espera por ti» y las marcas como etiquetas, y el progreso de hijas), Análisis, Ejecución, Tokens, Creada por (chip) y En columna. Los filtros son una fila encima, sin caja: el conmutador de vista, los tres conmutadores rápidos, la búsqueda y los desplegables compactos, con sus opciones ya en el vocabulario.
+- **Tablero**: columnas sin fondo; la cabecera de cada columna es el mismo rótulo que en la lista. Tarjetas con borde `--borde`, fondo `--fondo`, sombra suave al pasar y al arrastrar; una tarea que espera por el humano lleva un filete de 3 px en `--turno` en el borde izquierdo. Cada tarjeta: id, etiquetas y edad en una línea, título, la barra de progreso cuando hay hijas, y una última línea en texto suave con las fases a la izquierda («análisis sonnet@portatil, ejecución opus@portatil») y los tokens a la derecha. Agrupado por funcionalidad, cada franja lleva su cabecera de ancho completo sobre `--fondo-lateral` y las columnas debajo; ver «Un tablero que se lee de un vistazo».
+- **Ficha**: migas `PRI › Tareas › T-0042`, título, y las acciones hacia delante a la derecha (Pasar a preparadas, Aprobar ejecución, Finalizar). Debajo de la cabecera, **el ciclo** (`pasosDelCiclo`) a todo lo ancho. Debajo, las preguntas abiertas con su formulario. Después el bloque de **propiedades**: filas de dos columnas con el nombre en `--texto-suave` y el valor al lado: Estado (nombre legible y la edad), Proyecto, Tipo, Análisis, Ejecución, Autoejecución, Padre, Orden, Creada (chip de quien la creó, o el terminal si fue una propuesta, y la fecha), Revisión. Después Descripción, Hijas (cada una con su etiqueta de estado), Consumo (fases con nombre legible), Hilo, Nota, Actividad. Las **vueltas atrás** («Devolver a por definir», «Rechazar el resultado»), **Editar** y **Borrar** van al final como `<details>`, porque son excepcionales. En ancho, propiedades, consumo y `<details>` forman el panel de la derecha; ver «La ficha como vista de incidencia».
+- **Bandeja**: título «Bandeja», frase «Lo que espera por ti, de todos los proyectos.» y cuatro bloques con un verbo como título y el contador al lado: «Contesta» (preguntas sin contestar), «Aprueba» (análisis y descomposiciones por aprobar), «Revisa» (resultados en Hechas) y «Define» (más de siete días por definir). Debajo de cada verbo, una línea que dice qué es el bloque. En cada uno, líneas con chip de proyecto, id, título y edad, y debajo la tarjeta que toca (pregunta con formulario, análisis con botón de aprobar, resultado con botón de finalizar). Un bloque vacío dice «Nada pendiente.». Mismos componentes que la ficha: nada se pinta dos veces con dos plantillas.
 - **Hilo**: cada comentario es una tarjeta con cabecera de chip del autor, etiqueta del tipo, `P<n>` cuando toca y la fecha; debajo el cuerpo renderizado; el formulario de respuesta dentro de la tarjeta de la pregunta abierta, con las opciones como tarjetas seleccionables y la recomendada marcada.
 - **Nueva tarea** y **Editar**: una columna, etiquetas encima de los campos; Análisis y Ejecución como dos tarjetas lado a lado a partir de 48 rem.
 - **Terminales**: tabla con chip del dueño, columna «Creado por» y, si está revocado, «Revocado por». El uso disponible se enseña por ventana como barra fina (`data-nivel` de 0 a 10, en rojo con 2 o menos) con el porcentaje disponible y la hora de reinicio; `resets_at` se acepta en segundos desde la época o en ISO 8601. «Revocar» va como enlace rojo discreto en la fila, no como botón: con diez columnas el botón no cabía. La columna «Agentes» lleva el número en un formulario mínimo a `POST /terminales/:id/agentes` (un `<input type="number" min="1">` y un botón «Guardar»), y el alta pide el mismo valor con 1 preseleccionado.
 - **La pestaña de la ficha** lleva el título de la tarea; el id se lee en las migas.
 - **Usuarios**: tabla con chip, fecha de alta, «Alta por» y acciones. El alta lleva un selector de color con las ocho muestras como botones de radio, con la automática preseleccionada. Cada fila lleva el mismo selector en un formulario a `POST /usuarios/:id/color`.
 - **Actividad**: las últimas cien acciones, agrupadas por día; cada línea es chip, frase de la acción, enlace al objeto y hora.
-- **Informes**: el selector de periodo como enlaces encima; cuatro tablas de Notion con la pregunta como `<h2>`, cifras con `tabular-nums` alineadas a la derecha; el ritmo debajo con la barra de progreso por semana.
+- **Informes**: el selector de periodo como enlaces encima; cuatro tablas con la pregunta como `<h2>`, fases y modelos con nombre legible, cifras con `tabular-nums` alineadas a la derecha; el ritmo debajo con la barra de progreso por semana.
+- **Cada pantalla lleva su frase de propósito** bajo el título: Funcionalidades «Lo que has pedido en lenguaje de negocio, y cuánto de cada cosa está hecho.»; Informes «Qué cuesta cada modelo, cuánto interrumpe y dónde se atasca el flujo.»; Actividad «Quién hizo qué, de más reciente a más antiguo.»; Proyectos «Un proyecto es un repositorio; sus terminales y sus tareas cuelgan de él.»; Terminales «Las máquinas donde corren los agentes, con su cuenta y su uso disponible.»; Usuarios «Quién puede entrar en esta web.»; Nueva tarea «Define qué quieres y quién lo analiza y lo ejecuta. Se podrá editar mientras esté por definir.».
 - **Confirmaciones** (borrar usuario, revocar terminal), la página del token, 404 y 500 usan el mismo esqueleto con una tarjeta.
 
 ### Color de usuario
@@ -647,7 +692,7 @@ Cada usuario tiene un color, de los ocho que no son gris: `azul, verde, morado, 
 - **Columna `usuarios.color`**, `TEXT NOT NULL` con `CHECK` sobre los ocho nombres. La migración da a los usuarios existentes un color por su id: el de la posición `(id - 1) % 8` de la lista.
 - **Sin color elegido se asigna el menos usado**; en empate, el primero de la lista. Así lo hacen el CLI y el primer arranque. La lista y el reparto viven en `src/db/colores.ts`.
 - **El alta desde la web permite elegirlo**, y `POST /usuarios/:id/color` lo cambia después: cualquier usuario puede cambiar el de cualquiera, como el resto de la gestión de usuarios. Cambiar el color no sube la revisión: ningún agente lo ve.
-- **El color se lee al pintar, no se guarda con el comentario.** El hilo sigue guardando el autor como texto (`humano:xinux`); la web busca el usuario por nombre al renderizar. Si el usuario se borró, el chip es gris.
+- **El color se lee al pintar, no se guarda con el comentario.** El hilo sigue guardando el autor como texto (`humano:ana`); la web busca el usuario por nombre al renderizar. Si el usuario se borró, el chip es gris.
 - **El Markdown del MCP no cambia.** El color es de la web.
 
 ### Actividad: quién hizo qué
@@ -681,7 +726,7 @@ CREATE INDEX actividad_por_objeto ON actividad (objeto, objeto_id, id);
 | `baja_usuario` | usuario | vacío |
 | `cambiar_password` | usuario | vacío |
 | `cambiar_color` | usuario | `verde → azul` |
-| `alta_terminal` | terminal | `cuenta xinux@ejemplo.com, de xinux` |
+| `alta_terminal` | terminal | `cuenta ana@ejemplo.com, de ana` |
 | `revocar_terminal` | terminal | vacío |
 | `rotar_terminal` | terminal | vacío |
 | `cambiar_agentes` | terminal | `1 → 3` |
@@ -972,7 +1017,7 @@ Verificado contra la documentación de Claude Code:
 - **El mismo hook copia el script de statusline a `~/.claude/mcp-tareas/statusline.sh`**, y esa es la ruta que va en `statusLine.command` de `~/.claude/settings.json`. La carpeta donde Claude Code instala el plugin lleva la versión dentro (`~/.claude/plugins/cache/<catálogo>/<plugin>/<versión>/`) y cambia con cada actualización; la copia es lo que da una ruta estable y se refresca en cada sesión. El hook localiza el script por su propia ruta (`dirname "$0"`), sin depender de ninguna variable.
 - **La última revisión vista se guarda en `${CLAUDE_PLUGIN_DATA}/revision`**, que persiste entre sesiones y actualizaciones del plugin. Nunca en `${CLAUDE_PLUGIN_ROOT}`, que se sobrescribe al actualizar.
 - **El plugin se instala desde el catálogo del repositorio**, `.claude-plugin/marketplace.json` en la raíz, que apunta a `./plugin`. La ruta relativa vale también cuando el catálogo se añade desde git: Claude Code lo clona entero y la resuelve contra el clon. El catálogo se registra con el `name` del `marketplace.json` (`mcp-tareas-marketplace`), no con el nombre del repositorio. Validación: `claude plugin validate ./plugin --strict` y `claude plugin validate . --strict`.
-- **El repositorio es `xinux87/Mcp_tasks_server` en GitHub, privado.** En otra máquina: `claude plugin marketplace add xinux87/Mcp_tasks_server` y `claude plugin install mcp-tareas@mcp-tareas-marketplace` (o los mismos comandos con `/plugin` dentro de una sesión). Por ser privado, la máquina necesita acceso git al repositorio con sus propias credenciales. La documentación dice que la forma `owner/repo` clona por SSH y que `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` fuerza HTTPS; comprobado con Claude Code 2.1.268: clona por HTTPS sin la variable, con el credential helper del sistema. Los textos no afirman ninguno de los dos como fijo: dicen que la variable existe por si hace falta. Actualizar: `claude plugin update mcp-tareas@mcp-tareas-marketplace`. `claude --plugin-dir <clon>/plugin` queda como vía de desarrollo, sin instalar.
+- **El repositorio es `xinux87/Mcp_tasks_server` en GitHub, público desde la versión 0.1.0.** En otra máquina: `claude plugin marketplace add xinux87/Mcp_tasks_server` y `claude plugin install mcp-tareas@mcp-tareas-marketplace` (o los mismos comandos con `/plugin` dentro de una sesión). La documentación dice que la forma `owner/repo` clona por SSH y que `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` fuerza HTTPS; comprobado con Claude Code 2.1.268: clona por HTTPS sin la variable, con el credential helper del sistema. Los textos no afirman ninguno de los dos como fijo: dicen que la variable existe por si hace falta. **Publicación**: cada versión lleva una etiqueta `v0.1.0` en git, que es lo que fija `xinux87/Mcp_tasks_server#v0.1.0` al instalar; la imagen Docker lleva la misma versión en `org.opencontainers.image.version` del `Dockerfile`, en `image:` de `compose.yaml` y en `package.json` y `plugin.json`. Los cuatro se suben a la vez. El handle `xinux87` es la cuenta que publica: es la única referencia a una persona que queda en el repositorio; los nombres de ejemplo son `ana`, `portatil-ana` y `ana@ejemplo.com`. Actualizar: `claude plugin update mcp-tareas@mcp-tareas-marketplace`. `claude --plugin-dir <clon>/plugin` queda como vía de desarrollo, sin instalar.
 - **Los dos valores se piden al habilitar el plugin.** Para cambiarlos después (por ejemplo tras rotar el token): `/plugin` → Installed → `mcp-tareas`, o `claude plugin install mcp-tareas@mcp-tareas-marketplace --config token_terminal=<token>`. No hace falta desinstalar.
 - **OAuth existe pero no se usa.** Si se declarase, tendría prioridad sobre la cabecera bearer.
 - **Un token por carpeta, en la misma máquina.** Los valores de `userConfig` se guardan solo en `~/.claude/settings.json`: la documentación dice que los ámbitos de proyecto y local se ignoran para `pluginConfigs`, para que un repositorio clonado no inyecte valores en un plugin. Así que el plugin configura **un** terminal por máquina. Para una segunda carpeta con otro terminal, la vía documentada es declarar el servidor en esa carpeta con ámbito local, que se guarda en `~/.claude.json` para esa ruta, nunca en el repositorio, y gana a los servidores de los plugins en el orden de precedencia (local, project, user, plugin):

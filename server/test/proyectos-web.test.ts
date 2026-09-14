@@ -25,7 +25,7 @@ type Montaje = {
 
 function montar(): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
-	crearUsuario(db, "xinux", hashPassword("secreta"));
+	crearUsuario(db, "ana", hashPassword("secreta"));
 	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
 	return {
 		db,
@@ -62,7 +62,7 @@ async function pedir(montaje: Montaje, ruta: string, opciones: Opciones = {}): P
 
 async function entrar(montaje: Montaje): Promise<string> {
 	const respuesta = await pedir(montaje, "/login", {
-		formulario: { usuario: "xinux", password: "secreta", volver: "/tareas" },
+		formulario: { usuario: "ana", password: "secreta", volver: "/tareas" },
 	});
 	assert.equal(respuesta.status, 302);
 	const primera = (respuesta.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
@@ -159,14 +159,15 @@ test("el selector de la barra lateral lleva puesto el proyecto de la URL", async
 
 		const cruzada = await (await pedir(montaje, "/tareas", { cookie })).text();
 		assert.match(cruzada, /<option value="\/tareas" selected>Todos los proyectos<\/option>/);
-		assert.match(cruzada, /<option value="\/p\/WEB\/tareas">WEB · La web nueva<\/option>/);
+		assert.match(cruzada, /<option value="\/p\/WEB\/tareas">WEB — La web nueva<\/option>/);
 
 		// En una vista acotada, la opción del proyecto y el destino de cada vista.
 		const kanban = await (await pedir(montaje, "/p/WEB/tareas/kanban", { cookie })).text();
-		assert.match(kanban, /<option value="\/p\/WEB\/tareas\/kanban" selected>WEB · La web nueva<\/option>/);
+		assert.match(kanban, /<option value="\/p\/WEB\/tareas\/kanban" selected>WEB — La web nueva<\/option>/);
 		assert.match(kanban, /<option value="\/tareas\/kanban">Todos los proyectos<\/option>/);
 		// Y la navegación se queda dentro del proyecto.
-		assert.match(kanban, /<a class="enlace-nav" href="\/p\/WEB\/tareas">Lista<\/a>/);
+		// «Tareas» es una sola entrada y está activa también en el tablero.
+		assert.match(kanban, /<a class="enlace-nav" href="\/p\/WEB\/tareas" aria-current="page">Tareas<\/a>/);
 		assert.match(kanban, /<a class="enlace-nav" href="\/p\/WEB\/funcionalidades">Funcionalidades<\/a>/);
 		assert.match(kanban, /<a class="enlace-nav" href="\/proyectos">Proyectos<\/a>/);
 
@@ -193,7 +194,7 @@ test("la página de proyectos crea, edita y borra, con sus tres errores de borra
 				clave: "web",
 				nombre: "La web nueva",
 				descripcion: "El frontal",
-				repositorio: "https://github.com/xinux87/web.git",
+				repositorio: "https://github.com/ejemplo/web.git",
 				ramaPrincipal: "main",
 				verificacion: "npm test",
 			},
@@ -202,7 +203,7 @@ test("la página de proyectos crea, edita y borra, con sus tres errores de borra
 		const web = listarProyectos(montaje.db).find((cual) => cual.clave === "WEB");
 		assert.ok(web !== undefined, "la clave se guarda en mayúsculas");
 		// El `.git` y la barra final no son parte del repositorio.
-		assert.equal(web.repositorio, "https://github.com/xinux87/web");
+		assert.equal(web.repositorio, "https://github.com/ejemplo/web");
 
 		// La clave repetida no crea otro, y el aviso se ve en la misma página.
 		const repetida = await pedir(montaje, "/proyectos", { cookie, formulario: { clave: "WEB", nombre: "Otra" } });
@@ -214,7 +215,7 @@ test("la página de proyectos crea, edita y borra, con sus tres errores de borra
 		assert.ok(lista.includes(chip("PRI")) && lista.includes(chip("WEB")));
 		assert.match(lista, /<th>Rama principal<\/th>/);
 		assert.match(lista, /<th class="numero">Tareas abiertas<\/th>/);
-		assert.match(lista, /<span class="chip color-azul"><span class="inicial">X<\/span>xinux<\/span>/);
+		assert.match(lista, /<span class="chip color-azul"><span class="inicial">A<\/span>ana<\/span>/);
 
 		// Editar cambia todo menos la clave.
 		const edicion = await pedir(montaje, `/proyectos/${web.id}/editar`, {
@@ -249,7 +250,7 @@ test("la página de proyectos crea, edita y borra, con sus tres errores de borra
 		borrarTarea(montaje.db, { tareaId: tarea.id, actor: { nombre: "cli" } });
 		const conTerminal = await pedir(montaje, "/terminales", {
 			cookie,
-			formulario: { nombre: "portatil", cuenta: "xinux@ejemplo.com", agentes: "1", proyecto: String(web.id) },
+			formulario: { nombre: "portatil", cuenta: "ana@ejemplo.com", agentes: "1", proyecto: String(web.id) },
 		});
 		assert.equal(conTerminal.status, 200);
 		const conTerminales = await pedir(montaje, `/proyectos/${web.id}/borrar`, { cookie, formulario: {} });
@@ -279,12 +280,12 @@ test("el terminal se da de alta en un proyecto y la lista lo enseña", async () 
 
 		// El alta pide el proyecto, con el principal preseleccionado.
 		const formulario = await (await pedir(montaje, "/terminales", { cookie })).text();
-		assert.match(formulario, /<option value="1" selected>PRI · Principal<\/option>/);
-		assert.match(formulario, /<option value="2">WEB · La web nueva<\/option>/);
+		assert.match(formulario, /<option value="1" selected>PRI — Principal<\/option>/);
+		assert.match(formulario, /<option value="2">WEB — La web nueva<\/option>/);
 
 		const alta = await pedir(montaje, "/terminales", {
 			cookie,
-			formulario: { nombre: "portatil-web", cuenta: "xinux@ejemplo.com", agentes: "2", proyecto: String(web) },
+			formulario: { nombre: "portatil-web", cuenta: "ana@ejemplo.com", agentes: "2", proyecto: String(web) },
 		});
 		assert.equal(alta.status, 200);
 		const creado = listarTerminales(montaje.db).find((cual) => cual.nombre === "portatil-web");
@@ -323,7 +324,7 @@ test("la ficha enseña el proyecto y el alta acotada crea la tarea en él", asyn
 
 		// Desde la vista cruzada se elige, con el principal puesto.
 		const cruzada = await (await pedir(montaje, "/tareas/nueva", { cookie })).text();
-		assert.match(cruzada, /<option value="1" selected>PRI · Principal<\/option>/);
+		assert.match(cruzada, /<option value="1" selected>PRI — Principal<\/option>/);
 		const enLaWeb = await pedir(montaje, "/tareas", {
 			cookie,
 			formulario: {

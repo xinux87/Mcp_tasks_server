@@ -33,7 +33,7 @@ function funcionalidad(banco: Banco, rama: string | null = "evolutivo/csv"): Tar
 	const creada = crearTareaHumana(banco.db, {
 		titulo: "Que los comerciales se bajen sus listados",
 		descripcion: "Hoy copian los datos a mano y se equivocan.",
-		usuarioId: banco.xinux,
+		usuarioId: banco.ana,
 		tipo: "funcionalidad",
 		rama,
 		analisisModelo: "sonnet",
@@ -41,7 +41,7 @@ function funcionalidad(banco: Banco, rama: string | null = "evolutivo/csv"): Tar
 		ejecucionModelo: "opus",
 		ejecucionTerminalId: banco.portatil,
 	});
-	return moverTareaHumano(banco.db, { tareaId: creada.id, usuarioId: banco.xinux, estado: "prepared" });
+	return moverTareaHumano(banco.db, { tareaId: creada.id, usuarioId: banco.ana, estado: "prepared" });
 }
 
 /** Trabaja una parte de punta a punta y la deja aceptada, como haría el agente y el humano. */
@@ -50,7 +50,7 @@ function cerrarParte(banco: Banco, tareaId: number, resultado: string): void {
 	comentarAnalisis(banco.db, { tareaId, terminalId: banco.portatil, texto: "plan de la parte" });
 	tomarTarea(banco.db, { tareaId, fase: "ejecucion", terminalId: banco.portatil });
 	comentarResultado(banco.db, { tareaId, terminalId: banco.portatil, texto: resultado });
-	moverTareaHumano(banco.db, { tareaId, usuarioId: banco.xinux, estado: "finished" });
+	moverTareaHumano(banco.db, { tareaId, usuarioId: banco.ana, estado: "finished" });
 }
 
 test("una funcionalidad con rama: se descompone, se aprueba, se ejecuta parte a parte y se cierra sola", () => {
@@ -106,7 +106,7 @@ test("una funcionalidad con rama: se descompone, se aprueba, se ejecuta parte a 
 		assert.deepEqual(dependenciasDe(banco.db, boton.id), [datos.id]);
 
 		// Una parte solo depende de sus hermanas.
-		const suelta = crearTareaHumana(banco.db, { titulo: "Suelta", descripcion: "d", usuarioId: banco.xinux });
+		const suelta = crearTareaHumana(banco.db, { titulo: "Suelta", descripcion: "d", usuarioId: banco.ana });
 		assert.equal(
 			codigoDe(() =>
 				crearParte(banco.db, {
@@ -145,7 +145,7 @@ test("una funcionalidad con rama: se descompone, se aprueba, se ejecuta parte a 
 
 		// Aprobar la descomposición saca las partes del backlog en su orden y
 		// añade la de integrar la rama, que depende de todas las demás.
-		const enMarcha = aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux });
+		const enMarcha = aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.ana });
 		assert.equal(enMarcha.estado, "doing");
 		const partes = leerTarea(banco.db, evolutivo.id)?.hijas ?? [];
 		assert.equal(partes.length, 4);
@@ -203,7 +203,7 @@ test("una funcionalidad con rama: se descompone, se aprueba, se ejecuta parte a 
 
 		// Y de done sale a finished como cualquier otra tarea.
 		assert.equal(
-			moverTareaHumano(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux, estado: "finished" }).estado,
+			moverTareaHumano(banco.db, { tareaId: evolutivo.id, usuarioId: banco.ana, estado: "finished" }).estado,
 			"finished",
 		);
 	} finally {
@@ -224,7 +224,7 @@ test("sin rama no se crea la parte de integrar, y las hijas de trabajo de una pa
 		});
 		assert.equal(unica.rama, null);
 		comentarAnalisis(banco.db, { tareaId: evolutivo.id, terminalId: banco.portatil, texto: "una sola parte" });
-		aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux });
+		aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.ana });
 		assert.deepEqual(partesDe(banco.db, evolutivo.id), { total: 1, cerradas: 0 });
 
 		// La hija de trabajo cuelga de la parte, no de la funcionalidad, y no
@@ -252,7 +252,7 @@ test("sin rama no se crea la parte de integrar, y las hijas de trabajo de una pa
 			"funcionalidad_sin_ejecucion",
 		);
 		comentarResultado(banco.db, { tareaId: unica.id, terminalId: banco.portatil, texto: "hecho\n\nCommit: aaaaaaa" });
-		moverTareaHumano(banco.db, { tareaId: unica.id, usuarioId: banco.xinux, estado: "finished" });
+		moverTareaHumano(banco.db, { tareaId: unica.id, usuarioId: banco.ana, estado: "finished" });
 
 		const cerrada = leerTarea(banco.db, evolutivo.id);
 		assert.equal(cerrada?.tarea.estado, "done");
@@ -283,14 +283,14 @@ test("borrar la última parte pendiente cierra la funcionalidad", () => {
 			terminalId: banco.portatil,
 		});
 		comentarAnalisis(banco.db, { tareaId: evolutivo.id, terminalId: banco.portatil, texto: "dos partes" });
-		aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux });
+		aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.ana });
 
 		cerrarParte(banco, hecha.id, "hecho\n\nCommit: bbbbbbb");
 		// Con una parte sin cerrar, la funcionalidad sigue en marcha.
 		assert.equal(exigirTarea(banco.db, evolutivo.id).estado, "doing");
 
 		// Al borrar la que quedaba, ya no falta nada: se cierra en el mismo acto.
-		borrarTarea(banco.db, { tareaId: sobrante.id, actor: { usuarioId: banco.xinux } });
+		borrarTarea(banco.db, { tareaId: sobrante.id, actor: { usuarioId: banco.ana } });
 		const cerrada = leerTarea(banco.db, evolutivo.id);
 		assert.equal(cerrada?.tarea.estado, "done");
 		assert.deepEqual(partesDe(banco.db, evolutivo.id), { total: 1, cerradas: 1 });
@@ -312,7 +312,7 @@ test("el análisis de una funcionalidad exige partes, y la aprobación exige an�
 			"sin_partes",
 		);
 		assert.equal(
-			codigoDe(() => aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux })),
+			codigoDe(() => aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.ana })),
 			"analisis_no_hecho",
 		);
 
@@ -327,7 +327,7 @@ test("el análisis de una funcionalidad exige partes, y la aprobación exige an�
 		});
 		comentarAnalisis(banco.db, { tareaId: evolutivo.id, terminalId: banco.portatil, texto: "una parte" });
 		assert.equal(
-			codigoDe(() => aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.xinux })),
+			codigoDe(() => aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.ana })),
 			"tarea_bloqueada",
 		);
 		// Bloqueada gana a «análisis listo» en el orden de las marcas.
@@ -350,25 +350,25 @@ test("borrar una tarea se hace en cualquier columna, sin hijas, y se lleva su hi
 		const otra = crearTareaHumana(banco.db, {
 			titulo: "Depende de la que sobra",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 			dependeDe: [parte.id],
 		});
 
 		// La funcionalidad está en prepared, que ya no frena el borrado, pero
 		// tiene una parte colgando: eso sí lo frena.
 		assert.equal(
-			codigoDe(() => borrarTarea(banco.db, { tareaId: evolutivo.id, actor: { usuarioId: banco.xinux } })),
+			codigoDe(() => borrarTarea(banco.db, { tareaId: evolutivo.id, actor: { usuarioId: banco.ana } })),
 			"con_hijas",
 		);
 
 		// La parte se borra esté donde esté: es lo que permite podar la
 		// descomposición y también deshacerse de una tarea ya en marcha.
-		const borrada = borrarTarea(banco.db, { tareaId: parte.id, actor: { usuarioId: banco.xinux } });
+		const borrada = borrarTarea(banco.db, { tareaId: parte.id, actor: { usuarioId: banco.ana } });
 		assert.equal(borrada.titulo, "Una parte que sobra");
 		assert.equal(leerTarea(banco.db, parte.id), undefined);
 		assert.deepEqual(dependenciasDe(banco.db, otra.id), []);
 		// Y ahora la funcionalidad se queda sin hijas y se puede borrar.
-		borrarTarea(banco.db, { tareaId: evolutivo.id, actor: { usuarioId: banco.xinux } });
+		borrarTarea(banco.db, { tareaId: evolutivo.id, actor: { usuarioId: banco.ana } });
 		assert.equal(leerTarea(banco.db, evolutivo.id), undefined);
 		assert.equal(banco.db.prepare("SELECT COUNT(*) AS t FROM comentarios").get()?.t, 0);
 	} finally {
@@ -382,9 +382,9 @@ test("una tarea en doing que un terminal tiene en marcha también se borra", () 
 		const tarea = crearTareaHumana(banco.db, {
 			titulo: "La que está dentro de un agente",
 			descripcion: "d",
-			usuarioId: banco.xinux,
+			usuarioId: banco.ana,
 		});
-		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.xinux, estado: "prepared" });
+		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
 		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil, modelo: "sonnet" });
 		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "plan" });
 		tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil, modelo: "opus" });
@@ -392,7 +392,7 @@ test("una tarea en doing que un terminal tiene en marcha también se borra", () 
 
 		// El humano manda: se borra aunque haya un agente dentro. Ese agente se
 		// entera al intentar escribir en ella.
-		borrarTarea(banco.db, { tareaId: tarea.id, actor: { usuarioId: banco.xinux } });
+		borrarTarea(banco.db, { tareaId: tarea.id, actor: { usuarioId: banco.ana } });
 		assert.equal(leerTarea(banco.db, tarea.id), undefined);
 	} finally {
 		banco.cerrar();

@@ -149,7 +149,7 @@ function camposProyecto(proyecto: Proyecto | null): Html {
 		</label>
 		<label>
 			<span>Repositorio</span>
-			<input type="text" name="repositorio" value="${proyecto?.repositorio ?? ""}" placeholder="https://github.com/xinux87/Mcp_tasks_server">
+			<input type="text" name="repositorio" value="${proyecto?.repositorio ?? ""}" placeholder="https://github.com/usuario/repositorio">
 			<span class="ayuda">Si lo pones, un terminal que trabaje en otro repositorio no podrá registrarse.</span>
 		</label>
 		<label>
@@ -202,6 +202,7 @@ function paginaProyectos(c: Context, deps: DependenciasWeb, aviso: string | null
 		pagina({
 			...navProyectos(c, deps.db),
 			titulo: "Proyectos",
+			proposito: "Un proyecto es un repositorio; sus terminales y sus tareas cuelgan de él.",
 			usuario: usuarioActual(c),
 			vista: "proyectos",
 			aviso,

@@ -157,9 +157,9 @@ function revocadoPor(db: DatabaseSync, terminalId: number): string | null {
  */
 function insigniaTerminal(terminal: TerminalListado): Html {
 	if (terminal.revocadoEn === null) {
-		return etiqueta("activo", "verde");
+		return etiqueta("Activo", "verde");
 	}
-	return html`${etiqueta("revocado", "gris")}<span class="pequeno silencio">${fechaLegible(terminal.revocadoEn)}</span>`;
+	return html`${etiqueta("Revocado", "gris")}<span class="pequeno silencio">${fechaLegible(terminal.revocadoEn)}</span>`;
 }
 
 /**
@@ -226,22 +226,22 @@ function tarjetaNuevoTerminal(proyectos: readonly Proyecto[]): Html {
 			<form method="post" action="/terminales">
 				<label>
 					<span>Nombre</span>
-					<input type="text" name="nombre" placeholder="portatil-xinux" required>
-					<span class="ayuda">Con el que lo eliges en cada fase de una tarea y firma en el hilo: opus@portatil-xinux.</span>
+					<input type="text" name="nombre" placeholder="portatil-ana" required>
+					<span class="ayuda">Con el que lo eliges en cada fase de una tarea y firma en el hilo: opus@portatil-ana.</span>
 				</label>
 				<label>
 					<span>Proyecto</span>
 					<select name="proyecto">
 						${proyectos.map(
 							(proyecto) =>
-								html`<option value="${proyecto.id}"${proyecto.id === PROYECTO_PRINCIPAL ? raw(" selected") : ""}>${proyecto.clave} · ${proyecto.nombre}</option>`,
+								html`<option value="${proyecto.id}"${proyecto.id === PROYECTO_PRINCIPAL ? raw(" selected") : ""}>${proyecto.clave} — ${proyecto.nombre}</option>`,
 						)}
 					</select>
 					<span class="ayuda">El repositorio en el que trabaja esa carpeta. No se cambia después: una máquina con dos repositorios tiene dos terminales.</span>
 				</label>
 				<label>
 					<span>Cuenta de origen</span>
-					<input type="text" name="cuenta" placeholder="xinux@ejemplo.com" required>
+					<input type="text" name="cuenta" placeholder="ana@ejemplo.com" required>
 					<span class="ayuda">La cuenta de Claude Code de esa máquina. La escribes tú: el servidor no puede leerla, y es de la que sale el uso disponible.</span>
 				</label>
 				<label>
@@ -282,6 +282,7 @@ function paginaTerminales(c: Context, deps: DependenciasWeb, aviso: string | nul
 		pagina({
 			...navProyectos(c, deps.db),
 			titulo: "Terminales",
+			proposito: "Las máquinas donde corren los agentes, con su cuenta y su uso disponible.",
 			usuario: usuarioActual(c),
 			vista: "terminales",
 			aviso,

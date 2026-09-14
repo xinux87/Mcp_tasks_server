@@ -22,7 +22,7 @@ type Montaje = {
 /** Base en memoria con un usuario, y la app entera montada, sin abrir puerto. */
 function montar(): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
-	crearUsuario(db, "xinux", hashPassword("secreta"));
+	crearUsuario(db, "ana", hashPassword("secreta"));
 	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
 	return {
 		db,
@@ -72,7 +72,7 @@ async function pedir(montaje: Montaje, ruta: string, opciones: Opciones = {}): P
 /** Entra con el usuario de prueba y devuelve su cookie de sesión. */
 async function entrar(montaje: Montaje): Promise<string> {
 	const respuesta = await pedir(montaje, "/login", {
-		formulario: { usuario: "xinux", password: "secreta", volver: "/tareas" },
+		formulario: { usuario: "ana", password: "secreta", volver: "/tareas" },
 	});
 	assert.equal(respuesta.status, 302);
 	const bruto = respuesta.headers.get("set-cookie") ?? "";
@@ -113,7 +113,7 @@ test("el kanban pinta las cinco columnas con sus tarjetas", async () => {
 		for (const estado of ["backlog", "prepared", "doing", "done", "finished"]) {
 			assert.ok(cuerpo.includes(`data-estado="${estado}"`), `falta la columna ${estado}`);
 		}
-		for (const titulo of ["Backlog", "Preparadas", "En curso", "Hechas", "Cerradas"]) {
+		for (const titulo of ["Por definir", "Preparadas", "En curso", "Hechas", "Cerradas"]) {
 			assert.ok(cuerpo.includes(titulo), `falta el título de columna ${titulo}`);
 		}
 		assert.match(cuerpo, /data-id="T-0001"/);
@@ -125,12 +125,12 @@ test("el kanban pinta las cinco columnas con sus tarjetas", async () => {
 		assert.match(cuerpo, /<script type="module" src="\/static\/app\.js"><\/script>/);
 		// Cabecera de página con su acción, y el tablero a todo lo ancho.
 		assert.match(cuerpo, /<div class="dentro dentro-completo">/);
-		assert.match(cuerpo, /<header class="cabecera-pagina">[\s\S]*?<h1>Kanban<\/h1>/);
+		assert.match(cuerpo, /<header class="cabecera-pagina">[\s\S]*?<h1>Tareas<\/h1>/);
 		assert.match(cuerpo, /<a class="boton principal" href="\/tareas\/nueva">Nueva tarea<\/a>/);
 		// Cada columna se encabeza con la etiqueta de su estado y el contador.
 		assert.match(
 			cuerpo,
-			/<span class="insignia estado-backlog color-gris">backlog<\/span> Backlog <span class="contador">2<\/span>/,
+			/<span class="insignia estado-backlog color-gris">Por definir<\/span> <span class="dueno">la defines tú<\/span> <span class="contador">2<\/span>/,
 		);
 		// Los filtros son una fila de desplegables, sin caja alrededor.
 		assert.match(cuerpo, /<form class="filtros" method="get" action="\/tareas\/kanban">/);
@@ -164,7 +164,7 @@ test("el tablero filtrado por funcionalidad solo trae sus partes", async () => {
 		// En el tablero global están las tres, y la funcionalidad lleva su progreso.
 		const todo = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
 		assert.match(todo, /data-id="T-0003"/);
-		assert.match(todo, /<span class="insignia tipo-funcionalidad color-azul">funcionalidad · 0\/1<\/span>/);
+		assert.match(todo, /<span class="insignia tipo-funcionalidad color-azul">Funcionalidad 0\/1<\/span>/);
 		assert.match(todo, /<a class="parte-de" href="\/tareas\/T-0001">Listados para comerciales<\/a>/);
 
 		// Filtrado por la funcionalidad, solo sus partes: ni ella misma ni las sueltas.
@@ -211,7 +211,7 @@ test("la columna de cerradas enseña las diez últimas y enlaza a la lista", asy
 	const montaje = montar();
 	try {
 		const cookie = await entrar(montaje);
-		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
 		const terminalId = valor.terminal.id;
 
 		// Once tareas hasta `finished`, que es el camino completo: el humano las
@@ -234,7 +234,10 @@ test("la columna de cerradas enseña las diez últimas y enlaza a la lista", asy
 		assert.ok(!columna.includes('data-id="T-0001"'), "la más antigua no debería salir");
 		assert.match(cuerpo, /<a href="\/tareas\?estado=finished">ver todas \(11\)<\/a>/);
 		// El contador de la columna cuenta todas, no solo las que se ven.
-		assert.match(cuerpo, /Cerradas <span class="contador">11<\/span>/);
+		assert.match(
+			cuerpo,
+			/<span class="insignia estado-finished color-marron">Cerradas<\/span> <span class="contador">11<\/span>/,
+		);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -361,7 +364,7 @@ test("la vuelta atrás de prepared a backlog exige nota, y la deja en el hilo", 
 		const hilo = leerTarea(montaje.db, 1)?.comentarios ?? [];
 		const nota = hilo.find((comentario) => comentario.tipo === "nota");
 		assert.equal(nota?.texto, "Falta decidir el formato.");
-		assert.equal(nota?.autor, "humano:xinux");
+		assert.equal(nota?.autor, "humano:ana");
 	} finally {
 		await montaje.cerrar();
 	}
@@ -475,7 +478,7 @@ test("la tarjeta enseña el progreso de sus hijas y los tokens de todo su árbol
 	const montaje = montar();
 	try {
 		const cookie = await entrar(montaje);
-		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
 		const terminalId = valor.terminal.id;
 		const padre = crearTareaHumana(montaje.db, {
 			titulo: "Exportar el listado a CSV",
@@ -533,7 +536,7 @@ test("agrupado por funcionalidad, el tablero es una franja por cada una y otra d
 	const montaje = montar();
 	try {
 		const cookie = await entrar(montaje);
-		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
 		const terminalId = valor.terminal.id;
 		const nueva = (titulo: string, extra: { tipo?: "funcionalidad"; padreId?: number } = {}): number =>
 			crearTareaHumana(montaje.db, { titulo, descripcion: "d", usuarioId: 1, ...extra }).id;
@@ -572,7 +575,7 @@ test("agrupado por funcionalidad, el tablero es una franja por cada una y otra d
 		// progreso en partes.
 		assert.match(cuerpo, /<a class="id-tarea" href="\/tareas\/T-0001">T-0001<\/a>/);
 		assert.match(cuerpo, /<h2><a href="\/tareas\/T-0001">Listados para comerciales<\/a><\/h2>/);
-		assert.match(cuerpo, /<span class="insignia estado-doing color-amarillo">doing<\/span>/);
+		assert.match(cuerpo, /<span class="insignia estado-doing color-amarillo">En curso<\/span>/);
 		assert.match(cuerpo, /<span class="progreso-texto">partes 0\/2<\/span>/);
 
 		// Las funcionalidades son cabecera, no tarjeta.
@@ -694,7 +697,7 @@ test("los conmutadores y la búsqueda filtran el tablero y se combinan con el pr
 		// Los tres conmutadores, con el resto de filtros puesto en cada enlace.
 		assert.match(
 			buscado,
-			/<a class="boton-filtro" href="\/tareas\/kanban\?q=correos&amp;rapido=espera">Espera por mí<\/a>/,
+			/<a class="boton-filtro" href="\/tareas\/kanban\?q=correos&amp;rapido=espera">Espera por ti<\/a>/,
 		);
 
 		// Puesto, el activo lo quita al pulsarlo y viaja como campo oculto.
@@ -710,7 +713,7 @@ test("los conmutadores y la búsqueda filtran el tablero y se combinan con el pr
 		assert.ok(!delProyecto.includes('data-id="T-0002"'));
 		assert.match(
 			delProyecto,
-			/<a class="boton-filtro" href="\/p\/PRI\/tareas\/kanban\?q=csv&amp;rapido=espera">Espera por mí<\/a>/,
+			/<a class="boton-filtro" href="\/p\/PRI\/tareas\/kanban\?q=csv&amp;rapido=espera">Espera por ti<\/a>/,
 		);
 		assert.match(delProyecto, /data-fuente="\/p\/PRI\/tareas\/kanban\/tablero\?q=csv"/);
 	} finally {
@@ -722,7 +725,7 @@ test("la tarjeta enseña los tokens sobre su presupuesto y avisa al pasarse", as
 	const montaje = montar();
 	try {
 		const cookie = await entrar(montaje);
-		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
 		const terminalId = valor.terminal.id;
 		const tarea = crearTareaHumana(montaje.db, {
 			titulo: "Exportar el listado a CSV",
@@ -750,7 +753,7 @@ test("la tarjeta enseña los tokens sobre su presupuesto y avisa al pasarse", as
 		gastar(20_000);
 		const fuera = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
 		assert.match(fuera, /<span class="tokens">204 k \/ 200 k<\/span>/);
-		assert.match(fuera, /<span class="insignia marca-sobre-presupuesto color-naranja">sobre presupuesto<\/span>/);
+		assert.match(fuera, /<span class="insignia marca-sobre-presupuesto color-naranja">Sobre presupuesto<\/span>/);
 		// Y se puede filtrar por la marca, como por cualquier otra.
 		const filtrado = await (await pedir(montaje, "/tareas/kanban?marca=sobre+presupuesto", { cookie })).text();
 		assert.match(filtrado, /data-id="T-0001"/);

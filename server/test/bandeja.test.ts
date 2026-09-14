@@ -28,8 +28,8 @@ type Montaje = {
 /** Base en memoria con un usuario y un terminal, y la app entera sin abrir puerto. */
 function montar(): Montaje {
 	const db = abrirBaseDeDatos(":memory:");
-	crearUsuario(db, "xinux", hashPassword("secreta"));
-	crearTerminalConToken(db, 1, "portatil-xinux", "xinux@ejemplo.com");
+	crearUsuario(db, "ana", hashPassword("secreta"));
+	crearTerminalConToken(db, 1, "portatil-ana", "ana@ejemplo.com");
 	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
 	return {
 		db,
@@ -68,7 +68,7 @@ async function pedir(montaje: Montaje, ruta: string, opciones: Opciones = {}): P
 /** Entra con el usuario de prueba y devuelve su cookie de sesión. */
 async function entrar(montaje: Montaje): Promise<string> {
 	const respuesta = await pedir(montaje, "/login", {
-		formulario: { usuario: "xinux", password: "secreta", volver: "/" },
+		formulario: { usuario: "ana", password: "secreta", volver: "/" },
 	});
 	assert.equal(respuesta.status, 302);
 	const primera = (respuesta.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
@@ -191,19 +191,19 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 		const tareas = bandejaDePrueba(montaje.db);
 		const cuerpo = await ver(montaje, cookie, "/");
 
-		assert.equal(contador(cuerpo, "Preguntas sin contestar"), "1");
-		assert.equal(contador(cuerpo, "Por aprobar"), "2");
-		assert.equal(contador(cuerpo, "Resultados por revisar"), "1");
-		assert.equal(contador(cuerpo, "Backlog sin definir"), "1");
+		assert.equal(contador(cuerpo, "Contesta"), "1");
+		assert.equal(contador(cuerpo, "Aprueba"), "2");
+		assert.equal(contador(cuerpo, "Revisa"), "1");
+		assert.equal(contador(cuerpo, "Define"), "1");
 
-		const preguntas = bloque(cuerpo, "Preguntas sin contestar");
+		const preguntas = bloque(cuerpo, "Contesta");
 		assert.match(preguntas, /¿Qué separador usamos\?/);
 		assert.match(preguntas, new RegExp(`action="/tareas/${formatearId(tareas.bloqueada.id)}/responder/P1"`));
 		assert.match(preguntas, /<input type="hidden" name="volver" value="\/">/);
 		// El chip del proyecto va en la línea de cada tarea: la bandeja los cruza.
 		assert.match(preguntas, /<span class="insignia proyecto color-gris">PRI<\/span>/);
 
-		const aprobar = bloque(cuerpo, "Por aprobar");
+		const aprobar = bloque(cuerpo, "Aprueba");
 		assert.match(aprobar, /Plan: una cola\./);
 		assert.match(aprobar, /Aprobar ejecución/);
 		// Una funcionalidad enseña sus partes encima del botón, que aprueba la
@@ -212,26 +212,26 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 		assert.match(aprobar, /La pantalla/);
 		assert.match(aprobar, /El servicio/);
 
-		const revisar = bloque(cuerpo, "Resultados por revisar");
+		const revisar = bloque(cuerpo, "Revisa");
 		assert.match(revisar, /Hecho\. Commit: a1b2c3d/);
 		assert.match(revisar, /Finalizar/);
 		assert.match(revisar, /Devolver desde la ficha/);
 
-		const backlog = bloque(cuerpo, "Backlog sin definir");
+		const backlog = bloque(cuerpo, "Define");
 		assert.match(backlog, /Repensar el cobro/);
 		assert.match(backlog, /8 d/);
 		assert.doesNotMatch(backlog, /Idea de ayer/);
 
 		// Cada tarea, en su bloque y en ningún otro.
 		const donde: [Tarea, string][] = [
-			[tareas.bloqueada, "Preguntas sin contestar"],
-			[tareas.porAprobar, "Por aprobar"],
-			[tareas.hecha, "Resultados por revisar"],
-			[tareas.vieja, "Backlog sin definir"],
+			[tareas.bloqueada, "Contesta"],
+			[tareas.porAprobar, "Aprueba"],
+			[tareas.hecha, "Revisa"],
+			[tareas.vieja, "Define"],
 		];
 		for (const [cual, suyo] of donde) {
 			const id = formatearId(cual.id);
-			for (const titulo of ["Preguntas sin contestar", "Por aprobar", "Resultados por revisar", "Backlog sin definir"]) {
+			for (const titulo of ["Contesta", "Aprueba", "Revisa", "Define"]) {
 				const trozo = bloque(cuerpo, titulo);
 				if (titulo === suyo) {
 					assert.match(trozo, new RegExp(`>${id}<`), `${id} tenía que salir en «${titulo}»`);
@@ -250,9 +250,11 @@ test("una bandeja sin nada pendiente lo dice en los cuatro bloques", async () =>
 	try {
 		const cookie = await entrar(montaje);
 		const cuerpo = await ver(montaje, cookie, "/");
-		for (const titulo of ["Preguntas sin contestar", "Por aprobar", "Resultados por revisar", "Backlog sin definir"]) {
+		for (const titulo of ["Contesta", "Aprueba", "Revisa", "Define"]) {
 			assert.equal(contador(cuerpo, titulo), "0");
 			assert.match(bloque(cuerpo, titulo), /Nada pendiente\./);
+			// Debajo del verbo, una línea que dice de qué va el bloque.
+			assert.match(bloque(cuerpo, titulo), /<p class="que-es">[^<]+<\/p>/);
 		}
 	} finally {
 		await montaje.cerrar();
@@ -281,8 +283,8 @@ test("se contesta y se finaliza desde la bandeja, sin abrir la ficha", async () 
 		assert.equal(exigirTarea(montaje.db, tareas.hecha.id).estado, "finished");
 
 		const cuerpo = await ver(montaje, cookie, "/");
-		assert.equal(contador(cuerpo, "Preguntas sin contestar"), "0");
-		assert.equal(contador(cuerpo, "Resultados por revisar"), "0");
+		assert.equal(contador(cuerpo, "Contesta"), "0");
+		assert.equal(contador(cuerpo, "Revisa"), "0");
 	} finally {
 		await montaje.cerrar();
 	}
@@ -302,7 +304,7 @@ test("una acción que rompe una regla vuelve a pintar la bandeja con el mensaje"
 		assert.equal(respuesta.status, 422);
 		const cuerpo = await respuesta.text();
 		assert.match(cuerpo, /class="aviso"/);
-		assert.match(cuerpo, /<h2>Preguntas sin contestar/);
+		assert.match(cuerpo, /<h2>Contesta/);
 	} finally {
 		await montaje.cerrar();
 	}

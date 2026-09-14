@@ -94,11 +94,11 @@ type Banco = {
  */
 function sembrar(): Banco {
 	const db = abrirBaseDeDatos(":memory:");
-	const { valor: usuario } = crearUsuario(db, "xinux", hashPassword("secreta"));
+	const { valor: usuario } = crearUsuario(db, "ana", hashPassword("secreta"));
 	const terminal = db
 		.prepare(
 			`INSERT INTO terminales (usuario_id, proyecto_id, nombre, cuenta, token_hash, creado)
-				VALUES (?, 1, 'portatil-xinux', 'xinux@ejemplo.com', 'hash', ?) RETURNING id`,
+				VALUES (?, 1, 'portatil-ana', 'ana@ejemplo.com', 'hash', ?) RETURNING id`,
 		)
 		.get(usuario.id, hace(30))?.id as number;
 
@@ -138,7 +138,7 @@ function sembrar(): Banco {
 		duracionMs: 3_600_000,
 		creado: hace(8),
 	});
-	preguntaDe(db, tranquila, "opus@portatil-xinux", hace(9));
+	preguntaDe(db, tranquila, "opus@portatil-ana", hace(9));
 
 	// Devuelta una vez: dos entradas en `done` y una vuelta atrás.
 	const devuelta = nueva("Migrar el envío de correos", "sonnet", 1);
@@ -156,8 +156,8 @@ function sembrar(): Banco {
 		duracionMs: 1_800_000,
 		creado: hace(6),
 	});
-	preguntaDe(db, devuelta, "sonnet@portatil-xinux", hace(6));
-	preguntaDe(db, devuelta, "sonnet@portatil-xinux", hace(5));
+	preguntaDe(db, devuelta, "sonnet@portatil-ana", hace(6));
+	preguntaDe(db, devuelta, "sonnet@portatil-ana", hace(5));
 
 	// Una funcionalidad con gasto y una pregunta: queda fuera de todas las tablas.
 	const evolutivo = nueva("Informes del coste", null, 1, "funcionalidad");
@@ -172,7 +172,7 @@ function sembrar(): Banco {
 		duracionMs: 7_200_000,
 		creado: hace(4),
 	});
-	preguntaDe(db, evolutivo, "fable@portatil-xinux", hace(4));
+	preguntaDe(db, evolutivo, "fable@portatil-ana", hace(4));
 
 	// Y otro proyecto, para que se vea que la vista acotada no lo mira.
 	const otro = crearProyecto(db, { clave: "WEB", nombre: "La web", actor: { nombre: "cli" } });
@@ -255,7 +255,7 @@ test("las interrupciones salen del autor de la pregunta y no dividen entre cero"
 
 		// Un modelo que preguntó sin reportar consumo: sale, con cero tareas y
 		// sin ratio, porque no hay entre qué dividir.
-		preguntaDe(banco.db, banco.tranquila, "haiku@portatil-xinux", hace(9));
+		preguntaDe(banco.db, banco.tranquila, "haiku@portatil-ana", hace(9));
 		const haiku = interrupcionesPorModelo(banco.db, { proyectoId: 1 }).find((fila) => fila.modelo === "haiku");
 		assert.equal(haiku?.preguntas, 1);
 		assert.equal(haiku?.tareas, 0);
@@ -425,7 +425,7 @@ async function pedir(montaje: Montaje, ruta: string, cookie?: string, formulario
 
 async function entrar(montaje: Montaje): Promise<string> {
 	const respuesta = await pedir(montaje, "/login", undefined, {
-		usuario: "xinux",
+		usuario: "ana",
 		password: "secreta",
 		volver: "/informes",
 	});

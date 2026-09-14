@@ -9,10 +9,11 @@ import {
 	primeraTransicion,
 	ritmo,
 } from "../../db/informes.ts";
-import { barraProgreso, cabeceraPagina } from "../componentes.ts";
+import { barraProgreso } from "../componentes.ts";
 import { duracion, fechaLegible, SIN_DATO, tokensAbreviados } from "../formatos.ts";
 import { type Html, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
+import { NOMBRE_FASE } from "../vocabulario.ts";
 import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
 
 /** Los periodos que se ofrecen. `todo` no acota: es la única sin días. */
@@ -81,7 +82,7 @@ function conDecimal(valor: number | null): Html {
 function tablaCoste(db: DependenciasWeb["db"], filtro: FiltroInforme): Html {
 	const filas = costePorModelo(db, filtro).map(
 		(fila) => html`<tr>
-			<td>${fila.fase}</td>
+			<td>${NOMBRE_FASE[fila.fase]}</td>
 			<td>${fila.modelo}</td>
 			<td class="numero">${fila.tareas}</td>
 			<td class="numero">${tokensAbreviados(fila.tokens)}</td>
@@ -163,11 +164,7 @@ export function registrarRutasInformes(app: Hono, deps: DependenciasWeb): void {
 		const filtro: FiltroInforme = { proyectoId: acotado?.id, desde: desdeDe(elegido, new Date()) };
 		const desdeCuando = primeraTransicion(deps.db);
 
-		const cuerpo = html`${cabeceraPagina({ titulo: "Informes" })}
-			<p class="explicacion silencio">
-				Qué cuesta cada modelo, cuánto interrumpe, dónde se atasca el flujo y qué entrega sin valer.
-			</p>
-			${selectorPeriodo(elegido, `${prefijo(acotado)}/informes`)}
+		const cuerpo = html`${selectorPeriodo(elegido, `${prefijo(acotado)}/informes`)}
 			${tablaCoste(deps.db, filtro)}
 			${tablaInterrupciones(deps.db, filtro)}
 			${tablaCiclo(deps.db, filtro)}
@@ -182,7 +179,18 @@ export function registrarRutasInformes(app: Hono, deps: DependenciasWeb): void {
 			</p>`;
 
 		return c.html(
-			pagina({ ...navProyectos(c, deps.db), titulo: "Informes", usuario: usuarioActual(c), vista: "informes", cuerpo }),
+			pagina({
+				...navProyectos(c, deps.db),
+				titulo: "Informes",
+				proposito: "Qué cuesta cada modelo, cuánto interrumpe y dónde se atasca el flujo.",
+				migas:
+					acotado === undefined
+						? undefined
+						: [{ texto: acotado.clave, href: `/p/${acotado.clave}/tareas` }, { texto: "Informes" }],
+				usuario: usuarioActual(c),
+				vista: "informes",
+				cuerpo,
+			}),
 		);
 	};
 

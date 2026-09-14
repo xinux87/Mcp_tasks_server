@@ -1,7 +1,10 @@
 services:
   servidor:
     build: .
-    image: mcp-tareas-server
+    # La misma etiqueta que lleva la imagen publicada; con IMAGEN se apunta a
+    # un registro (IMAGEN=ghcr.io/<cuenta>/mcp-tareas-server:0.1.0) y
+    # `docker compose pull` la trae sin construir.
+    image: ${IMAGEN:-mcp-tareas-server:0.1.0}
     # Dentro del contenedor siempre escucha en 3000, que es lo que comprueba el
     # HEALTHCHECK de la imagen. Fuera se publica en PORT, que en local es 9917.
     ports:

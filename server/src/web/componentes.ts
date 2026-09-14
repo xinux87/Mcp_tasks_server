@@ -7,6 +7,7 @@ import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
 import { formatearId } from "../md/ids.ts";
 import { abreviar, edad, horasDesde, SIN_DATO } from "./formatos.ts";
 import type { Html } from "./plantilla.ts";
+import { DUENO_COLUMNA, FRASE_DUENO_COLUMNA, NOMBRE_ESTADO } from "./vocabulario.ts";
 
 /**
  * Los componentes reutilizables de la web: etiquetas, chips, cabecera de
@@ -84,6 +85,121 @@ export function etiqueta(texto: string, color: Color, clase?: string): Html {
 }
 
 /**
+ * Si la tarea espera por el humano. No es una marca guardada: se deriva de
+ * dónde está y de qué lleva encima. Es `done` (la tiene que revisar), una
+ * pregunta sin contestar o un análisis por aprobar.
+ *
+ * `backlog` queda fuera: ahí la tarea no bloquea a nadie. Es la misma cuenta
+ * que el contador de pendientes de la bandeja y que el conmutador «Espera por
+ * ti» de la lista y del tablero; tres sitios que dicen lo mismo tienen que
+ * seleccionar lo mismo.
+ */
+export function esperaPorElHumano(estado: Estado, marcas: readonly Marca[]): boolean {
+	return estado === "done" || marcas.includes("bloqueada") || marcas.includes("análisis listo");
+}
+
+/**
+ * La señal: lo único que va en `--turno` además del contador de la bandeja y
+ * del paso actual del ciclo. No lleva clase de color porque no es uno de los
+ * nueve: el turno es su propio color.
+ */
+export function esperaPorTi(estado: Estado, marcas: readonly Marca[]): Html {
+	return esperaPorElHumano(estado, marcas) ? html`<span class="insignia turno">Espera por ti</span>` : html``;
+}
+
+/** Los cinco pasos del ciclo, en su orden. */
+const PASOS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
+
+/**
+ * Lo que el ciclo necesita saber de la tarea. Las marcas ya vienen calculadas
+ * (`marcasDe`): «análisis listo» encierra la autoejecución y la aprobación, y
+ * volver a deducirlas aquí las dejaría divergir en cuanto una cambiara.
+ */
+export type EnElCiclo = {
+	estado: Estado;
+	tipo: TipoTarea;
+	marcas: readonly Marca[];
+	/** Número de la pregunta abierta más antigua: «Espera tu respuesta a P1». */
+	preguntaAbierta: number | null;
+};
+
+/** Qué pasa ahora mismo y de quién es el turno. */
+function quePasaAhora(tarea: EnElCiclo): { frase: string; deTurno: boolean } {
+	const respuesta = { frase: `Espera tu respuesta a P${tarea.preguntaAbierta ?? 1}`, deTurno: true };
+	const bloqueada = tarea.marcas.includes("bloqueada");
+	switch (tarea.estado) {
+		case "backlog":
+			return { frase: "Termina de definirla y pásala a preparadas", deTurno: true };
+		case "prepared":
+			if (bloqueada) {
+				return respuesta;
+			}
+			if (tarea.marcas.includes("análisis listo")) {
+				// En una funcionalidad el análisis son sus partes: lo que hay que
+				// mirar antes de aprobar no es un texto, es la descomposición.
+				return tarea.tipo === "funcionalidad"
+					? { frase: "Revisa las partes", deTurno: true }
+					: { frase: "Espera tu aprobación del análisis", deTurno: true };
+			}
+			return { frase: "El agente de análisis la está estudiando", deTurno: false };
+		case "doing":
+			if (bloqueada) {
+				return respuesta;
+			}
+			return tarea.tipo === "funcionalidad"
+				? { frase: "Las partes se están trabajando", deTurno: false }
+				: { frase: "El agente la está ejecutando", deTurno: false };
+		case "done":
+			return { frase: "Revisa el resultado", deTurno: true };
+		default:
+			return { frase: "Cerrada", deTurno: false };
+	}
+}
+
+/**
+ * De quién es el turno en un paso. En el actual manda quien lo tiene de verdad,
+ * que no siempre es el dueño de la columna: una tarea preparada con una
+ * pregunta abierta está en la columna del agente y espera por el humano. En los
+ * demás pasos, el dueño de la columna, que es lo que pasará cuando lleguen.
+ */
+function duenoDelPaso(estado: Estado, esActual: boolean, deTurno: boolean): string {
+	if (!esActual || estado === "finished") {
+		return DUENO_COLUMNA[estado];
+	}
+	return deTurno ? "tú" : "el agente";
+}
+
+/**
+ * El ciclo de la tarea: los cinco pasos con su dueño debajo y, en el que toca,
+ * qué pasa ahora. El actual va en `--turno` cuando el turno es del humano y en
+ * `--acento` cuando es del agente; los pasados, tachados en texto suave.
+ */
+export function pasosDelCiclo(tarea: EnElCiclo): Html {
+	const ahora = quePasaAhora(tarea);
+	const actual = PASOS.indexOf(tarea.estado);
+	return html`<ol class="ciclo">
+			${PASOS.map((estado, indice) => {
+				// Una pregunta no se ejecuta: su respuesta la lleva de Preparada a
+				// Hecha, así que el paso En curso no es suyo.
+				const omitido = tarea.tipo === "pregunta" && estado === "doing";
+				const esActual = indice === actual && !omitido;
+				const clases = [
+					omitido ? "omitido" : "",
+					indice < actual && !omitido ? "pasado" : "",
+					esActual ? (ahora.deTurno ? "turno" : "agente") : "",
+				]
+					.filter((clase) => clase !== "")
+					.join(" ");
+				return html`<li${clases === "" ? html`` : html` class="${clases}"`}${esActual ? raw(' aria-current="step"') : ""}>
+					<span class="paso-nombre">${NOMBRE_ESTADO[estado]}</span>
+					${omitido ? html`` : html`<span class="paso-dueno">${duenoDelPaso(estado, esActual, ahora.deTurno)}</span>`}
+					${esActual ? html`<span class="paso-ahora">${ahora.frase}</span>` : html``}
+				</li>`;
+			})}
+		</ol>`;
+}
+
+/**
  * La inicial de un nombre, en mayúscula. Se recorre por caracteres y no por
  * unidades UTF-16 para que un nombre que empiece por emoji no se parta.
  */
@@ -103,8 +219,8 @@ export function chipUsuario(nombre: string, color: Color | null): Html {
 
 /**
  * El autor de un comentario del hilo, tal como lo escribió el servidor:
- * `humano:xinux` es el chip de esa persona, con el color que tenga ahora;
- * `opus@portatil-xinux` es un chip gris con el modelo y su terminal detrás.
+ * `humano:ana` es el chip de esa persona, con el color que tenga ahora;
+ * `opus@portatil-ana` es un chip gris con el modelo y su terminal detrás.
  *
  * El color se busca al pintar, nunca se guarda con el comentario: `colorDe`
  * devuelve el del usuario, o `null` si ya no existe.
@@ -158,7 +274,7 @@ export function chipDeAlta(nombre: string | null, colorDe: (nombre: string) => C
 
 /**
  * Cómo se busca el color de un usuario al pintar. El hilo y la actividad
- * guardan el autor como texto (`humano:xinux`) y el color se resuelve ahora,
+ * guardan el autor como texto (`humano:ana`) y el color se resuelve ahora,
  * no cuando se escribió. Se lee la tabla una vez por página; un usuario que ya
  * no existe devuelve `null`, y su chip sale gris.
  */
@@ -169,7 +285,7 @@ export function buscadorDeColor(db: DatabaseSync): (nombre: string) => Color | n
 
 /**
  * Cómo se cuenta cada acción del rastro, en pasado y detrás del chip de quien
- * la hizo: «xinux movió la tarea». Una acción que no esté aquí se enseña con su
+ * la hizo: «ana movió la tarea». Una acción que no esté aquí se enseña con su
  * nombre crudo antes que romper la página.
  */
 const FRASE_ACCION: Record<string, string | undefined> = {
@@ -208,6 +324,8 @@ export type OpcionesCabecera = {
 	/** El camino hasta aquí: `Tareas › T-0042`. Vacío en las páginas de primer nivel. */
 	migas?: readonly Miga[];
 	titulo: string;
+	/** Para qué sirve la pantalla, en una frase y justo debajo del título. */
+	proposito?: string;
 	/** Estado y marcas, debajo del título. */
 	etiquetas?: Html;
 	/** Las acciones principales, a la derecha del título. */
@@ -218,8 +336,8 @@ function miga(cual: Miga): Html {
 	return cual.href === undefined ? html`<span>${cual.texto}</span>` : html`<a href="${cual.href}">${cual.texto}</a>`;
 }
 
-/** El arranque de cada página: migas, título, etiquetas y acciones. */
-export function cabeceraPagina({ migas, titulo, etiquetas, acciones }: OpcionesCabecera): Html {
+/** El arranque de cada página: migas, título, propósito, etiquetas y acciones. */
+export function cabeceraPagina({ migas, titulo, proposito, etiquetas, acciones }: OpcionesCabecera): Html {
 	const camino =
 		migas === undefined || migas.length === 0
 			? html``
@@ -234,6 +352,7 @@ export function cabeceraPagina({ migas, titulo, etiquetas, acciones }: OpcionesC
 				<h1>${titulo}</h1>
 				${acciones === undefined ? html`` : html`<div class="acciones">${acciones}</div>`}
 			</div>
+			${proposito === undefined ? html`` : html`<p class="proposito">${proposito}</p>`}
 			${etiquetas === undefined ? html`` : html`<div class="etiquetas">${etiquetas}</div>`}
 		</header>`;
 }
@@ -264,7 +383,7 @@ export function propiedades(filas: readonly Propiedad[]): Html {
  * página: un grupo de radios es el de su formulario, y cada selector va en el
  * suyo.
  *
- * `titulo` es el nombre accesible del grupo entero («Color de xinux»): el que
+ * `titulo` es el nombre accesible del grupo entero («Color de ana»): el que
  * no ve los colores necesita saber de quién es el que está eligiendo. Cada
  * muestra lleva además el nombre de su color, solo para lectores de pantalla.
  *
@@ -291,16 +410,44 @@ export function selectorDeColor(titulo: string, elegido: Color | null): Html {
 }
 
 /**
- * El rótulo de una columna de estado: su etiqueta, el título que se lee y
- * cuántas tareas hay. Lo comparten la lista, donde encabeza cada grupo, y el
- * kanban, donde encabeza cada columna.
+ * El rótulo de una columna: su etiqueta con el nombre de la columna, de quién
+ * es el turno mientras la tarea está ahí y cuántas hay. Lo comparten la lista,
+ * donde encabeza cada grupo, y el tablero, donde encabeza cada columna. El
+ * nombre va una sola vez, dentro de la etiqueta: repetirlo al lado no decía
+ * nada más. En `finished` no hay turno de nadie y no se escribe.
  *
- * Recibe la etiqueta ya pintada en vez del estado: `insigniaEstado` vive en
+ * Recibe la etiqueta ya pintada en vez de componerla: `insigniaColumna` vive en
  * `plantilla.ts`, que importa este archivo, y pedirla desde aquí cerraría el
  * círculo entre los dos módulos.
  */
-export function rotuloColumna(insignia: Html, titulo: string, total: number): Html {
-	return html`${insignia} ${titulo} <span class="contador">${total}</span>`;
+export function rotuloColumna(insignia: Html, estado: Estado, total: number): Html {
+	const dueno = estado === "finished" ? html`` : html`<span class="dueno">${FRASE_DUENO_COLUMNA[estado]}</span> `;
+	return html`${insignia} ${dueno}<span class="contador">${total}</span>`;
+}
+
+/** Las dos vistas de la sección Tareas: las mismas tareas, miradas de dos maneras. */
+const VISTAS: readonly { clave: "lista" | "tablero"; texto: string; ruta: string }[] = [
+	{ clave: "lista", texto: "Lista", ruta: "/tareas" },
+	{ clave: "tablero", texto: "Tablero", ruta: "/tareas/kanban" },
+];
+
+/**
+ * El conmutador Lista | Tablero, a la izquierda de la fila de filtros. Los
+ * filtros viajan con él, así que cambiar de vista no pierde lo que se estaba
+ * mirando; `agrupar` se queda en el tablero, que es de donde es.
+ */
+export function conmutadorVistas(actual: "lista" | "tablero", prefijo: string, consulta: URLSearchParams): Html {
+	return html`<nav class="vistas" aria-label="Cómo ver las tareas">
+			${VISTAS.map((vista) => {
+				const suya = new URLSearchParams(consulta);
+				if (vista.clave === "lista") {
+					suya.delete("agrupar");
+				}
+				const texto = suya.toString();
+				const base = `${prefijo}${vista.ruta}`;
+				return html`<a href="${texto === "" ? base : `${base}?${texto}`}"${vista.clave === actual ? raw(' aria-current="page"') : ""}>${vista.texto}</a>`;
+			})}
+		</nav>`;
 }
 
 /**
@@ -330,7 +477,7 @@ export function barraProgreso(cerradas: number, total: number, rotulo = "hijas")
 
 /** Los tres conmutadores de un clic, con el texto que se lee en cada uno. */
 const FILTROS_RAPIDOS: readonly { valor: string; texto: string }[] = [
-	{ valor: "espera", texto: "Espera por mí" },
+	{ valor: "espera", texto: "Espera por ti" },
 	{ valor: "en-marcha", texto: "En marcha" },
 	{ valor: "sin-terminal", texto: "Sin terminal" },
 ];
