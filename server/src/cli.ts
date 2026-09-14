@@ -6,6 +6,7 @@ import { abrirBaseDeDatos, rutaBaseDeDatos } from "./db/abrir.ts";
 import type { Actor } from "./db/actividad.ts";
 import { buscarTerminalPorNombre, buscarUsuarioPorNombre, crearUsuario, type Usuario } from "./db/consultas.ts";
 import { preguntasDeTarea, responder } from "./db/hilo.ts";
+import { crearProyecto, exigirProyectoPorClave } from "./db/proyectos.ts";
 import {
 	aprobarEjecucion,
 	borrarTarea,
@@ -26,9 +27,14 @@ const AYUDA = `Uso: node src/cli.ts <comando>
   crear-usuario <nombre> [contraseña]
       Crea un usuario. Si no se pasa la contraseña se lee de ADMIN_PASSWORD.
 
-  crear-terminal <usuario> <nombre> <cuenta>
+  crear-proyecto <clave> <nombre>
+      Crea un proyecto. La clave son de dos a seis caracteres, mayúsculas y
+      cifras, empezando por letra; se fija al crearlo y no se cambia.
+
+  crear-terminal <usuario> <nombre> <cuenta> [clave]
       Crea un terminal del usuario y escribe su token. El token se imprime
-      una sola vez: la base de datos solo guarda su hash.
+      una sola vez: la base de datos solo guarda su hash. La clave es la del
+      proyecto para el que trabaja; sin ella, PRI.
 
   crear-tarea <usuario> <titulo> <descripcion>
               [--analisis <modelo>[@<terminal>]] [--ejecucion <modelo>[@<terminal>]]
@@ -228,19 +234,34 @@ function comandoCrearUsuario(argumentos: string[]): void {
 	});
 }
 
+function comandoCrearProyecto(argumentos: string[]): void {
+	const [clave, nombre] = argumentos;
+	if (clave === undefined || nombre === undefined) {
+		fallar("uso: crear-proyecto <clave> <nombre>");
+	}
+
+	conBaseDeDatos((db) => {
+		const proyecto = crearProyecto(db, { clave, nombre, actor: ACTOR_CLI });
+		console.log(`proyecto creado: ${proyecto.clave} · ${proyecto.nombre} (id ${proyecto.id})`);
+	});
+}
+
 function comandoCrearTerminal(argumentos: string[]): void {
 	const usuario = argumentos[0];
 	const nombre = argumentos[1];
 	const cuenta = argumentos[2];
+	const clave = argumentos[3];
 	if (usuario === undefined || nombre === undefined || cuenta === undefined) {
-		fallar("uso: crear-terminal <usuario> <nombre> <cuenta>");
+		fallar("uso: crear-terminal <usuario> <nombre> <cuenta> [clave]");
 	}
 
 	conBaseDeDatos((db) => {
 		const dueno = exigirUsuario(db, usuario);
-		const { valor, revision } = crearTerminalConToken(db, dueno.id, nombre, cuenta, ACTOR_CLI);
+		const proyecto = clave === undefined ? undefined : exigirProyectoPorClave(db, clave);
+		const { valor, revision } = crearTerminalConToken(db, dueno.id, nombre, cuenta, ACTOR_CLI, undefined, proyecto?.id);
 		console.log(`terminal creado: ${valor.terminal.nombre} (id ${valor.terminal.id})`);
 		console.log(`cuenta: ${valor.terminal.cuenta}`);
+		console.log(`proyecto: ${proyecto?.clave ?? "PRI"}`);
 		console.log(`revision: ${revision}`);
 		console.log("");
 		console.log("token (no se vuelve a mostrar):");
@@ -383,6 +404,9 @@ function principal(argv: string[]): void {
 	switch (comando) {
 		case "crear-usuario":
 			comandoCrearUsuario(argumentos);
+			break;
+		case "crear-proyecto":
+			comandoCrearProyecto(argumentos);
 			break;
 		case "crear-terminal":
 			comandoCrearTerminal(argumentos);

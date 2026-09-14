@@ -32,8 +32,9 @@ export function crearTerminalConToken(
 	cuenta: string,
 	actor?: Actor,
 	agentes?: number,
+	proyectoId?: number,
 ): ConRevision<TerminalConToken> {
 	const token = generarToken();
-	const { valor, revision } = crearTerminal(db, usuarioId, nombre, cuenta, hashToken(token), actor, agentes);
+	const { valor, revision } = crearTerminal(db, usuarioId, nombre, cuenta, hashToken(token), actor, agentes, proyectoId);
 	return { valor: { terminal: valor, token }, revision };
 }

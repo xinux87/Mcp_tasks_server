@@ -8,6 +8,7 @@ allowed-tools:
   - Grep
   - Glob
   - Bash(${CLAUDE_PLUGIN_ROOT}/scripts/revision.sh *)
+  - Bash(git remote get-url origin)
   - mcp__plugin_mcp-tareas_tareas__registrar_terminal
   - mcp__plugin_mcp-tareas_tareas__novedades
   - mcp__plugin_mcp-tareas_tareas__listar_tareas
@@ -17,6 +18,15 @@ allowed-tools:
   - mcp__plugin_mcp-tareas_tareas__crear_tarea
   - mcp__plugin_mcp-tareas_tareas__preguntar
   - mcp__plugin_mcp-tareas_tareas__reportar_consumo
+  - mcp__tareas__registrar_terminal
+  - mcp__tareas__novedades
+  - mcp__tareas__listar_tareas
+  - mcp__tareas__leer_tarea
+  - mcp__tareas__tomar_tarea
+  - mcp__tareas__comentar_tarea
+  - mcp__tareas__crear_tarea
+  - mcp__tareas__preguntar
+  - mcp__tareas__reportar_consumo
 ---
 
 # Bucle del agente de tareas
@@ -46,8 +56,13 @@ herramientas se llaman con el prefijo completo del plugin:
 | Preguntar al humano | `mcp__plugin_mcp-tareas_tareas__preguntar` |
 | Reportar consumo | `mcp__plugin_mcp-tareas_tareas__reportar_consumo` |
 
-Si el servidor estuviera configurado fuera del plugin, el prefijo sería
-`mcp__tareas__`. Busca el que exista en tu lista de herramientas.
+Si el servidor está declarado fuera del plugin, que es lo que se hace en una
+segunda carpeta de la misma máquina con
+`claude mcp add --transport http --scope local tareas …`, el prefijo es
+`mcp__tareas__`: `mcp__tareas__novedades`, `mcp__tareas__leer_tarea` y así con
+las nueve. Son las mismas herramientas con otro nombre. Busca en tu lista de
+herramientas cuál de los dos prefijos existe y usa ese; si están los dos, el
+local (`mcp__tareas__`) es el que gana.
 
 Cualquier herramienta puede devolver un **resultado de error** con la forma
 `<codigo>: <mensaje>` (por ejemplo `fase_tomada: Otro terminal es el
@@ -82,12 +97,35 @@ plugin. Si esa variable no está definida usa `~/.claude/mcp-tareas/revision`.
 1. **¿Es la primera vuelta de esta sesión?** Mira tu propio contexto: si todavía
    no has llamado a `registrar_terminal` en esta conversación, lo es.
 
-   Si lo es, llama a `registrar_terminal`. No lleva entrada; el terminal sale del
-   token. Devuelve el nombre del terminal, la cuenta, sus `agentes` y la revisión
-   actual. **Apunta el nombre del terminal**, lo necesitas en el paso 3 para
-   saber qué tareas son tuyas, y **apunta `agentes`**: es cuántas tareas puedes
-   trabajar a la vez en una vuelta. Si no viene esa línea, es 1. Vale para toda
-   la sesión: cambiarlo en la web se nota en la siguiente.
+   Si lo es, llama a `registrar_terminal` con dos campos que ya conoces, sin
+   preguntar a nadie:
+   - `ruta`: el directorio de trabajo de esta sesión, el que te dice tu propio
+     entorno. Tal cual, en absoluto.
+   - `repositorio`: la URL del remote `origin`, si esa carpeta es un repositorio
+     git. Se saca con Bash: `git remote get-url origin`. Si el comando falla
+     (no es un repositorio, o no hay `origin`), **omite el campo**; no inventes
+     una URL ni mandes el error como valor.
+
+   El terminal sale del token, no se manda. La respuesta trae el nombre del
+   terminal, la cuenta, sus `agentes`, su `proyecto`, su `rama principal`, su
+   `verificacion` si la tiene, y la revisión actual. **Apunta el nombre del
+   terminal**, lo necesitas en el paso 3 para saber qué tareas son tuyas, y
+   apunta también:
+   - **`agentes`**: cuántas tareas puedes trabajar a la vez en una vuelta. Si no
+     viene esa línea, es 1.
+   - **`proyecto`**: el repositorio en el que trabaja este terminal, para tu
+     línea de cierre.
+   - **`rama principal`** y **`verificacion`**: van al prompt de ejecución de
+     cualquier tarea con rama, y sobre todo al de la parte que integra.
+
+   Todo eso vale para toda la sesión: cambiarlo en la web se nota en la
+   siguiente.
+
+   Si `registrar_terminal` devuelve el error `proyecto_no_coincide`, esta sesión
+   está abierta en la carpeta equivocada: el terminal de este token es de otro
+   repositorio. Dilo en una línea y termina la vuelta ahí mismo. No guardes
+   revisión, no llames a `novedades` y no reintentes: hasta que alguien abra la
+   sesión en la carpeta buena o cambie el token, cada vuelta acabará igual.
 
    Ahora decide con qué revisión sigues:
    - Si `${CLAUDE_PLUGIN_ROOT}/scripts/revision.sh leer` imprime un número, este
@@ -354,7 +392,9 @@ preguntaste.
 
 Copia esto, rellena los huecos entre `<< >>` y bórralos. El bloque «Respuesta
 del humano» solo va cuando estás retomando una tarea tras una pregunta
-contestada; si no, bórralo entero.
+contestada; si no, bórralo entero. `<< RAMA PRINCIPAL >>` y `<< VERIFICACION >>`
+son las líneas que apuntaste al registrar el terminal, no algo que tengas que
+averiguar en el repositorio.
 
 ```text
 Eres el agente de EJECUCIÓN de la tarea << ID >> en el servidor de tareas.
@@ -378,13 +418,17 @@ Esa decisión ya está tomada. Constrúyela así y no vuelvas a preguntar por el
 
 ## Si la tarea tiene `rama`  << SOLO SI EL FRONTMATTER TRAE `rama`; SI NO, BORRA ESTE BLOQUE >>
 
-Todo tu trabajo va en la rama << RAMA >>: si no existe, créala desde la
-principal; y haz ahí todos tus commits. No fusiones nada con la principal.
+La rama principal de este repositorio es << RAMA PRINCIPAL >>.
+
+Todo tu trabajo va en la rama << RAMA >>: si no existe, créala desde
+<< RAMA PRINCIPAL >>; y haz ahí todos tus commits. No fusiones nada con la
+principal.
 
 Si esta tarea es la de «Integrar la rama << RAMA >> en la principal», entonces
-es justo lo contrario y es todo lo que tienes que hacer: fusiona esa rama en la
-principal sin fast-forward (`--no-ff`), pasa la verificación del repositorio
-sobre el resultado y cita el commit de la fusión en el `resultado`.
+es justo lo contrario y es todo lo que tienes que hacer: fusiona esa rama en
+<< RAMA PRINCIPAL >> sin fast-forward (`--no-ff`), comprueba el resultado y cita
+el commit de la fusión en el `resultado`. La verificación que tiene que pasar es
+<< VERIFICACION, O «la que encuentres en el repositorio» >>.
 
 ## Qué tienes que hacer
 

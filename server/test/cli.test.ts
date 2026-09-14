@@ -95,6 +95,37 @@ test("el CLI crea usuario, terminal y tarea, la mueve y la enseña", () => {
 	}
 });
 
+test("el CLI crea proyectos y pone cada terminal en el suyo", () => {
+	const dataDir = mkdtempSync(join(tmpdir(), "mcp-tareas-cli-"));
+	try {
+		bien(dataDir, "crear-usuario", "xinux", "secreta");
+		assert.match(bien(dataDir, "crear-proyecto", "WEB", "La web"), /^proyecto creado: WEB · La web \(id 2\)$/m);
+
+		// Sin clave, el principal.
+		assert.match(bien(dataDir, "crear-terminal", "xinux", "portatil-a", "xinux@ejemplo.com"), /^proyecto: PRI$/m);
+		assert.match(
+			bien(dataDir, "crear-terminal", "xinux", "portatil-web", "xinux@ejemplo.com", "WEB"),
+			/^proyecto: WEB$/m,
+		);
+
+		// Una clave que no existe se dice con su código, como cualquier regla.
+		const sinProyecto = cli(dataDir, "crear-terminal", "xinux", "portatil-c", "xinux@ejemplo.com", "NADA");
+		assert.equal(sinProyecto.codigo, 1);
+		assert.match(sinProyecto.salida, /proyecto_inexistente/);
+
+		// Y una clave mal formada tampoco crea el proyecto.
+		const malaClave = cli(dataDir, "crear-proyecto", "web-1", "La web");
+		assert.equal(malaClave.codigo, 1);
+		assert.match(malaClave.salida, /clave_invalida/);
+
+		const repetida = cli(dataDir, "crear-proyecto", "WEB", "Otra web");
+		assert.equal(repetida.codigo, 1);
+		assert.match(repetida.salida, /clave_repetida/);
+	} finally {
+		rmSync(dataDir, { recursive: true, force: true });
+	}
+});
+
 test("el CLI crea una pregunta que solo tiene análisis y se cierra al responderla", () => {
 	const dataDir = mkdtempSync(join(tmpdir(), "mcp-tareas-cli-"));
 	try {

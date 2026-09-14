@@ -298,6 +298,92 @@ test("la migración del borrado de terminales deja anulable el terminal del cons
 	}
 });
 
+test("la migración de proyectos cuelga del principal todo lo que ya había", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		db.exec("PRAGMA foreign_keys = ON");
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-proyectos.sql"));
+		assert.ok(cual > 0, "no está la migración de proyectos");
+
+		// Una base en marcha: usuario, dos terminales, dos tareas y su rastro.
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('xinux', 'h', 'azul', ?)").run(FECHA);
+		for (const nombre of ["portatil-a", "sobremesa-b"]) {
+			db
+				.prepare("INSERT INTO terminales (usuario_id, nombre, cuenta, token_hash, creado) VALUES (1, ?, 'c', ?, ?)")
+				.run(nombre, `hash-${nombre}`, FECHA);
+		}
+		db
+			.prepare(
+				`INSERT INTO tareas (id, titulo, descripcion, tipo, estado, orden, analisis_terminal_id, creada, actualizada, revision)
+				VALUES (7, 'De antes', 'd', 'tarea', 'doing', 1, 1, ?, ?, 3)`,
+			)
+			.run(FECHA, FECHA);
+		db
+			.prepare(
+				`INSERT INTO actividad (usuario_id, usuario_nombre, accion, objeto, objeto_id, objeto_nombre, detalle, creado)
+				VALUES (1, 'xinux', 'crear_tarea', 'tarea', 7, 'De antes', '', ?)`,
+			)
+			.run(FECHA);
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		// El proyecto principal existe y todo lo de antes cuelga de él.
+		const principal = db.prepare("SELECT id, clave, nombre, rama_principal FROM proyectos").all();
+		assert.equal(principal.length, 1);
+		assert.equal(principal[0]?.id, 1);
+		assert.equal(principal[0]?.clave, "PRI");
+		assert.equal(principal[0]?.nombre, "Principal");
+		assert.equal(principal[0]?.rama_principal, "main");
+		assert.deepEqual(
+			db
+				.prepare("SELECT proyecto_id FROM tareas UNION ALL SELECT proyecto_id FROM terminales")
+				.all()
+				.map((fila) => fila.proyecto_id),
+			[1, 1, 1],
+		);
+		// La tarea sigue siendo la misma y el terminal estrena su ruta a nulo.
+		assert.equal(db.prepare("SELECT titulo FROM tareas WHERE id = 7").get()?.titulo, "De antes");
+		assert.equal(db.prepare("SELECT ruta FROM terminales WHERE id = 1").get()?.ruta, null);
+		// El rastro de antes se conserva y ahora admite un objeto más.
+		assert.equal(db.prepare("SELECT COUNT(*) AS t FROM actividad").get()?.t, 1);
+		db
+			.prepare(
+				`INSERT INTO actividad (usuario_id, usuario_nombre, accion, objeto, objeto_id, objeto_nombre, detalle, creado)
+				VALUES (1, 'xinux', 'alta_proyecto', 'proyecto', 1, 'Principal', 'clave PRI', ?)`,
+			)
+			.run(FECHA);
+		assert.throws(() => {
+			db.prepare("UPDATE actividad SET objeto = 'otra cosa' WHERE id = 1").run();
+		});
+		assert.deepEqual(
+			db
+				.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'actividad'")
+				.all()
+				.map((fila) => String(fila.name)),
+			["actividad_por_objeto"],
+		);
+
+		// El tablero se lee dentro de un proyecto: el índice lo encabeza.
+		assert.match(
+			String(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'tareas_por_columna'").get()?.sql),
+			/tareas \(proyecto_id, estado, orden\)/,
+		);
+		// Y nada quedó apuntando a una fila que no existe.
+		assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+		assert.throws(() => {
+			db.prepare("UPDATE tareas SET proyecto_id = 99 WHERE id = 7").run();
+		});
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});
+
 test("la migración de los agentes deja a 1 los terminales de antes y no admite menos", () => {
 	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
 	const db = new DatabaseSync(":memory:");

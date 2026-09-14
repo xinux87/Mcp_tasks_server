@@ -22,6 +22,17 @@ activada —lo normal— la ejecución arranca sola en cuanto el análisis termi
 Una **funcionalidad** es una tarea que se descompone en partes; una **pregunta** es una tarea cuya
 respuesta es la respuesta misma, sin código.
 
+**Un proyecto** es un repositorio, con su rama principal y su comando de verificación. Las tareas viven
+en un proyecto y cada terminal pertenece a uno y trabaja en una carpeta: una máquina con tres
+repositorios tiene tres terminales, cada uno con su token. El bucle reporta al registrarse en qué carpeta
+está, y el servidor no le deja tomar tareas de otro proyecto. Como el plugin solo guarda un token por
+máquina, la segunda carpeta declara el servidor con ámbito local, que gana al del plugin y no escribe
+nada en el repositorio:
+
+```
+claude mcp add --transport http --scope local tareas <url>/mcp --header "Authorization: Bearer <token>"
+```
+
 ## Requisitos
 
 Docker (o Node 24 si se levanta a mano) y, en la máquina del terminal, Claude Code con acceso git a este

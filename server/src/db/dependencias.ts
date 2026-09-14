@@ -92,13 +92,19 @@ export function dependenciasDeVarias(db: DatabaseSync, tareaIds: number[]): Map<
  */
 export function escribirDependencias(conexion: DatabaseSync, tareaId: number, dependeDe: readonly number[]): number[] {
 	const unicas = [...new Set(dependeDe)].sort((uno, otro) => uno - otro);
+	const proyecto = proyectoDe(conexion, tareaId);
 	for (const otra of unicas) {
 		if (otra === tareaId) {
 			throw new ErrorDeRegla("dependencia_propia", "Una tarea no puede depender de sí misma.");
 		}
 		// Que exista se comprueba aquí y no con la clave foránea: así el error
 		// es de regla, con su código, y no un fallo del servidor.
-		exigirQueExista(conexion, otra);
+		if (proyectoDe(conexion, otra) !== proyecto) {
+			throw new ErrorDeRegla(
+				"dependencia_otro_proyecto",
+				`La tarea ${formatearId(otra)} es de otro proyecto: una dependencia entre repositorios es una integración y merece su propia tarea.`,
+			);
+		}
 	}
 	sentencia(conexion, "DELETE FROM dependencias WHERE tarea_id = ?").run(tareaId);
 	for (const otra of unicas) {
@@ -108,12 +114,17 @@ export function escribirDependencias(conexion: DatabaseSync, tareaId: number, de
 	return unicas;
 }
 
-/** Como `exigirTarea`, pero sin traerse la fila entera ni el módulo de tareas. */
-function exigirQueExista(conexion: DatabaseSync, tareaId: number): void {
-	const fila = sentencia(conexion, "SELECT id FROM tareas WHERE id = ?").get(tareaId);
+/**
+ * El proyecto de una tarea, exigiendo que exista. Sin traerse la fila entera ni
+ * el módulo de tareas: es la comprobación de existencia de siempre y además lo
+ * que decide si la dependencia cruza de repositorio.
+ */
+function proyectoDe(conexion: DatabaseSync, tareaId: number): number {
+	const fila = sentencia(conexion, "SELECT proyecto_id FROM tareas WHERE id = ?").get(tareaId);
 	if (fila === undefined) {
 		throw new ErrorDeRegla("tarea_inexistente", `No existe la tarea ${tareaId}.`);
 	}
+	return entero(fila, "proyecto_id");
 }
 
 /**

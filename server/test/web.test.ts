@@ -749,6 +749,38 @@ test("el tutorial sin token está siempre en /terminales/conectar", async () => 
 	}
 });
 
+test("el tutorial explica un terminal por carpeta y da el comando de la segunda", async () => {
+	const montaje = montar(CONFIG_CON_DIRECCIONES);
+	try {
+		const { valor } = crearTerminalConToken(montaje.db, listarUsuarios(montaje.db)[0]?.id ?? 0, "sobremesa", "x@y.z");
+		const conToken = await pedir(montaje, `/terminales/conectar?token=${valor.token}`);
+		assert.equal(conToken.status, 200);
+		const cuerpo = await conToken.text();
+		// Cada carpeta, su terminal; y la segunda de la misma máquina va con ámbito local.
+		assert.match(cuerpo, /Un terminal por carpeta/);
+		assert.match(
+			cuerpo,
+			new RegExp(
+				`claude mcp add --transport http --scope local tareas http://192\\.168\\.50\\.5:3000/mcp --header &quot;Authorization: Bearer ${valor.token}&quot;`,
+			),
+		);
+		// La comprobación cuenta que la fila enseña la carpeta reportada.
+		assert.match(cuerpo, /carpeta\s+en\s+la\s+que\s+está\s+trabajando/);
+
+		// Sin token, el mismo comando con el marcador y ningún token de verdad.
+		const cookie = await entrar(montaje);
+		const sinToken = await pedir(montaje, "/terminales/conectar", { cookie });
+		const marcador = await sinToken.text();
+		assert.match(
+			marcador,
+			/claude mcp add --transport http --scope local tareas http:\/\/192\.168\.50\.5:3000\/mcp --header &quot;Authorization: Bearer &lt;token&gt;&quot;/,
+		);
+		assert.ok(!marcador.includes(valor.token), "el tutorial sin token enseñó un token real");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
 /** El token en claro que enseña una vez la página del alta o la de la rotación. */
 function tokenDe(cuerpo: string): string {
 	const token = /<code class="token">([A-Za-z0-9_-]+)<\/code>/.exec(cuerpo)?.[1] ?? "";

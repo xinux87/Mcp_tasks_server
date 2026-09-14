@@ -2,9 +2,10 @@ import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
 import { formatearId } from "../md/ids.ts";
 import { registrarActividad } from "./actividad.ts";
-import { ahora, escribirContenido, sentencia, texto } from "./base.ts";
+import { ahora, entero, escribirContenido, sentencia, texto } from "./base.ts";
 import { dependenciasDe, detalleDependencias, escribirDependencias } from "./dependencias.ts";
 import { autorHumano } from "./hilo.ts";
+import { exigirProyectoPorId } from "./proyectos.ts";
 import { exigirPadreFuncionalidad, exigirTarea, type Tarea, type TipoTarea } from "./tareas.ts";
 
 /**
@@ -34,6 +35,11 @@ export type EdicionTarea = {
 	rama?: string | null;
 	padreId?: number | null;
 	dependeDe?: number[];
+	/**
+	 * Cambiar de proyecto solo es posible en una tarea suelta: sin padre, sin
+	 * hijas y sin dependencias. Sin este campo, la tarea se queda donde está.
+	 */
+	proyectoId?: number;
 	autoejecucion: boolean;
 	analisisModelo: string | null;
 	analisisTerminalId: number | null;
@@ -114,6 +120,44 @@ function cambiosDeLaEdicion(conexion: DatabaseSync, antes: Tarea, despues: Edici
 	return cambios.filter((cambio) => cambio !== null).join("; ");
 }
 
+/** Cuántas filas hay que impiden mover la tarea de proyecto. */
+function cuantas(conexion: DatabaseSync, sql: string, ...parametros: number[]): number {
+	const fila = sentencia(conexion, sql).get(...parametros);
+	return fila === undefined ? 0 : entero(fila, "total");
+}
+
+/**
+ * Cambiar una tarea de proyecto solo vale si está sola: una parte vive con su
+ * funcionalidad, una madre con sus hijas, y una dependencia no cruza de
+ * repositorio. Devuelve el detalle del rastro, `proyecto: PRI → WEB`.
+ */
+function mudarDeProyecto(conexion: DatabaseSync, tarea: Tarea, proyectoId: number, padreId: number | null): string {
+	const destino = exigirProyectoPorId(conexion, proyectoId);
+	if (padreId !== null || tarea.padreId !== null) {
+		throw new ErrorDeRegla(
+			"no_cambia_de_proyecto",
+			"La tarea cuelga de una funcionalidad: vive en el proyecto de su funcionalidad.",
+		);
+	}
+	if (cuantas(conexion, "SELECT COUNT(*) AS total FROM tareas WHERE padre_id = ?", tarea.id) > 0) {
+		throw new ErrorDeRegla("no_cambia_de_proyecto", "La tarea tiene tareas colgando: se quedarían en otro proyecto.");
+	}
+	if (
+		cuantas(
+			conexion,
+			"SELECT COUNT(*) AS total FROM dependencias WHERE tarea_id = ? OR depende_de_id = ?",
+			tarea.id,
+			tarea.id,
+		) > 0
+	) {
+		throw new ErrorDeRegla(
+			"no_cambia_de_proyecto",
+			"La tarea tiene dependencias: quita las que tiene y las que la esperan antes de moverla de proyecto.",
+		);
+	}
+	return `proyecto: ${exigirProyectoPorId(conexion, tarea.proyectoId).clave} → ${destino.clave}`;
+}
+
 /**
  * Editar una tarea entera. Solo en `backlog`: al salir de esa columna la
  * descripción y las asignaciones se congelan y cualquier cambio posterior va
@@ -136,12 +180,17 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 		if (padreId !== null && padreId !== tarea.padreId) {
 			exigirPadreFuncionalidad(conexion, padreId);
 		}
+		const proyectoId = datos.proyectoId ?? tarea.proyectoId;
+		const mudanza = proyectoId === tarea.proyectoId ? null : mudarDeProyecto(conexion, tarea, proyectoId, padreId);
+		// Un terminal es de un solo proyecto: al mudar la tarea, sus asignaciones
+		// dejan de valer y cualquier terminal del proyecto nuevo puede tomarla.
+		const asignado = mudanza === null ? datos : { ...datos, analisisTerminalId: null, ejecucionTerminalId: null };
 		// Se calcula antes del UPDATE: después ya no se sabe qué había.
-		const cambios = [cambiosDeLaEdicion(conexion, tarea, datos, titulo)];
+		const cambios = [cambiosDeLaEdicion(conexion, tarea, asignado, titulo), mudanza ?? ""];
 		sentencia(
 			conexion,
 			`UPDATE tareas
-				SET titulo = ?, descripcion = ?, tipo = ?, rama = ?, padre_id = ?, autoejecucion = ?,
+				SET titulo = ?, descripcion = ?, tipo = ?, rama = ?, padre_id = ?, proyecto_id = ?, autoejecucion = ?,
 					analisis_modelo = ?, analisis_terminal_id = ?,
 					ejecucion_modelo = ?, ejecucion_terminal_id = ?,
 					actualizada = ?, revision = ?
@@ -152,11 +201,12 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 			datos.tipo,
 			datos.rama === undefined ? tarea.rama : datos.rama,
 			padreId,
+			proyectoId,
 			datos.autoejecucion ? 1 : 0,
 			datos.analisisModelo,
-			datos.analisisTerminalId,
+			asignado.analisisTerminalId,
 			datos.ejecucionModelo,
-			datos.ejecucionTerminalId,
+			asignado.ejecucionTerminalId,
 			ahora(),
 			revision,
 			tarea.id,

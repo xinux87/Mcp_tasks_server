@@ -37,6 +37,7 @@ import {
 	type Pregunta,
 	preguntasDeTarea,
 } from "./hilo.ts";
+import { exigirProyectoPorId, PROYECTO_PRINCIPAL } from "./proyectos.ts";
 
 /** Las cinco columnas del kanban, en su orden. */
 export type Estado = "backlog" | "prepared" | "doing" | "done" | "finished";
@@ -61,6 +62,8 @@ const TIPOS: readonly TipoTarea[] = ["tarea", "pregunta", "funcionalidad"];
 
 export type Tarea = {
 	id: number;
+	/** Proyecto al que pertenece. Una tarea nace en el proyecto de quien la crea. */
+	proyectoId: number;
 	titulo: string;
 	descripcion: string;
 	tipo: TipoTarea;
@@ -97,6 +100,8 @@ export type HijaDeTarea = {
 /** Lo que necesita `lineaIndice`: una tarea sin cuerpo ni hilo. */
 export type ItemIndice = {
 	id: number;
+	/** La línea de índice no lo pinta: el agente solo ve tareas de su proyecto. Lo usa la web. */
+	proyectoId: number;
 	tipo: TipoTarea;
 	estado: Estado;
 	titulo: string;
@@ -121,6 +126,8 @@ export type PreguntaContestada = {
 /** Todo lo que hace falta para escribir el documento Markdown de una tarea. */
 export type TareaCompleta = {
 	tarea: Tarea;
+	/** La clave del proyecto de la tarea: es lo que va en el frontmatter. */
+	proyecto: string;
 	analisisTerminal: string | null;
 	ejecucionTerminal: string | null;
 	marcas: Marca[];
@@ -171,6 +178,7 @@ function comoEstado(fila: Record<string, unknown>, columna: string): Estado {
 export function comoTarea(fila: Record<string, unknown>): Tarea {
 	return {
 		id: entero(fila, "id"),
+		proyectoId: entero(fila, "proyecto_id"),
 		titulo: texto(fila, "titulo"),
 		descripcion: texto(fila, "descripcion"),
 		tipo: comoTipo(fila),
@@ -200,6 +208,7 @@ function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
 	const esFuncionalidad = tarea.tipo === "funcionalidad";
 	return {
 		id: tarea.id,
+		proyectoId: tarea.proyectoId,
 		tipo: tarea.tipo,
 		estado: tarea.estado,
 		titulo: tarea.titulo,
@@ -252,6 +261,18 @@ export function exigirTarea(db: DatabaseSync, tareaId: number): Tarea {
 		throw new ErrorDeRegla("tarea_inexistente", `No existe la tarea ${tareaId}.`);
 	}
 	return tarea;
+}
+
+/**
+ * El proyecto para el que trabaja un terminal. Se lee suelto, sin traerse el
+ * módulo de consultas: `consultas.ts` no depende de este y así sigue.
+ */
+export function proyectoDeTerminal(db: DatabaseSync, terminalId: number): number {
+	const fila = sentencia(db, "SELECT proyecto_id FROM terminales WHERE id = ?").get(terminalId);
+	if (fila === undefined) {
+		throw new ErrorDeRegla("terminal_inexistente", `No existe el terminal ${terminalId}.`);
+	}
+	return entero(fila, "proyecto_id");
 }
 
 function nombreTerminal(db: DatabaseSync, terminalId: number | null): string | null {
@@ -359,6 +380,7 @@ export function leerTarea(db: DatabaseSync, tareaId: number): TareaCompleta | un
 	const partes = tarea.tipo === "funcionalidad" ? partesDe(db, tareaId) : null;
 	return {
 		tarea,
+		proyecto: exigirProyectoPorId(db, tarea.proyectoId).clave,
 		analisisTerminal: nombreTerminal(db, tarea.analisisTerminalId),
 		ejecucionTerminal: nombreTerminal(db, tarea.ejecucionTerminalId),
 		marcas: marcasDe(tarea, contarPreguntasAbiertas(db, tareaId), contarDependenciasPendientes(db, tareaId)),
@@ -390,6 +412,8 @@ export type FiltroIndice = {
 	estado?: Estado;
 	/** Tareas en las que este terminal es el de análisis o el de ejecución. */
 	terminalId?: number;
+	/** El tablero de un proyecto. Sin él, la vista cruzada: todos los proyectos. */
+	proyectoId?: number;
 };
 
 /** Índice ligero, ordenado por columna del kanban y por orden dentro de ella. */
@@ -404,6 +428,10 @@ export function listarTareas(db: DatabaseSync, filtro: FiltroIndice = {}): ItemI
 		condiciones.push("(t.analisis_terminal_id = ? OR t.ejecucion_terminal_id = ?)");
 		parametros.push(filtro.terminalId, filtro.terminalId);
 	}
+	if (filtro.proyectoId !== undefined) {
+		condiciones.push("t.proyecto_id = ?");
+		parametros.push(filtro.proyectoId);
+	}
 	const donde = condiciones.length === 0 ? "" : ` WHERE ${condiciones.join(" AND ")}`;
 	const sql = `${SELECT_INDICE}${donde} ORDER BY ${ORDEN_COLUMNAS}, t.orden, t.id`;
 	return sentencia(db, sql)
@@ -415,6 +443,13 @@ export type Desde = {
 	terminalId: number;
 	revision: number;
 };
+
+/**
+ * El proyecto del terminal que pregunta. `novedades` está acotada a él: un
+ * terminal es de un solo proyecto y «sin terminal» significa «cualquier
+ * terminal de este proyecto».
+ */
+const PROYECTO_DEL_TERMINAL = "(SELECT proyecto_id FROM terminales WHERE id = ?)";
 
 /**
  * Lo que `novedades` devuelve como tareas: solo `prepared` y `doing`, solo lo
@@ -429,6 +464,7 @@ export type Desde = {
 export function tareasParaTerminalDesde(db: DatabaseSync, { terminalId, revision }: Desde): ItemIndice[] {
 	const sql = `${SELECT_INDICE}
 		WHERE t.estado IN ('prepared', 'doing')
+			AND t.proyecto_id = ${PROYECTO_DEL_TERMINAL}
 			AND t.revision > ?
 			AND ${CUENTA_DEPENDENCIAS_PENDIENTES} = 0
 			AND NOT (t.tipo = 'funcionalidad' AND t.estado = 'doing')
@@ -438,7 +474,7 @@ export function tareasParaTerminalDesde(db: DatabaseSync, { terminalId, revision
 					ELSE (t.ejecucion_terminal_id IS NULL OR t.ejecucion_terminal_id = ?)
 			END
 		ORDER BY CASE t.estado WHEN 'doing' THEN 0 ELSE 1 END, t.orden, t.id`;
-	return sentencia(db, sql).all(revision, terminalId, terminalId).map(comoItemIndice);
+	return sentencia(db, sql).all(terminalId, revision, terminalId, terminalId).map(comoItemIndice);
 }
 
 /**
@@ -451,11 +487,12 @@ export function preguntasContestadasDesde(db: DatabaseSync, { terminalId, revisi
 		FROM preguntas p
 		JOIN tareas t ON t.id = p.tarea_id
 		WHERE p.respuesta_opcion IS NOT NULL
+			AND t.proyecto_id = ${PROYECTO_DEL_TERMINAL}
 			AND p.revision > ?
 			AND (t.analisis_terminal_id = ? OR t.ejecucion_terminal_id = ?)
 		ORDER BY p.tarea_id, p.numero`;
 	return sentencia(db, sql)
-		.all(revision, terminalId, terminalId)
+		.all(terminalId, revision, terminalId, terminalId)
 		.map((fila) => ({
 			tareaId: entero(fila, "tarea_id"),
 			numero: entero(fila, "numero"),
@@ -479,13 +516,14 @@ export function siguienteOrden(db: DatabaseSync, estado: Estado): number {
 
 const INSERTAR_TAREA = `
 	INSERT INTO tareas (
-		titulo, descripcion, tipo, rama, estado, orden, padre_id, autoejecucion, ejecucion_aprobada, analisis_hecho,
-		analisis_modelo, analisis_terminal_id, ejecucion_modelo, ejecucion_terminal_id, en_marcha_terminal_id,
-		creada_por_usuario_id, creada_por_terminal_id, creada, actualizada, revision
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+		proyecto_id, titulo, descripcion, tipo, rama, estado, orden, padre_id, autoejecucion, ejecucion_aprobada,
+		analisis_hecho, analisis_modelo, analisis_terminal_id, ejecucion_modelo, ejecucion_terminal_id,
+		en_marcha_terminal_id, creada_por_usuario_id, creada_por_terminal_id, creada, actualizada, revision
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /** Los campos con los que nace una tarea. Lo comparte `funcionalidades.ts`. */
 export type FilaNueva = {
+	proyectoId: number;
 	titulo: string;
 	descripcion: string;
 	tipo: TipoTarea;
@@ -506,6 +544,7 @@ export type FilaNueva = {
 export function insertarTarea(conexion: DatabaseSync, revision: number, nueva: FilaNueva): Tarea {
 	const marca = ahora();
 	const cambios = sentencia(conexion, INSERTAR_TAREA).run(
+		nueva.proyectoId,
 		nueva.titulo,
 		nueva.descripcion,
 		nueva.tipo,
@@ -543,6 +582,8 @@ export type NuevaTareaHumana = {
 	titulo: string;
 	descripcion: string;
 	usuarioId: number;
+	/** El proyecto del tablero desde el que se crea. Sin decir otro, el principal. */
+	proyectoId?: number;
 	/** `tarea` si no se dice otra cosa: la pregunta y la funcionalidad son los casos raros. */
 	tipo?: TipoTarea;
 	/** Rama de git en la que se trabaja. Sus partes la heredan si es una funcionalidad. */
@@ -579,6 +620,9 @@ export function crearTareaHumana(db: DatabaseSync, datos: NuevaTareaHumana): Tar
 		const padreId = datos.padreId ?? null;
 		const padre = padreId === null ? null : exigirPadreFuncionalidad(conexion, padreId);
 		const tarea = insertarTarea(conexion, revision, {
+			// Una parte cuelga de su funcionalidad: vive donde ella, aunque el
+			// formulario venga de otro tablero.
+			proyectoId: padre?.proyectoId ?? datos.proyectoId ?? PROYECTO_PRINCIPAL,
 			titulo: datos.titulo,
 			descripcion: datos.descripcion,
 			tipo: datos.tipo ?? "tarea",
@@ -627,6 +671,9 @@ export type NuevaPropuesta = {
 export function crearPropuesta(db: DatabaseSync, datos: NuevaPropuesta): Tarea {
 	return escribirContenido(db, (conexion, revision) =>
 		insertarTarea(conexion, revision, {
+			// Una propuesta nace en el proyecto del terminal que la propone: es lo
+			// que ese agente tiene delante.
+			proyectoId: proyectoDeTerminal(conexion, datos.terminalId),
 			titulo: datos.titulo,
 			descripcion: datos.descripcion,
 			tipo: datos.tipo ?? "tarea",
@@ -682,6 +729,7 @@ export function crearHija(db: DatabaseSync, datos: NuevaHija): Tarea {
 			);
 		}
 		return insertarTarea(conexion, revision, {
+			proyectoId: padre.proyectoId,
 			titulo: datos.titulo,
 			descripcion: datos.descripcion,
 			tipo: "tarea",
@@ -839,38 +887,48 @@ function aprobarTareaNormal(conexion: DatabaseSync, revision: number, tarea: Tar
 	);
 }
 
+/**
+ * Ámbito de un tablero acotado: el de una funcionalidad son sus partes, el de
+ * un proyecto son sus tareas. En los dos la posición es entre las de esa vista,
+ * no en la columna entera.
+ */
+export type AmbitoDeColumna = { padreId: number } | { proyectoId: number };
+
 export type Reordenacion = {
 	tareaId: number;
 	orden: number;
-	/**
-	 * Ámbito del tablero de una funcionalidad: la posición es entre sus partes
-	 * de esa columna, no en la columna entera. Sin él, la posición es global.
-	 */
-	entre?: { padreId: number };
+	/** Sin ámbito, la posición es la de la columna global. */
+	entre?: AmbitoDeColumna;
 };
 
 /** Una fila de la columna que se reordena: lo justo para colocarla. */
-type FilaDeColumna = { id: number; orden: number; padreId: number | null };
+type FilaDeColumna = { id: number; orden: number; padreId: number | null; proyectoId: number };
+
+/** Si la fila está en el tablero acotado que se está reordenando. */
+function estaEnElAmbito(fila: FilaDeColumna, ambito: AmbitoDeColumna): boolean {
+	return "padreId" in ambito ? fila.padreId === ambito.padreId : fila.proyectoId === ambito.proyectoId;
+}
 
 /**
- * Traduce una posición entre hermanas a la posición global de la columna: la
- * tarea va justo delante de la primera hermana si se soltó arriba, y justo
- * detrás de la hermana que ocupa la posición anterior en cualquier otro caso.
- * Así las tareas que no son hermanas conservan su orden relativo. Devuelve
- * `null` cuando no hay ninguna hermana en la columna: ahí soltar no mueve nada.
+ * Traduce una posición dentro de un tablero acotado a la posición global de la
+ * columna: la tarea va justo delante de la primera vecina si se soltó arriba, y
+ * justo detrás de la que ocupa la posición anterior en cualquier otro caso. Así
+ * las tareas que no salen en ese tablero conservan su orden relativo. Devuelve
+ * `null` cuando no hay ninguna vecina en la columna: ahí soltar no mueve nada.
  */
-function posicionEntreHermanas(resto: FilaDeColumna[], padreId: number, orden: number): number | null {
-	// Posición global (desde 1) de cada hermana dentro de la columna sin la propia.
+function posicionEnElAmbito(resto: FilaDeColumna[], ambito: AmbitoDeColumna, orden: number): number | null {
+	// Posición global (desde 1) de cada vecina dentro de la columna sin la propia.
 	const hermanas: number[] = [];
 	for (let indice = 0; indice < resto.length; indice += 1) {
-		if (resto[indice]?.padreId === padreId) {
+		const fila = resto[indice];
+		if (fila !== undefined && estaEnElAmbito(fila, ambito)) {
 			hermanas.push(indice + 1);
 		}
 	}
 	if (orden < 1 || orden > hermanas.length + 1) {
 		throw new ErrorDeRegla(
 			"orden_invalido",
-			`La posición ${orden} no existe: esta funcionalidad tiene ${hermanas.length + 1} sitios donde soltar en esa columna.`,
+			`La posición ${orden} no existe: ese tablero tiene ${hermanas.length + 1} sitios donde soltar en esa columna.`,
 		);
 	}
 	const primera = hermanas[0];
@@ -891,24 +949,33 @@ function posicionEntreHermanas(resto: FilaDeColumna[], padreId: number, orden: n
 export function reordenar(db: DatabaseSync, datos: Reordenacion): Tarea {
 	return escribirContenido(db, (conexion, revision) => {
 		const tarea = exigirTarea(conexion, datos.tareaId);
-		const columna = sentencia(conexion, "SELECT id, orden, padre_id FROM tareas WHERE estado = ? ORDER BY orden, id")
+		const columna = sentencia(
+			conexion,
+			"SELECT id, orden, padre_id, proyecto_id FROM tareas WHERE estado = ? ORDER BY orden, id",
+		)
 			.all(tarea.estado)
 			.map((fila) => ({
 				id: entero(fila, "id"),
 				orden: entero(fila, "orden"),
 				padreId: enteroOpcional(fila, "padre_id"),
+				proyectoId: entero(fila, "proyecto_id"),
 			}));
 		const resto = columna.filter((fila) => fila.id !== tarea.id);
 		const pedida =
 			datos.entre === undefined
 				? Math.trunc(datos.orden)
-				: posicionEntreHermanas(resto, datos.entre.padreId, Math.trunc(datos.orden));
-		// Única parte de su funcionalidad en la columna: no hay entre qué ponerla.
+				: posicionEnElAmbito(resto, datos.entre, Math.trunc(datos.orden));
+		// Única tarjeta de ese tablero en la columna: no hay entre qué ponerla.
 		if (pedida === null) {
 			return exigirTarea(conexion, tarea.id);
 		}
 		const destino = Math.min(Math.max(pedida, 1), resto.length + 1);
-		resto.splice(destino - 1, 0, { id: tarea.id, orden: tarea.orden, padreId: tarea.padreId });
+		resto.splice(destino - 1, 0, {
+			id: tarea.id,
+			orden: tarea.orden,
+			padreId: tarea.padreId,
+			proyectoId: tarea.proyectoId,
+		});
 
 		const marca = ahora();
 		for (let indice = 0; indice < resto.length; indice += 1) {
@@ -945,6 +1012,14 @@ export type Toma = {
 export function tomarTarea(db: DatabaseSync, datos: Toma): Tarea {
 	return escribirContenido(db, (conexion, revision) => {
 		const tarea = exigirTarea(conexion, datos.tareaId);
+		// Antes que nada, si la tarea es de otro repositorio: sin esto un terminal
+		// tomaría una tarea `sin terminal` que no es la suya.
+		if (tarea.proyectoId !== proyectoDeTerminal(conexion, datos.terminalId)) {
+			throw new ErrorDeRegla(
+				"otro_proyecto",
+				`La tarea ${formatearId(tarea.id)} es de otro proyecto: este terminal no trabaja en él.`,
+			);
+		}
 		// Una funcionalidad no se ejecuta: lo que se ejecuta son sus partes.
 		if (tarea.tipo === "funcionalidad" && datos.fase === "ejecucion") {
 			throw new ErrorDeRegla(

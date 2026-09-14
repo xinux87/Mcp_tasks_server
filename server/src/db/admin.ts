@@ -23,6 +23,7 @@ import {
 	crearUsuario,
 	type Usuario,
 } from "./consultas.ts";
+import { exigirProyectoPorId, PROYECTO_PRINCIPAL } from "./proyectos.ts";
 
 /**
  * Gestión de usuarios y terminales desde la web. Las reglas viven aquí, no en
@@ -190,8 +191,13 @@ export type TerminalListado = {
 	id: number;
 	usuarioId: number;
 	usuario: string;
+	/** El proyecto para el que trabaja, con su clave: es como lo enseña la web. */
+	proyectoId: number;
+	proyecto: string;
 	nombre: string;
 	cuenta: string;
+	/** La carpeta local que reportó al registrarse, o nulo si aún no lo ha hecho. */
+	ruta: string | null;
 	/** Cuántos subagentes lanza a la vez su bucle. */
 	agentes: number;
 	conectadoEn: string | null;
@@ -204,10 +210,11 @@ export type TerminalListado = {
 /** Todos los terminales, activos primero y por orden de alta. */
 export function listarTerminales(db: DatabaseSync): TerminalListado[] {
 	const sql = `
-		SELECT t.id, t.usuario_id, u.nombre AS usuario, t.nombre, t.cuenta, t.agentes, t.conectado_en,
-			t.ultima_revision, t.uso_json, t.creado, t.revocado_en
+		SELECT t.id, t.usuario_id, u.nombre AS usuario, t.proyecto_id, p.clave AS proyecto, t.nombre, t.cuenta, t.ruta,
+			t.agentes, t.conectado_en, t.ultima_revision, t.uso_json, t.creado, t.revocado_en
 		FROM terminales t
 		JOIN usuarios u ON u.id = t.usuario_id
+		JOIN proyectos p ON p.id = t.proyecto_id
 		ORDER BY CASE WHEN t.revocado_en IS NULL THEN 0 ELSE 1 END, t.id`;
 	return sentencia(db, sql)
 		.all()
@@ -215,8 +222,11 @@ export function listarTerminales(db: DatabaseSync): TerminalListado[] {
 			id: entero(fila, "id"),
 			usuarioId: entero(fila, "usuario_id"),
 			usuario: texto(fila, "usuario"),
+			proyectoId: entero(fila, "proyecto_id"),
+			proyecto: texto(fila, "proyecto"),
 			nombre: texto(fila, "nombre"),
 			cuenta: texto(fila, "cuenta"),
+			ruta: textoOpcional(fila, "ruta"),
 			agentes: entero(fila, "agentes"),
 			conectadoEn: textoOpcional(fila, "conectado_en"),
 			ultimaRevision: enteroOpcional(fila, "ultima_revision"),
@@ -232,6 +242,8 @@ export type AltaTerminal = {
 	cuenta: string;
 	/** Cuántos subagentes lanza a la vez su bucle. Sin él, uno. */
 	agentes?: number | string;
+	/** El proyecto para el que trabaja. Sin él, el principal. */
+	proyectoId?: number;
 };
 
 /**
@@ -264,8 +276,10 @@ export function altaTerminal(db: DatabaseSync, datos: AltaTerminal): TerminalCon
 		throw new ErrorDeRegla("cuenta_vacia", "El terminal necesita la cuenta de origen de la sesión.");
 	}
 	const agentes = agentesValidos(datos.agentes);
+	const proyecto = exigirProyectoPorId(db, datos.proyectoId ?? PROYECTO_PRINCIPAL);
 	// El terminal es del usuario de la sesión, que es también quien lo da de alta.
-	return crearTerminalConToken(db, datos.usuarioId, nombre, cuenta, { usuarioId: datos.usuarioId }, agentes).valor;
+	return crearTerminalConToken(db, datos.usuarioId, nombre, cuenta, { usuarioId: datos.usuarioId }, agentes, proyecto.id)
+		.valor;
 }
 
 export type CambioAgentes = {

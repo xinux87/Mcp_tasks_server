@@ -61,6 +61,9 @@ export function crearParte(db: DatabaseSync, datos: NuevaParte): Tarea {
 		const padre = exigirTarea(conexion, datos.padreId);
 		exigirDescomposicionEnMarcha(padre, datos.terminalId);
 		const parte = insertarTarea(conexion, revision, {
+			// Una parte vive en el proyecto de su funcionalidad: lo hereda, como la
+			// rama y las asignaciones.
+			proyectoId: padre.proyectoId,
 			titulo: datos.titulo,
 			descripcion: datos.descripcion,
 			tipo: "tarea",
@@ -204,6 +207,7 @@ function descripcionDeIntegracion(rama: string): string {
 function crearParteDeIntegracion(conexion: DatabaseSync, revision: number, funcionalidad: Tarea): Tarea {
 	const rama = funcionalidad.rama ?? "";
 	const parte = insertarTarea(conexion, revision, {
+		proyectoId: funcionalidad.proyectoId,
 		titulo: `Integrar la rama \`${rama}\` en la principal`,
 		descripcion: descripcionDeIntegracion(rama),
 		tipo: "tarea",

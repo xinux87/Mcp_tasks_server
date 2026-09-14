@@ -59,7 +59,8 @@ Cada encargo que se pasa a un subagente lleva, en este orden:
 
 ### Campos
 
-- `id` con la forma `T-0042` (cuatro cifras como mínimo, correlativo), `titulo`, `descripcion`, `estado`, `orden` (posición dentro de su columna), `padre` (opcional, para tareas hijas). **Un id nunca se reutiliza**, ni aunque se borre la tarea con el id más alto: ya puede estar citado en un hilo, en la actividad o en un commit. La tabla lleva `AUTOINCREMENT` por eso.
+- `id` con la forma `T-0042` (cuatro cifras como mínimo, correlativo), `titulo`, `descripcion`, `estado`, `orden` (posición dentro de su columna), `padre` (opcional, para tareas hijas). **Un id nunca se reutiliza**, ni aunque se borre la tarea con el id más alto: ya puede estar citado en un hilo, en la actividad o en un commit. La tabla lleva `AUTOINCREMENT` por eso. **El id es global, no por proyecto**: `T-0042` identifica una tarea en cualquier repositorio y un commit ya escrito nunca queda ambiguo.
+- `proyecto`: la clave del proyecto al que pertenece, obligatoria. Ver «Proyectos».
 - `tipo`: `tarea` (por defecto), `pregunta` o `funcionalidad`. Ver «Tareas que son preguntas» y «Funcionalidades».
 - `dependeDe[]`: tareas que tienen que estar `done` o `finished` antes de que esta se pueda tomar. Ver «Dependencias».
 - `rama`: rama de git en la que se trabaja la tarea, opcional. Una funcionalidad la fija y sus partes la heredan.
@@ -188,6 +189,60 @@ Cada tarea guarda cuántos tokens ha costado. Lo reporta el plugin, no el modelo
 - **Reportar consumo sube la revisión global pero no la de la tarea.** Si la subiera, el agente recibiría su propia tarea como novedad justo después de reportar.
 - **El desglose en entrada, salida y caché no está en ese aviso.** Existe en la transcripción de la sesión, pero su formato es interno y no está documentado. Se descarta por ahora; si hiciera falta, sería un campo opcional que solo se rellena cuando se pueda leer de forma estable.
 
+## Proyectos
+
+Un proyecto es un repositorio que se trabaja desde una o varias carpetas locales, cada una con su propio agente. Las tareas viven en un proyecto y los terminales trabajan para un proyecto. Sin proyectos, el servidor no sabía en qué repositorio trabajaba cada terminal: la ruta salía del directorio donde se abrió Claude Code y nunca viajaba al servidor, así que con dos repositorios una tarea `sin terminal` la tomaba el primer terminal que la viera, fuera o no el suyo. Decidido el 14 de septiembre de 2026, junto con: ids globales con chip de proyecto, un terminal pertenece a un solo proyecto, y la página de inicio es la bandeja del humano.
+
+### Campos
+
+```sql
+CREATE TABLE proyectos (
+  id INTEGER PRIMARY KEY,
+  clave TEXT NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
+  descripcion TEXT NOT NULL DEFAULT '',
+  repositorio TEXT,
+  rama_principal TEXT NOT NULL DEFAULT 'main',
+  verificacion TEXT,
+  creado TEXT NOT NULL
+) STRICT;
+```
+
+- **`clave`**: de dos a seis caracteres, mayúsculas y cifras, empieza por letra (`PRI`, `WEB`, `API2`). Es lo que va en las URLs de la web, en el chip de las tarjetas y en el frontmatter. Se fija al crear el proyecto y no se cambia (`clave_invalida` si no cumple la forma, `clave_repetida` si ya existe).
+- **`repositorio`**: la URL del remote de git, opcional. Si está, el servidor comprueba al registrar un terminal que trabaja en ese repositorio. Se compara sin espacios alrededor y sin el sufijo `.git` ni la barra final.
+- **`rama_principal`**: `main` por defecto. Es la rama desde la que se crean las ramas de las funcionalidades y en la que se integran.
+- **`verificacion`**: el comando que tiene que pasar la parte «Integrar la rama en la principal», por ejemplo `cd server && npm test`. Opcional; sin él, el agente de integración pasa la verificación que encuentre en el repositorio.
+- **`tareas.proyecto_id`** y **`terminales.proyecto_id`**, `INTEGER NOT NULL REFERENCES proyectos(id)`. La migración crea el proyecto `PRI` «Principal» con id 1 y cuelga de él todo lo existente: para quien tiene un solo repositorio nada cambia. El índice `tareas_por_columna` pasa a ser `(proyecto_id, estado, orden)`.
+- **`terminales.ruta`**, `TEXT` opcional: la carpeta local en la que trabaja, tal como la reporta el terminal al registrarse. Es informativa; se enseña en la lista de terminales.
+
+### Reglas
+
+- **Un terminal pertenece a un proyecto** y se elige en el alta; no se cambia después: una máquina con tres repositorios tiene tres terminales, uno por carpeta, cada uno con su token. Es lo que ya ocurría de hecho; lo nuevo es que el servidor lo sabe.
+- **`registrar_terminal` recibe `ruta` y `repositorio`, opcionales**, que el bucle conoce sin preguntar a nadie: su directorio de trabajo y la URL del remote si es un repositorio git. Guarda la ruta y, si el proyecto tiene `repositorio` y el reportado no coincide, falla con `proyecto_no_coincide` y el bucle para en esa vuelta. Si alguno de los dos no tiene repositorio, no se comprueba nada. Devuelve tras la cuenta las líneas `proyecto: PRI · Principal`, `rama principal: main` y, si la hay, `verificacion: <comando>`; el bucle las apunta y las pasa al prompt de la parte de integración.
+- **Una tarea nace en el proyecto de quien la crea.** Desde la web, el del tablero en el que se está; una hija o una parte, el de su padre; una propuesta, el del terminal que la propone. Las clases `hija` y `parte` no reciben proyecto: lo heredan.
+- **`novedades`, `listar_tareas` y `tomar_tarea` están acotadas al proyecto del terminal.** `sin terminal` pasa a significar «cualquier terminal de este proyecto». `tomar_tarea` sobre una tarea de otro proyecto falla con `otro_proyecto`. `leer_tarea` no se acota: es de solo lectura y una dependencia puede citar una tarea de otro proyecto.
+- **Las dependencias no cruzan proyectos** (`dependencia_otro_proyecto`). Una dependencia entre repositorios es una integración que merece su propia tarea, no una arista.
+- **Una tarea cambia de proyecto solo en `backlog`**, desde la edición de la web, y solo si no tiene padre, ni hijas, ni dependencias en ningún sentido (`no_cambia_de_proyecto`). Sus asignaciones de terminal se ponen a nulo, porque un terminal es de un solo proyecto.
+- **`orden` sigue siendo global por columna.** El tablero de un proyecto enseña un subconjunto en ese orden y reordena «entre las del proyecto» con el mismo mecanismo que el tablero de una funcionalidad reordena entre hermanas: `reordenar` recibe `entre: { proyectoId }` y coloca la tarjeta justo detrás de la que la precede en esa vista.
+- **Un proyecto se borra solo vacío**: sin tareas (`proyecto_con_tareas`) y sin terminales (`proyecto_con_terminales`). El proyecto 1 no se borra nunca (`proyecto_principal`): es donde caen las cosas por defecto.
+- **Crear, editar y borrar un proyecto dejan rastro** (`alta_proyecto` con detalle `clave WEB`, `editar_proyecto` con los campos que cambiaron como en `editar_tarea`, `baja_proyecto`) con `objeto = 'proyecto'`, y **no suben la revisión**: ningún agente lo ve hasta que registra su terminal.
+- **El CLI y el primer arranque** crean terminales en `PRI` salvo que se dé la clave: `npm run cli -- crear-terminal <usuario> <nombre> <cuenta> [clave]`. Hay también `npm run cli -- crear-proyecto <clave> <nombre>`.
+
+### En el Markdown
+
+- **El frontmatter lleva `proyecto: PRI`** justo debajo de `id`. La línea de índice no lo lleva: el agente solo ve tareas de su proyecto.
+- **Los agentes no saben que hay proyectos.** Ninguna herramienta recibe un proyecto: sale del token del terminal. Es lo que permite que el plugin y la skill sigan iguales salvo por las dos líneas nuevas de `registrar_terminal`.
+
+### En la web
+
+- **El proyecto va en la URL, no en una cookie**: `/p/WEB/tareas`, `/p/WEB/tareas/kanban`, `/p/WEB/tareas/nueva` y `/p/WEB/funcionalidades` son las vistas de siempre acotadas a ese proyecto. Los enlaces se comparten y se abren en varias pestañas sin estado escondido. Una clave que no existe es 404.
+- **Las rutas sin prefijo son la vista cruzada**: `/tareas`, `/tareas/kanban` y `/funcionalidades` enseñan todos los proyectos, con el chip de la clave en cada fila y tarjeta y un filtro por proyecto. En la vista cruzada el kanban no admite arrastrar entre proyectos; el arrastre reordena la columna global como hasta ahora.
+- **La ficha sigue en `/tareas/T-0042`**, porque el id es global. Las migas dicen `WEB › Tareas › T-0042` y el bloque de propiedades lleva la fila Proyecto.
+- **Selector de proyecto** en lo alto de la barra lateral, debajo del nombre de la aplicación: un desplegable con «Todos los proyectos» y cada proyecto por su clave y nombre. Cambiarlo lleva a la misma vista en el proyecto elegido. Las entradas Lista, Kanban y Funcionalidades de la navegación apuntan al proyecto de la URL actual, o a la vista cruzada si no hay ninguno.
+- **`GET /proyectos`, `POST /proyectos`, `POST /proyectos/:id/editar`, `POST /proyectos/:id/borrar`** en el bloque «Sistema» de la navegación: tabla con clave, nombre, repositorio, rama principal, tareas abiertas, terminales y «Creado por»; alta con los campos de arriba; edición de todo salvo la clave; borrado con confirmación en página aparte.
+- **El alta de un terminal pide el proyecto** con un desplegable, `PRI` preseleccionado. La lista de terminales lleva la columna Proyecto y la ruta reportada en texto suave debajo del nombre.
+- **El chip de proyecto** es la clave en una etiqueta gris (`etiqueta(clave, "gris", "proyecto")`). No hay color por proyecto: los colores son de los usuarios.
+
 ## Formato Markdown
 
 El servidor es el único que escribe el formato. Los agentes envían contenido (texto de un comentario, campos de una pregunta) y el servidor lo coloca en el documento con su cabecera. Así ningún agente puede romper la estructura y todos los documentos se leen igual.
@@ -199,6 +254,7 @@ Es lo que devuelve `leer_tarea`. Frontmatter YAML con los campos, y después el 
 ```markdown
 ---
 id: T-0042
+proyecto: PRI
 titulo: "Exportar el listado de clientes a CSV"
 tipo: tarea
 estado: done
@@ -364,6 +420,8 @@ La respuesta del humano guarda el `texto` de la opción elegida, nunca su posici
 | `POST /tareas/T-0042/nota` | Nota del humano en el hilo |
 | `POST /tareas/T-0042/orden` | Reordena dentro de la columna, o cambia de columna cuando la transición es del humano |
 | `GET /terminales`, `POST /terminales`, `POST /terminales/:id/revocar`, `POST /terminales/:id/rotar`, `POST /terminales/:id/borrar` | Terminales: lista con uso disponible y conexión; alta que enseña el token una sola vez junto con su enlace de conexión y el tutorial; revocación; rotación del token; borrado |
+| `GET /p/:clave/tareas`, `GET /p/:clave/tareas/kanban`, `GET /p/:clave/tareas/nueva`, `GET /p/:clave/funcionalidades` | Las mismas vistas acotadas a un proyecto. Ver «Proyectos › En la web» |
+| `GET /proyectos`, `POST /proyectos`, `POST /proyectos/:id/editar`, `POST /proyectos/:id/borrar` | Proyectos: lista, alta, edición y borrado con confirmación |
 | `POST /terminales/:id/agentes` | Cambia cuántos agentes en paralelo asume el terminal. Ver «Agentes en paralelo» |
 | `GET /terminales/conectar` | El tutorial de conexión. Con `?token=` lleva ese token puesto y no exige sesión; sin él, `<token>` como marcador y sesión como el resto de la web |
 | `GET /usuarios`, `POST /usuarios`, `POST /usuarios/:id/borrar`, `POST /usuarios/contrasena` | Usuarios: alta con color, baja (nunca el último) y cambio de la propia contraseña |
@@ -476,7 +534,7 @@ CREATE TABLE actividad (
   usuario_id INTEGER REFERENCES usuarios(id),
   usuario_nombre TEXT NOT NULL,
   accion TEXT NOT NULL,
-  objeto TEXT NOT NULL CHECK (objeto IN ('tarea', 'usuario', 'terminal')),
+  objeto TEXT NOT NULL CHECK (objeto IN ('tarea', 'usuario', 'terminal', 'proyecto')),
   objeto_id INTEGER NOT NULL,
   objeto_nombre TEXT NOT NULL,
   detalle TEXT NOT NULL,
@@ -502,6 +560,9 @@ CREATE INDEX actividad_por_objeto ON actividad (objeto, objeto_id, id);
 | `rotar_terminal` | terminal | vacío |
 | `cambiar_agentes` | terminal | `1 → 3` |
 | `baja_terminal` | terminal | vacío |
+| `alta_proyecto` | proyecto | `clave WEB` |
+| `editar_proyecto` | proyecto | solo los campos que cambiaron, como en `editar_tarea` |
+| `baja_proyecto` | proyecto | vacío |
 
 - **Se escribe en la misma transacción que la acción**, desde las funciones de `src/db/` con `registrarActividad` de `src/db/actividad.ts`. Nunca sube la revisión por sí sola: la acción ya lo hace si es contenido, y las que no lo son (contraseña, color) tampoco lo hacen por dejar rastro.
 - **`usuario_nombre` se guarda como texto** para que sobreviva al borrado del usuario, igual que el autor del hilo; al borrar, `usuario_id` queda a nulo. `objeto_nombre` es el título de la tarea o el nombre del usuario o terminal en ese momento, para que la lista global se lea sin buscar.
@@ -599,7 +660,7 @@ Todas devuelven Markdown. Las listas devuelven un índice de una línea por elem
 
 | Operación | Quién la llama | Entrada | Salida |
 |---|---|---|---|
-| `registrar_terminal` | el plugin al arrancar la sesión | nada; el terminal sale del token | nombre del terminal, cuenta, agentes en paralelo y revisión actual; marca el terminal como conectado |
+| `registrar_terminal` | el plugin al arrancar la sesión | `ruta` y `repositorio` opcionales; el terminal sale del token | nombre del terminal, cuenta, agentes en paralelo, proyecto, rama principal, verificación y revisión actual; marca el terminal como conectado y guarda la ruta. Falla con `proyecto_no_coincide` si el repositorio reportado no es el del proyecto |
 | `reportar_consumo` | el bucle, al terminar cada subagente de fase | id de tarea, fase, modelo, tokens totales, llamadas a herramientas, duración | confirmación; el servidor suma al consumo de la tarea y al de sus ancestros |
 
 ### API HTTP, fuera del MCP
@@ -763,7 +824,8 @@ Todos se ejecutan dentro de `server/`.
 | `npm run lint` | Biome: lint y formato |
 | `npm run build` | Emite JavaScript a `dist/` para la imagen |
 | `npm run cli -- crear-usuario <nombre>` | Crea un usuario; la contraseña sale de `ADMIN_PASSWORD` |
-| `npm run cli -- crear-terminal <usuario> <nombre> <cuenta>` | Crea un terminal e imprime su token una sola vez |
+| `npm run cli -- crear-terminal <usuario> <nombre> <cuenta> [clave]` | Crea un terminal en ese proyecto (`PRI` si no se da) e imprime su token una sola vez |
+| `npm run cli -- crear-proyecto <clave> <nombre>` | Crea un proyecto |
 | `docker compose up --build` | Levanta el servidor con su volumen. Lee `server/.env`, que no está en el repositorio: sin `SESSION_SECRET` ni `ADMIN_PASSWORD` falla al interpolar, antes de construir nada |
 
 `node --test` toma patrones glob, no directorios: `node --test test/` falla. Los tests viven fuera de `rootDir`, por eso tienen su propio `tsconfig.test.json`.
@@ -786,3 +848,11 @@ Verificado contra la documentación de Claude Code:
 - **El repositorio es `xinux87/Mcp_tasks_server` en GitHub, privado.** En otra máquina: `claude plugin marketplace add xinux87/Mcp_tasks_server` y `claude plugin install mcp-tareas@mcp-tareas-marketplace` (o los mismos comandos con `/plugin` dentro de una sesión). Por ser privado, la máquina necesita acceso git al repositorio con sus propias credenciales. La documentación dice que la forma `owner/repo` clona por SSH y que `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` fuerza HTTPS; comprobado con Claude Code 2.1.268: clona por HTTPS sin la variable, con el credential helper del sistema. Los textos no afirman ninguno de los dos como fijo: dicen que la variable existe por si hace falta. Actualizar: `claude plugin update mcp-tareas@mcp-tareas-marketplace`. `claude --plugin-dir <clon>/plugin` queda como vía de desarrollo, sin instalar.
 - **Los dos valores se piden al habilitar el plugin.** Para cambiarlos después (por ejemplo tras rotar el token): `/plugin` → Installed → `mcp-tareas`, o `claude plugin install mcp-tareas@mcp-tareas-marketplace --config token_terminal=<token>`. No hace falta desinstalar.
 - **OAuth existe pero no se usa.** Si se declarase, tendría prioridad sobre la cabecera bearer.
+- **Un token por carpeta, en la misma máquina.** Los valores de `userConfig` se guardan solo en `~/.claude/settings.json`: la documentación dice que los ámbitos de proyecto y local se ignoran para `pluginConfigs`, para que un repositorio clonado no inyecte valores en un plugin. Así que el plugin configura **un** terminal por máquina. Para una segunda carpeta con otro terminal, la vía documentada es declarar el servidor en esa carpeta con ámbito local, que se guarda en `~/.claude.json` para esa ruta, nunca en el repositorio, y gana a los servidores de los plugins en el orden de precedencia (local, project, user, plugin):
+
+  ```
+  claude mcp add --transport http --scope local tareas <url>/mcp --header "Authorization: Bearer <token>"
+  ```
+
+  El plugin sigue instalado y aporta la skill y el hook; el servidor del plugin y el local se llaman igual (`tareas`) y las herramientas del local llevan el prefijo `mcp__tareas__`, que la skill ya contempla. La statusline sigue reportando el uso al terminal del plugin: el uso es de la cuenta, no de la carpeta, y con enseñarlo en uno basta. `--scope project` queda descartado para esto: escribe el token en el `.mcp.json` del repositorio. Verificado el 14 de septiembre de 2026 contra `code.claude.com/docs/en/plugins-reference` y `code.claude.com/docs/en/mcp`.
+- **El bucle reporta al servidor dónde trabaja.** En `registrar_terminal` manda `ruta` (su directorio de trabajo) y `repositorio` (la URL del remote `origin`, si la hay). Si el servidor responde `proyecto_no_coincide`, esa sesión está en la carpeta equivocada: el bucle lo dice y termina la vuelta sin tocar nada. Las líneas `proyecto`, `rama principal` y `verificacion` de la respuesta se apuntan como `agentes`, y las dos últimas van al prompt de la parte de integración.

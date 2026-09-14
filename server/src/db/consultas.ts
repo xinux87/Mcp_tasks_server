@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { ErrorDeRegla } from "../errores.ts";
 import { type Actor, registrarActividad } from "./actividad.ts";
 import {
 	ahora,
@@ -13,6 +14,7 @@ import {
 	textoOpcional,
 } from "./base.ts";
 import { type ColorUsuario, colorElegido, esColorUsuario } from "./colores.ts";
+import { exigirProyectoPorId, normalizarRepositorio, PROYECTO_PRINCIPAL, type Proyecto } from "./proyectos.ts";
 
 // Los helpers compartidos viven en `base.ts` para que los usen también
 // `tareas.ts`, `hilo.ts` y `consumo.ts`. Se reexportan desde aquí porque este
@@ -31,8 +33,12 @@ export type Usuario = {
 export type Terminal = {
 	id: number;
 	usuarioId: number;
+	/** Un terminal es de un solo proyecto: se elige en el alta y no se cambia. */
+	proyectoId: number;
 	nombre: string;
 	cuenta: string;
+	/** La carpeta local en la que trabaja, tal como la reportó al registrarse. */
+	ruta: string | null;
 	tokenHash: string;
 	/** Cuántos subagentes lanza a la vez su bucle. Lo respeta el bucle, no el servidor. */
 	agentes: number;
@@ -70,8 +76,10 @@ function comoTerminal(fila: Record<string, unknown>): Terminal {
 	return {
 		id: entero(fila, "id"),
 		usuarioId: entero(fila, "usuario_id"),
+		proyectoId: entero(fila, "proyecto_id"),
 		nombre: texto(fila, "nombre"),
 		cuenta: texto(fila, "cuenta"),
+		ruta: textoOpcional(fila, "ruta"),
 		tokenHash: texto(fila, "token_hash"),
 		agentes: entero(fila, "agentes"),
 		conectadoEn: textoOpcional(fila, "conectado_en"),
@@ -144,7 +152,7 @@ export function crearUsuario(
 // --- terminales --------------------------------------------------------------
 
 const COLUMNAS_TERMINAL =
-	"id, usuario_id, nombre, cuenta, token_hash, agentes, conectado_en, ultima_revision, uso_json, creado, revocado_en";
+	"id, usuario_id, proyecto_id, nombre, cuenta, ruta, token_hash, agentes, conectado_en, ultima_revision, uso_json, creado, revocado_en";
 
 export function buscarTerminalPorId(db: DatabaseSync, id: number): Terminal | undefined {
 	const fila = sentencia(db, `SELECT ${COLUMNAS_TERMINAL} FROM terminales WHERE id = ?`).get(id);
@@ -178,12 +186,15 @@ export function crearTerminal(
 	actor?: Actor,
 	/** Ya validado por quien llama. Sin él, el de siempre: un subagente por vuelta. */
 	agentes = 1,
+	/** Un terminal es de un solo proyecto. Sin decir otro, el principal. */
+	proyectoId = PROYECTO_PRINCIPAL,
 ): ConRevision<Terminal> {
 	return enTransaccionConRevision(db, (conexion) => {
 		const cambios = sentencia(
 			conexion,
-			"INSERT INTO terminales (usuario_id, nombre, cuenta, token_hash, agentes, creado) VALUES (?, ?, ?, ?, ?, ?)",
-		).run(usuarioId, nombre, cuenta, tokenHash, agentes, ahora());
+			`INSERT INTO terminales (usuario_id, proyecto_id, nombre, cuenta, token_hash, agentes, creado)
+				VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		).run(usuarioId, proyectoId, nombre, cuenta, tokenHash, agentes, ahora());
 		const id = idInsertado(cambios.lastInsertRowid);
 		const creado = buscarTerminalPorId(conexion, id);
 		if (creado === undefined) {
@@ -212,13 +223,58 @@ export function crearTerminal(
  * dejaría de significar nada.
  */
 export function marcarTerminalConectado(db: DatabaseSync, terminalId: number): Terminal {
+	return registrarTerminal(db, terminalId, {}).terminal;
+}
+
+export type RegistroDeTerminal = {
+	/** La carpeta local del bucle. Se guarda tal cual: es informativa. */
+	ruta?: string | null;
+	/** La URL del remote de git, si el bucle trabaja en un repositorio. */
+	repositorio?: string | null;
+};
+
+/** Lo que el terminal necesita saber de su proyecto al arrancar la sesión. */
+export type TerminalRegistrado = {
+	terminal: Terminal;
+	proyecto: Proyecto;
+};
+
+/**
+ * `registrar_terminal`: marca el terminal como conectado, guarda la carpeta en
+ * la que trabaja y comprueba que sea el repositorio del proyecto.
+ *
+ * Si el proyecto tiene repositorio y el terminal reporta otro, la sesión se
+ * para aquí (`proyecto_no_coincide`) sin marcarlo conectado: seguir sería
+ * dejar que un terminal tomara tareas de un repositorio que no tiene delante.
+ * Si alguno de los dos no tiene repositorio, no se comprueba nada.
+ *
+ * Es telemetría: no sube la revisión, como el resto de lo que escribe el bucle
+ * mientras espera.
+ */
+export function registrarTerminal(db: DatabaseSync, terminalId: number, datos: RegistroDeTerminal): TerminalRegistrado {
 	return enTransaccion(db, (conexion) => {
-		sentencia(conexion, "UPDATE terminales SET conectado_en = ? WHERE id = ?").run(ahora(), terminalId);
+		const antes = buscarTerminalPorId(conexion, terminalId);
+		if (antes === undefined) {
+			throw new Error(`no existe el terminal ${terminalId}`);
+		}
+		const proyecto = exigirProyectoPorId(conexion, antes.proyectoId);
+		const reportado = normalizarRepositorio(datos.repositorio);
+		if (proyecto.repositorio !== null && reportado !== null && proyecto.repositorio !== reportado) {
+			throw new ErrorDeRegla(
+				"proyecto_no_coincide",
+				`El proyecto ${proyecto.clave} trabaja en ${proyecto.repositorio} y este terminal está en ${reportado}.`,
+			);
+		}
+		sentencia(conexion, "UPDATE terminales SET conectado_en = ?, ruta = COALESCE(?, ruta) WHERE id = ?").run(
+			ahora(),
+			datos.ruta?.trim() === "" ? null : (datos.ruta ?? null),
+			terminalId,
+		);
 		const terminal = buscarTerminalPorId(conexion, terminalId);
 		if (terminal === undefined) {
 			throw new Error(`no existe el terminal ${terminalId}`);
 		}
-		return terminal;
+		return { terminal, proyecto };
 	});
 }
 

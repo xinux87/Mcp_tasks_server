@@ -6,10 +6,22 @@ Plugin de Claude Code que conecta un terminal al servidor MCP de tareas. Hace tr
 - **Arranca el bucle del agente** (`skills/tareas/SKILL.md`): sincroniza con el servidor, y cuando hay una tarea para este terminal la analiza o la ejecuta con un subagente y reporta su consumo de tokens.
 - **Reenvía el uso disponible de la cuenta** (`scripts/statusline.sh`), que solo existe en la entrada de la statusline de Claude Code.
 
+## Un terminal por carpeta
+
+El servidor agrupa las tareas por **proyecto**: un repositorio, con su rama principal y su comando de verificación. Un terminal pertenece a un proyecto y trabaja en una carpeta, así que una máquina con tres repositorios tiene tres terminales, cada uno con su token. Al registrarse, el bucle le dice al servidor en qué carpeta está y cuál es el remote `origin`; si no es el repositorio del proyecto de ese token, la vuelta termina ahí sin tomar nada.
+
+La configuración del plugin es una por máquina: Claude Code guarda los valores de `userConfig` solo en los ajustes del usuario. Para la segunda carpeta de la misma máquina, declara el servidor dentro de esa carpeta con ámbito local, que gana al del plugin y no escribe nada en el repositorio:
+
+```
+claude mcp add --transport http --scope local tareas <url>/mcp --header "Authorization: Bearer <token>"
+```
+
+El plugin sigue instalado y aporta la skill y el hook; las herramientas del servidor local llevan el prefijo `mcp__tareas__`, que la skill ya contempla.
+
 ## 1. Crear el terminal en la web
 
 1. Entra en la web del servidor y ve a la sección de terminales.
-2. Crea un terminal con su **nombre** (por ejemplo `portatil-1`) y la **cuenta de origen** de la sesión de Claude Code.
+2. Crea un terminal con su **nombre** (por ejemplo `portatil-1`), la **cuenta de origen** de la sesión de Claude Code y el **proyecto** en el que trabaja.
 3. La web te enseña el **token una sola vez**. Cópialo antes de cerrar. Si lo pierdes, rota el token de ese terminal desde la web: el terminal sigue siendo el mismo, con su nombre, su historial y su consumo, y lo que deja de valer es el token anterior.
 
 Esa misma página trae el tutorial de conexión con el token ya puesto y un **enlace de conexión**. El enlace abre el tutorial en la máquina del terminal sin necesidad de sesión en la web, así que no hace falta copiar el token a mano de una máquina a otra. Es un secreto: quien lo tiene, tiene el terminal, y deja de valer en cuanto se revoca o se rota el token.

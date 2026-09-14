@@ -128,7 +128,37 @@ function pasoDirecciones(filas: readonly Fila[], recomendacion: string): Html {
 		</li>`;
 }
 
-/** Paso 2: instalar el plugin desde el catálogo del repositorio. */
+/**
+ * Paso 2: un terminal por carpeta. El plugin solo guarda un token por máquina
+ * (los ámbitos de proyecto y local se ignoran para `pluginConfigs`), así que la
+ * segunda carpeta de la misma máquina declara el servidor con ámbito local.
+ */
+function pasoPorCarpeta(recomendacion: string, token: string): Html {
+	return html`<li>
+			<h3>Un terminal por carpeta</h3>
+			<p>
+				Cada carpeta de trabajo tiene su propio terminal y su propio token, y el terminal se crea en el
+				proyecto del repositorio que hay en esa carpeta. Una máquina con tres repositorios tiene tres
+				terminales. El bucle avisa al servidor de en qué carpeta está: si no es la del proyecto de este
+				token, la vuelta termina ahí y no toma ninguna tarea.
+			</p>
+			<p>
+				Para una segunda carpeta en esta misma máquina, no repitas el plugin: declara el servidor dentro
+				de esa carpeta con ámbito local.
+			</p>
+			${bloque(
+				`claude mcp add --transport http --scope local ${NOMBRE_MCP} ${recomendacion}/mcp --header "Authorization: Bearer ${token}"`,
+			)}
+			<p class="pequeno silencio">
+				La configuración del plugin es una por máquina: Claude Code guarda sus valores solo en los ajustes
+				del usuario, así que el plugin no puede llevar dos tokens a la vez. El ámbito local gana al
+				servidor del plugin, se guarda por ruta en la configuración de Claude Code y no escribe nada en el
+				repositorio.
+			</p>
+		</li>`;
+}
+
+/** Paso 3: instalar el plugin desde el catálogo del repositorio. */
 function pasoInstalar(): Html {
 	return html`<li>
 			<h3>Instalar el plugin</h3>
@@ -149,7 +179,7 @@ function pasoInstalar(): Html {
 		</li>`;
 }
 
-/** Paso 3: los dos valores que el plugin pide al activarse. */
+/** Paso 4: los dos valores que el plugin pide al activarse. */
 function pasoValores(recomendacion: string, token: string): Html {
 	return html`<li>
 			<h3>Los dos valores que pide al activarse</h3>
@@ -170,7 +200,7 @@ function pasoValores(recomendacion: string, token: string): Html {
 		</li>`;
 }
 
-/** Paso 4: declarar el servidor MCP a mano, sin plugin. */
+/** Paso 5: declarar el servidor MCP a mano, sin plugin. */
 function pasoSinPlugin(recomendacion: string, token: string): Html {
 	return html`<li>
 			<h3>Sin plugin: solo el servidor MCP</h3>
@@ -187,7 +217,7 @@ function pasoSinPlugin(recomendacion: string, token: string): Html {
 		</li>`;
 }
 
-/** Paso 5: la línea de estado, que es de donde sale el uso disponible de la cuenta. */
+/** Paso 6: la línea de estado, que es de donde sale el uso disponible de la cuenta. */
 function pasoStatusline(recomendacion: string, token: string): Html {
 	const ajustes = [
 		"{",
@@ -225,7 +255,7 @@ function pasoStatusline(recomendacion: string, token: string): Html {
 		</li>`;
 }
 
-/** Paso 6: el bucle, que no lo pone el plugin sino quien abre la sesión. */
+/** Paso 7: el bucle, que no lo pone el plugin sino quien abre la sesión. */
 function pasoBucle(): Html {
 	return html`<li>
 			<h3>Arrancar el bucle</h3>
@@ -238,15 +268,17 @@ function pasoBucle(): Html {
 		</li>`;
 }
 
-/** Paso 7: cómo se ve desde aquí que ha conectado. */
+/** Paso 8: cómo se ve desde aquí que ha conectado. */
 function pasoComprobar(): Html {
 	return html`<li>
 			<h3>Comprobar</h3>
 			<p>
 				En la primera vuelta el terminal se registra y su fila de
-				<a href="/terminales">Terminales</a> pasa a estar conectada, con la fecha. Si no pasa, repasa la
-				dirección (que se llegue a ella desde esa máquina) y el token (que sea el de este terminal y no
-				esté revocado).
+				<a href="/terminales">Terminales</a> pasa a estar conectada, con la fecha y con la carpeta en la
+				que está trabajando, que es la que ha reportado al registrarse. Si no pasa, repasa la dirección
+				(que se llegue a ella desde esa máquina) y el token (que sea el de este terminal y no esté
+				revocado). Y si el bucle dice que la carpeta no es la del proyecto, la sesión está abierta donde
+				no toca: ábrela en la carpeta del repositorio de este terminal.
 			</p>
 		</li>`;
 }
@@ -262,6 +294,7 @@ export function tutorialConexion({ direcciones, direccionActual, token }: Opcion
 			<h2>Cómo conectar un terminal</h2>
 			<ol class="pasos">
 				${pasoDirecciones(filas, recomendacion)}
+				${pasoPorCarpeta(recomendacion, token)}
 				${pasoInstalar()}
 				${pasoValores(recomendacion, token)}
 				${pasoSinPlugin(recomendacion, token)}
