@@ -1546,4 +1546,107 @@ details.caja[open] > summary {
 .tabla-funcionalidades td:first-child a:not(.id-tarea):hover {
 	text-decoration: underline;
 }
+
+/* --- la ficha como vista de incidencia ----------------------------------- */
+
+/* A partir de 64 rem, la columna principal y un panel de 18 rem fijo al hacer
+   scroll. Por debajo, una sola columna con el panel encima de la descripción.
+   El ancho se acota aquí: la ficha ocupa todo el ancho para tener sitio, no
+   para estirar el hilo hasta el borde de la pantalla. */
+.ficha {
+	display: grid;
+	gap: 0 2.5rem;
+	max-width: 78rem;
+}
+
+.ficha > .panel {
+	order: -1;
+}
+
+@media (min-width: 64rem) {
+	.ficha {
+		grid-template-columns: minmax(0, 1fr) 18rem;
+		align-items: start;
+	}
+
+	.ficha > .panel {
+		order: 0;
+		position: sticky;
+		top: 1rem;
+	}
+}
+
+/* En 18 rem no caben las 10 rem del nombre de cada propiedad. */
+.panel .propiedad {
+	grid-template-columns: 6.5rem 1fr;
+}
+
+.panel h2 {
+	font-size: 0.95rem;
+}
+
+/* Las preguntas abiertas son lo primero de la ficha, antes del panel. */
+.preguntas-arriba {
+	display: flex;
+	flex-direction: column;
+	gap: 0.8rem;
+	max-width: 78rem;
+	margin-bottom: 1.8rem;
+}
+
+.responder-arriba {
+	margin: 0.7rem 0 0;
+	font-size: 0.85rem;
+}
+
+/* Los tres filtros del hilo, encima de él y sin caja: son enlaces. */
+.filtro-hilo {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.9rem;
+	margin-bottom: 0.9rem;
+	font-size: 0.85rem;
+}
+
+.filtro-hilo a {
+	color: var(--texto-suave);
+	text-decoration: none;
+}
+
+.filtro-hilo a:hover {
+	color: var(--texto);
+}
+
+.filtro-hilo a[aria-current="page"] {
+	color: var(--texto);
+	font-weight: 600;
+}
+
+/* --- bandeja ------------------------------------------------------------- */
+
+/* Cada asunto: su línea y debajo la tarjeta que toca. Van separados entre sí
+   más que dentro, que es lo que deja leer el bloque de un vistazo. */
+.asunto {
+	margin-bottom: 1.6rem;
+}
+
+.linea-bandeja {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.5rem;
+	margin: 0 0 0.5rem;
+}
+
+.linea-bandeja .titulo {
+	font-weight: 600;
+}
+
+/* El número de la bandeja, pegado a la derecha de su entrada. */
+.enlace-nav {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
 `;

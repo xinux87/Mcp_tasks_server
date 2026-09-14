@@ -96,7 +96,9 @@ export function tarjetaPreguntaAbierta(
 	pregunta: Pregunta,
 	{ volver }: OpcionesPregunta = {},
 ): Html {
-	return html`<article class="comentario pregunta-abierta">
+	// El ancla es a donde lleva el «Responder arriba» del hilo de la ficha. Lleva
+	// el id de la tarea porque la bandeja pinta preguntas de varias tareas.
+	return html`<article class="comentario pregunta-abierta" id="pregunta-${formatearId(tarea.id)}-P${pregunta.numero}">
 			<header>
 				<a class="id-tarea" href="/tareas/${formatearId(tarea.id)}">${formatearId(tarea.id)}</a>
 				<span>${tarea.titulo}</span>

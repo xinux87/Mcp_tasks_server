@@ -12,7 +12,7 @@ import { listarTerminales, listarUsuarios } from "../src/db/admin.ts";
 import { COLORES_USUARIO } from "../src/db/colores.ts";
 import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { registrarConsumo } from "../src/db/consumo.ts";
-import { comentarAnalisis, preguntar } from "../src/db/hilo.ts";
+import { comentarAnalisis, comentarAvance, preguntar } from "../src/db/hilo.ts";
 import {
 	crearPropuesta,
 	crearTareaHumana,
@@ -349,6 +349,60 @@ test("una pregunta abierta se contesta desde la ficha, y solo una vez", async ()
 		});
 		assert.equal(repetida.status, 422);
 		assert.match(await repetida.text(), /ya está contestada/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("la ficha pone la pregunta abierta arriba, el hilo la manda a ella y se filtra", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const id = await crearTarea(montaje, cookie, "Exportar clientes", "Hace falta un CSV.");
+		await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "prepared" } });
+
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-xinux", "xinux@ejemplo.com");
+		const terminalId = valor.terminal.id;
+		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId });
+		comentarAnalisis(montaje.db, { tareaId: 1, terminalId, texto: "Hay que añadir un botón al listado." });
+		tomarTarea(montaje.db, { tareaId: 1, fase: "ejecucion", terminalId });
+		comentarAvance(montaje.db, { tareaId: 1, terminalId, texto: "El botón ya baja el fichero." });
+		preguntar(montaje.db, {
+			tareaId: 1,
+			terminalId,
+			pregunta: "¿Qué separador usamos en el CSV?",
+			porQueImporta: "La hoja de cálculo de los comerciales está en español.",
+			opciones: [
+				{ texto: "Punto y coma", consecuencia: "Se abre directamente en su hoja de cálculo." },
+				{ texto: "No hacer nada", consecuencia: "Siguen copiando a mano." },
+			],
+			recomendacion: "Punto y coma",
+		});
+
+		const cuerpo = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		// La pregunta, con su formulario, antes de las propiedades; en el hilo
+		// sigue estando, sin formulario y con el enlace que sube a ella.
+		const arriba = cuerpo.indexOf(`id="pregunta-${id}-P1"`);
+		assert.ok(arriba > 0, "la ficha no lleva la pregunta abierta arriba");
+		assert.ok(arriba < cuerpo.indexOf('<dl class="propiedades">'), "la pregunta no va antes de las propiedades");
+		assert.equal(cuerpo.split(`action="/tareas/${id}/responder/P1"`).length - 1, 1);
+		assert.ok(cuerpo.includes(`<a href="#pregunta-${id}-P1">Responder arriba</a>`));
+		// El panel de la derecha lleva las propiedades y lo excepcional.
+		assert.match(cuerpo, /<aside class="panel">/);
+
+		const preguntas = await (await pedir(montaje, `/tareas/${id}?hilo=preguntas`, { cookie })).text();
+		assert.match(preguntas, /¿Qué separador usamos en el CSV\?/);
+		assert.doesNotMatch(preguntas, /El botón ya baja el fichero\./);
+		assert.match(preguntas, /aria-current="page">Preguntas y respuestas/);
+
+		const avances = await (await pedir(montaje, `/tareas/${id}?hilo=avances`, { cookie })).text();
+		assert.match(avances, /El botón ya baja el fichero\./);
+		assert.doesNotMatch(avances, /Hay que añadir un botón al listado\./);
+
+		// Un valor desconocido enseña el hilo entero, como «Todo».
+		const todo = await (await pedir(montaje, `/tareas/${id}?hilo=loquesea`, { cookie })).text();
+		assert.match(todo, /Hay que añadir un botón al listado\./);
+		assert.match(todo, /El botón ya baja el fichero\./);
 	} finally {
 		await montaje.cerrar();
 	}

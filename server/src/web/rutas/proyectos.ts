@@ -3,6 +3,7 @@ import type { Context, Hono, MiddlewareHandler } from "hono";
 import { html } from "hono/html";
 import { altaPor } from "../../db/actividad.ts";
 import { listarTerminales } from "../../db/admin.ts";
+import { contarPendientes } from "../../db/bandeja.ts";
 import {
 	borrarProyecto,
 	buscarProyectoPorClave,
@@ -44,9 +45,14 @@ export function prefijo(proyecto: Proyecto | undefined): string {
 	return proyecto === undefined ? "" : `/p/${proyecto.clave}`;
 }
 
-/** Lo que la barra lateral necesita saber en cualquier página con sesión. */
+/**
+ * Lo que la barra lateral necesita saber en cualquier página con sesión: los
+ * proyectos y cuántas cosas esperan por el humano. Todas las páginas lo
+ * reparten sobre `pagina`, así que el contador de la bandeja se calcula aquí
+ * una sola vez y no en cada ruta.
+ */
 export function navProyectos(c: Context, db: DatabaseSync): NavProyectos {
-	return { proyectos: listarProyectos(db), proyecto: proyectoActual(c) };
+	return { proyectos: listarProyectos(db), proyecto: proyectoActual(c), pendientes: contarPendientes(db) };
 }
 
 function paginaSinProyecto(c: Context, db: DatabaseSync, clave: string): RespuestaHtml {

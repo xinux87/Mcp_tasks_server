@@ -7,7 +7,7 @@ import { buscarTerminalPorId, revisionActual } from "../../db/consultas.ts";
 import type { ConsumoDeTarea } from "../../db/consumo.ts";
 import { dependenciasPendientes, dependientesDe } from "../../db/dependencias.ts";
 import { editarTareaBacklog, exigirTitulo } from "../../db/edicion.ts";
-import { type Comentario, notaHumana, responder } from "../../db/hilo.ts";
+import { type Comentario, notaHumana, responder, type TipoComentario } from "../../db/hilo.ts";
 import {
 	buscarProyectoPorClave,
 	buscarProyectoPorId,
@@ -64,7 +64,7 @@ import {
 	marcado,
 	mensajeDeRegla,
 } from "../formulario.ts";
-import { type ColorDe, formularioRespuesta, tarjetaComentario } from "../hilo.ts";
+import { type ColorDe, tarjetaComentario, tarjetaPreguntaAbierta } from "../hilo.ts";
 import { renderMarkdown } from "../markdown.ts";
 import {
 	COLUMNAS,
@@ -78,6 +78,7 @@ import {
 	type RespuestaHtml,
 } from "../plantilla.ts";
 import { type DependenciasWeb, destinoSeguro, usuarioActual } from "../sesion.ts";
+import { paginaBandeja } from "./bandeja.ts";
 import { type Filtros, filtrosDe, MARCAS, opcionesFuncionalidad, opcionesProyecto, tablero } from "./kanban.ts";
 import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
 
@@ -766,7 +767,11 @@ function tablaConsumo(consumo: ConsumoDeTarea): Html {
 
 // --- el hilo -----------------------------------------------------------------
 
-/** Un comentario del hilo de la ficha, con el formulario si es una pregunta abierta. */
+/**
+ * Un comentario del hilo de la ficha. Una pregunta abierta se enseña aquí sin
+ * formulario: el suyo está arriba del todo, y desde aquí se va a él. El humano
+ * llega a la ficha a contestar y no tiene que bajar hasta el final.
+ */
 function comentarioDeLaFicha(completa: TareaCompleta, comentario: Comentario, colorDe: ColorDe): Html {
 	const pregunta =
 		comentario.tipo === "pregunta" && comentario.preguntaId !== null
@@ -775,17 +780,59 @@ function comentarioDeLaFicha(completa: TareaCompleta, comentario: Comentario, co
 	const abierta = pregunta !== undefined && pregunta.respuestaOpcion === null;
 	return tarjetaComentario(comentario, colorDe, {
 		numero: pregunta?.numero ?? null,
-		extra: abierta && pregunta !== undefined ? formularioRespuesta(completa.tarea.id, pregunta) : html``,
+		extra:
+			abierta && pregunta !== undefined
+				? html`<p class="responder-arriba"><a href="#pregunta-${formatearId(completa.tarea.id)}-P${pregunta.numero}">Responder arriba</a></p>`
+				: html``,
 	});
 }
 
-function hilo(completa: TareaCompleta, colorDe: ColorDe): Html {
-	if (completa.comentarios.length === 0) {
+/** Los tres filtros del hilo: qué tipos de comentario deja pasar cada uno. */
+const FILTROS_HILO: readonly { valor: string; texto: string; tipos: readonly TipoComentario[] }[] = [
+	{ valor: "", texto: "Todo", tipos: [] },
+	{ valor: "preguntas", texto: "Preguntas y respuestas", tipos: ["pregunta", "respuesta"] },
+	{ valor: "avances", texto: "Avances y resultados", tipos: ["avance", "resultado"] },
+];
+
+/**
+ * Los enlaces del filtro, sobre la misma dirección. Sin JavaScript: es un
+ * parámetro de la URL. Un valor desconocido no filtra nada, como «Todo».
+ */
+function filtroHilo(id: string, elegido: string): Html {
+	return html`<nav class="filtro-hilo" aria-label="Qué se ve del hilo">
+			${FILTROS_HILO.map((filtro) => {
+				const activo = filtro.valor === elegido;
+				const href = filtro.valor === "" ? `/tareas/${id}` : `/tareas/${id}?hilo=${filtro.valor}`;
+				return html`<a href="${href}"${activo ? raw(' aria-current="page"') : ""}>${filtro.texto}</a>`;
+			})}
+		</nav>`;
+}
+
+function hilo(completa: TareaCompleta, colorDe: ColorDe, elegido: string): Html {
+	const filtro = FILTROS_HILO.find((candidato) => candidato.valor === elegido);
+	const tipos = filtro === undefined ? [] : filtro.tipos;
+	const comentarios =
+		tipos.length === 0 ? completa.comentarios : completa.comentarios.filter((cual) => tipos.includes(cual.tipo));
+	if (comentarios.length === 0) {
 		return html`<p class="silencio">Ninguno.</p>`;
 	}
 	return html`<div class="hilo">
-			${completa.comentarios.map((comentario) => comentarioDeLaFicha(completa, comentario, colorDe))}
+			${comentarios.map((comentario) => comentarioDeLaFicha(completa, comentario, colorDe))}
 		</div>`;
+}
+
+/**
+ * Las preguntas abiertas, arriba del todo y a todo lo ancho: es a lo que el
+ * humano viene. La tarjeta es la misma que enseña la bandeja.
+ */
+function preguntasArriba(completa: TareaCompleta): Html {
+	const abiertas = completa.preguntas.filter((pregunta) => pregunta.respuestaOpcion === null);
+	if (abiertas.length === 0) {
+		return html``;
+	}
+	return html`<section class="preguntas-arriba">
+			${abiertas.map((pregunta) => tarjetaPreguntaAbierta(completa.tarea, pregunta))}
+		</section>`;
 }
 
 // --- la actividad de la tarea ------------------------------------------------
@@ -1063,7 +1110,8 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 	const colorDe = buscadorDeColor(deps.db);
 
 	const comun = html`<h2>Hilo</h2>
-		${hilo(completa, colorDe)}
+		${filtroHilo(id, c.req.query("hilo") ?? "")}
+		${hilo(completa, colorDe, c.req.query("hilo") ?? "")}
 
 		<h2>Nota</h2>
 		<form method="post" action="/tareas/${id}/nota">
@@ -1076,23 +1124,17 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 			</div>
 		</form>`;
 
-	const cierre = html`<h2>Actividad</h2>
-		${actividadDeTarea(deps.db, tarea.id, colorDe)}
-
-		${vueltasAtras(completa)}
-		${detallesEditar(deps.db, tarea, completa.dependeDe)}
-		${detallesBorrar(tarea)}`;
-
-	const propias = html`${propiedadesDeTarea(deps.db, completa, buscadorDeCreador(deps.db))}
-
-		<h2>Descripción</h2>
+	const descripcion = html`<h2>Descripción</h2>
 		<div class="cuerpo">${raw(renderMarkdown(tarea.descripcion))}</div>`;
+
+	const actividad = html`<h2>Actividad</h2>
+		${actividadDeTarea(deps.db, tarea.id, colorDe)}`;
 
 	// La ficha de una funcionalidad es su propio tablero: encima lo que se
 	// decidió, debajo las partes en las que se descompuso.
-	const cuerpo =
+	const principal =
 		tarea.tipo === "funcionalidad"
-			? html`${propias}
+			? html`${descripcion}
 				${comun}
 
 				<h2>Partes</h2>
@@ -1101,8 +1143,8 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 				</div>
 				${tablero(deps.db, { terminal: "", marca: "", padre: id, proyecto: "" })}
 
-				${cierre}`
-			: html`${propias}
+				${actividad}`
+			: html`${descripcion}
 
 				<h2>Hijas</h2>
 				${
@@ -1115,11 +1157,30 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 						</ul>`
 				}
 
-				<h2>Consumo</h2>
-				${tablaConsumo(completa.consumo)}
-
 				${comun}
-				${cierre}`;
+				${actividad}`;
+
+	// A partir de 64 rem el panel se va a la derecha y se queda fijo al hacer
+	// scroll; por debajo cae encima de la descripción. Lleva lo que se consulta
+	// (propiedades y consumo) y lo excepcional, que va plegado.
+	const panel = html`<aside class="panel">
+		${propiedadesDeTarea(deps.db, completa, buscadorDeCreador(deps.db))}
+		${
+			tarea.tipo === "funcionalidad"
+				? html``
+				: html`<h2>Consumo</h2>
+					${tablaConsumo(completa.consumo)}`
+		}
+		${vueltasAtras(completa)}
+		${detallesEditar(deps.db, tarea, completa.dependeDe)}
+		${detallesBorrar(tarea)}
+	</aside>`;
+
+	const cuerpo = html`${preguntasArriba(completa)}
+		<div class="ficha">
+			<div class="principal">${principal}</div>
+			${panel}
+		</div>`;
 
 	return c.html(
 		// La ficha no se recarga sola: tiene formularios y el humano puede estar
@@ -1135,9 +1196,9 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 			// proyecto es y llevan a sus tableros.
 			migas: migasDeFicha(deps.db, tarea.proyectoId, id),
 			etiquetas: html`${insigniaEstado(tarea.estado)}${insigniaTipoTarea(tarea.tipo)}${insigniasMarcas(completa.marcas)}`,
-			// El tablero de las partes necesita las cinco columnas: en 60 rem se
-			// desplazaría en horizontal cada vez que se mira.
-			ancho: tarea.tipo === "funcionalidad" ? "completo" : undefined,
+			// La ficha es una vista de incidencia: en ancho, el panel de la derecha
+			// necesita sitio, y el tablero de una funcionalidad, sus cinco columnas.
+			ancho: "completo",
 			acciones: accionesFicha(completa),
 			aviso,
 			cuerpo,
@@ -1227,6 +1288,22 @@ function paginaBorrar(c: Context, deps: DependenciasWeb, tareaId: number): Respu
  */
 function vuelta(formulario: Formulario, tareaId: number): string {
 	return destinoSeguro(campo(formulario, "volver"), `/tareas/${formatearId(tareaId)}`);
+}
+
+/**
+ * Dónde se pinta el mensaje cuando la acción rompe una regla: en la página
+ * desde la que se lanzó. Quien viene de la bandeja se queda en la bandeja; el
+ * resto vuelve a la ficha, como siempre.
+ */
+function paginaDeVuelta(
+	c: Context,
+	deps: DependenciasWeb,
+	formulario: Formulario,
+	tareaId: number,
+	error: unknown,
+): RespuestaHtml {
+	const aviso = mensajeDeRegla(error);
+	return vuelta(formulario, tareaId) === "/" ? paginaBandeja(c, deps, aviso) : paginaFicha(c, deps, tareaId, aviso);
 }
 
 /** Todas las rutas de tareas: lista, alta, ficha y las acciones del humano. */
@@ -1330,7 +1407,7 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 			});
 			return c.redirect(vuelta(formulario, tareaId), 302);
 		} catch (error) {
-			return paginaFicha(c, deps, tareaId, mensajeDeRegla(error));
+			return paginaDeVuelta(c, deps, formulario, tareaId, error);
 		}
 	});
 
@@ -1344,7 +1421,7 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 			aprobarEjecucion(deps.db, { tareaId, usuarioId: usuarioActual(c).id });
 			return c.redirect(vuelta(formulario, tareaId), 302);
 		} catch (error) {
-			return paginaFicha(c, deps, tareaId, mensajeDeRegla(error));
+			return paginaDeVuelta(c, deps, formulario, tareaId, error);
 		}
 	});
 
@@ -1388,7 +1465,7 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 			});
 			return c.redirect(vuelta(formulario, tareaId), 302);
 		} catch (error) {
-			return paginaFicha(c, deps, tareaId, mensajeDeRegla(error));
+			return paginaDeVuelta(c, deps, formulario, tareaId, error);
 		}
 	});
 }

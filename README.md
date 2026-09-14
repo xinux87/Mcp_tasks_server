@@ -22,6 +22,11 @@ activada —lo normal— la ejecución arranca sola en cuanto el análisis termi
 Una **funcionalidad** es una tarea que se descompone en partes; una **pregunta** es una tarea cuya
 respuesta es la respuesta misma, sin código.
 
+**La web abre en la bandeja**: lo que espera por el humano, de todos los proyectos, en cuatro bloques
+—preguntas sin contestar, análisis por aprobar, resultados por revisar y lo que lleva más de una semana
+en `backlog`—. Se contesta y se aprueba desde ahí mismo, sin abrir la ficha, y el número de pendientes va
+en la barra lateral y en el título de la pestaña. Las tareas se ven además como lista y como kanban.
+
 **Un proyecto** es un repositorio, con su rama principal y su comando de verificación. Las tareas viven
 en un proyecto y cada terminal pertenece a uno y trabaja en una carpeta: una máquina con tres
 repositorios tiene tres terminales, cada uno con su token. El bucle reporta al registrarse en qué carpeta

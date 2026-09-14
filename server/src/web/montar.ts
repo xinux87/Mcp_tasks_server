@@ -3,6 +3,7 @@ import { html } from "hono/html";
 import { registrarEstaticos } from "./estaticos.ts";
 import { NOMBRE_PROYECTO, pagina } from "./plantilla.ts";
 import { registrarRutasActividad } from "./rutas/actividad.ts";
+import { registrarRutasBandeja } from "./rutas/bandeja.ts";
 import { registrarRutasEventos } from "./rutas/eventos.ts";
 import { registrarRutasFuncionalidades } from "./rutas/funcionalidades.ts";
 import { registrarRutasKanban } from "./rutas/kanban.ts";
@@ -21,6 +22,8 @@ export type { DependenciasWeb } from "./sesion.ts";
  * el resto de la web.
  */
 const PRIVADAS = [
+	// La bandeja del humano, que es la página de inicio.
+	"/",
 	"/tareas",
 	"/tareas/*",
 	"/funcionalidades",
@@ -66,8 +69,7 @@ export function montarWeb(app: Hono, deps: DependenciasWeb): void {
 	// La hoja de estilos, el JavaScript propio y SortableJS.
 	registrarEstaticos(app);
 
-	app.get("/", (c) => c.redirect("/tareas", 302));
-
+	registrarRutasBandeja(app, deps);
 	registrarRutasSesion(app, deps);
 	registrarRutasEventos(app, deps);
 	// El kanban va antes que las rutas de tarea: si no, `/tareas/kanban` se

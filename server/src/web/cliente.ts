@@ -408,9 +408,9 @@ function alSubirLaRevision() {
 			return;
 		}
 	}
-	// La lista y las funcionalidades se vuelven a pedir enteras: no tienen
-	// ningún formulario a medio escribir que se pueda perder.
-	if (vista === "lista" || vista === "funcionalidades") {
+	// La lista, las funcionalidades y la bandeja se vuelven a pedir enteras: lo
+	// que enseñan es lo que está pendiente, y eso cambia solo.
+	if (vista === "lista" || vista === "funcionalidades" || vista === "bandeja") {
 		recargarPagina();
 		return;
 	}

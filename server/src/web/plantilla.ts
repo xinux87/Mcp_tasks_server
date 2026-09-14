@@ -115,6 +115,8 @@ const BLOQUES: readonly { titulo: string; entradas: readonly EntradaNav[] }[] = 
 	{
 		titulo: "Tareas",
 		entradas: [
+			// La bandeja cruza todos los proyectos: no se acota a ninguno.
+			{ ruta: "/", texto: "Bandeja", vistas: ["bandeja"] },
 			{ ruta: "/tareas", texto: "Lista", vistas: ["lista", "ficha", "tarea", "tarea-nueva"], acotable: true },
 			{ ruta: "/tareas/kanban", texto: "Kanban", vistas: ["kanban"], acotable: true },
 			{ ruta: "/funcionalidades", texto: "Funcionalidades", vistas: ["funcionalidades"], acotable: true },
@@ -152,6 +154,12 @@ export type NavProyectos = {
 	/** Sin lista no se pinta el selector: es lo que hacen el login y la página de error. */
 	proyectos?: readonly Proyecto[];
 	proyecto?: Proyecto;
+	/**
+	 * Cuántas cosas esperan por el humano: preguntas sin contestar, aprobaciones
+	 * y resultados sin revisar. Sale en la entrada «Bandeja» y en el título de la
+	 * pestaña. Lo calcula `navProyectos`, una vez por página.
+	 */
+	pendientes?: number;
 };
 
 export type OpcionesPagina = NavProyectos & {
@@ -182,10 +190,12 @@ export type OpcionesPagina = NavProyectos & {
 	cuerpo: Html;
 };
 
-function enlaceNav(entrada: EntradaNav, vista: string, prefijo: string): Html {
+function enlaceNav(entrada: EntradaNav, vista: string, prefijo: string, pendientes: number): Html {
 	const activo = entrada.vistas.includes(vista);
 	const href = entrada.acotable === true ? `${prefijo}${entrada.ruta}` : entrada.ruta;
-	return html`<a class="enlace-nav" href="${href}"${activo ? raw(' aria-current="page"') : ""}>${entrada.texto}</a>`;
+	// Solo la bandeja lleva número, y solo cuando hay algo esperando.
+	const cuantas = entrada.ruta === "/" && pendientes > 0 ? html`<span class="contador">${pendientes}</span>` : html``;
+	return html`<a class="enlace-nav" href="${href}"${activo ? raw(' aria-current="page"') : ""}>${entrada.texto}${cuantas}</a>`;
 }
 
 /**
@@ -216,7 +226,7 @@ function selectorProyecto(proyectos: readonly Proyecto[], proyecto: Proyecto | u
 function barraLateral(
 	usuario: Usuario,
 	vista: string,
-	nav: { proyectos: readonly Proyecto[]; proyecto?: Proyecto },
+	nav: { proyectos: readonly Proyecto[]; proyecto?: Proyecto; pendientes: number },
 ): Html {
 	const prefijo = nav.proyecto === undefined ? "" : `/p/${nav.proyecto.clave}`;
 	return html`<aside class="lateral" id="lateral">
@@ -225,7 +235,7 @@ function barraLateral(
 			${BLOQUES.map(
 				(bloque) => html`<nav class="bloque">
 					<h2>${bloque.titulo}</h2>
-					${bloque.entradas.map((entrada) => enlaceNav(entrada, vista, prefijo))}
+					${bloque.entradas.map((entrada) => enlaceNav(entrada, vista, prefijo, nav.pendientes))}
 				</nav>`,
 			)}
 			<div class="pie-lateral">
@@ -265,16 +275,20 @@ export function pagina({
 	cuerpo,
 	proyectos,
 	proyecto,
+	pendientes = 0,
 }: OpcionesPagina): Html {
 	const conCabecera = migas !== undefined || acciones !== undefined;
 	const clasesContenido = usuario === null ? "contenido contenido-entrada" : "contenido";
 	const clasesDentro = ancho === "completo" ? "dentro dentro-completo" : "dentro";
+	// Lo que espera por el humano se ve desde la pestaña, esté donde esté. Sin
+	// sesión no hay bandeja que contar.
+	const cuantas = usuario === null || pendientes === 0 ? "" : `(${pendientes}) `;
 	return html`<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${titulo} · ${NOMBRE_PROYECTO}</title>
+<title>${cuantas}${titulo} · ${NOMBRE_PROYECTO}</title>
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body${atributosCuerpo(vista, revision)}>
@@ -285,7 +299,7 @@ ${
 	<button type="button" class="alternar-lateral" id="alternar-lateral" aria-controls="lateral" aria-label="Navegación">☰</button>
 	<a class="marca" href="/tareas">${NOMBRE_PROYECTO}</a>
 </header>
-${barraLateral(usuario, vista ?? "", { proyectos: proyectos ?? [], proyecto })}`
+${barraLateral(usuario, vista ?? "", { proyectos: proyectos ?? [], proyecto, pendientes })}`
 }
 <main class="${clasesContenido}">
 	<div class="${clasesDentro}">
