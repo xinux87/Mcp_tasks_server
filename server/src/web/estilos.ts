@@ -388,12 +388,13 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 	color: var(--texto-suave);
 }
 
-/* Solo hueco entre filas: entre etiquetas ya separa el margen de «.insignia». */
+/* El hueco entre etiquetas lo pone el contenedor; la regla del final de la
+   hoja quita el margen propio de «.insignia» aquí para no sumar los dos. */
 .etiquetas {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 0.3rem 0;
+	gap: 0.3rem 0.25rem;
 	margin-top: 0.6rem;
 }
 
@@ -705,7 +706,7 @@ select[multiple] {
 
 /* Los controles no llevan borde propio: un fondo suave y ya. El borde
    transparente reserva el sitio para que el foco no mueva el diseño. */
-input[type="text"], input[type="password"], input[type="number"], textarea, select {
+input[type="text"], input[type="search"], input[type="password"], input[type="number"], textarea, select {
 	width: 100%;
 	max-width: 34rem;
 	padding: 0.4rem 0.6rem;
@@ -721,7 +722,7 @@ input[type="number"] {
 	max-width: 6rem;
 }
 
-input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus, textarea:focus, select:focus {
+input[type="text"]:focus, input[type="search"]:focus, input[type="password"]:focus, input[type="number"]:focus, textarea:focus, select:focus {
 	outline: 2px solid var(--acento);
 	outline-offset: 0;
 }
