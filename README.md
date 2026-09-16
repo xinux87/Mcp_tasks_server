@@ -144,13 +144,15 @@ Dentro de `server/`: `npm test`, `npm run typecheck` y `npm run lint`. El plugin
 La versión va en cuatro sitios a la vez: `server/package.json`, `plugin/.claude-plugin/plugin.json`,
 `.claude-plugin/marketplace.json` y `server/Dockerfile` (etiqueta `org.opencontainers.image.version`).
 Cada versión lleva su etiqueta `vX.Y.Z` en git, que es lo que fija `xinux87/Mcp_tasks_server#vX.Y.Z` al
-instalar el plugin. La imagen se construye y se sube a Docker Hub, a `xinux87/mcp-tareas-server`:
+instalar el plugin. La imagen se construye para `amd64` y `arm64` a la vez y se sube a Docker Hub, a `xinux87/mcp-tareas-server`;
+`buildx` publica las dos bajo la misma etiqueta y cada máquina descarga la suya (una imagen multi-arquitectura
+no se puede cargar en el Docker local, por eso se construye y se sube en el mismo comando):
 
 ```sh
 cd server
-docker build -t xinux87/mcp-tareas-server:0.1.2 .
+docker buildx create --name mcp-tareas --driver docker-container --use   # solo la primera vez
 docker login -u xinux87
-docker push xinux87/mcp-tareas-server:0.1.2
+docker buildx build --platform linux/amd64,linux/arm64 -t xinux87/mcp-tareas-server:0.1.2 --push .
 ```
 
 Desde el clon, `IMAGEN=xinux87/mcp-tareas-server:0.1.2 docker compose up` la descarga en vez de
