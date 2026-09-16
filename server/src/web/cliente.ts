@@ -412,7 +412,11 @@ function prepararTema() {
 /**
  * El desplegable de la barra lateral ya lleva en cada opción su destino, así
  * que sin JavaScript basta con enviar el formulario. Con él sobra el botón:
- * cambiar la opción navega.
+ * cambiar la opción lo envía.
+ *
+ * Se envía el formulario y no se salta a la opción: el paso por /ir es lo
+ * que recuerda que se han elegido todos los proyectos, que es una vista que
+ * ninguna ruta va a escribir después.
  */
 function prepararSelectorProyecto() {
 	const select = document.getElementById("ir-proyecto");
@@ -420,13 +424,16 @@ function prepararSelectorProyecto() {
 		return;
 	}
 	const formulario = select.closest("form");
-	const boton = formulario === null ? null : formulario.querySelector("button");
+	if (formulario === null) {
+		return;
+	}
+	const boton = formulario.querySelector("button");
 	if (boton !== null) {
 		boton.hidden = true;
 	}
 	select.addEventListener("change", function () {
 		if (select.value !== "") {
-			window.location.assign(select.value);
+			formulario.submit();
 		}
 	});
 }

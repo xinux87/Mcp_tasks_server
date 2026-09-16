@@ -11,14 +11,22 @@ import {
 	crearProyecto,
 	editarProyecto,
 	listarProyectos,
+	PROYECTO_PRINCIPAL,
 	type Proyecto,
 } from "../../db/proyectos.ts";
 import { listarTareas } from "../../db/tareas.ts";
-import { buscadorDeColor, type Color, chipDeAlta, chipProyecto, type Miga } from "../componentes.ts";
+import { buscadorDeColor, type Color, chipDeAlta, chipProyecto, type Miga, selectorDeColor } from "../componentes.ts";
 import { SIN_DATO } from "../formatos.ts";
-import { campo, campoOpcional, ESTADO_AVISO, leerFormulario, mensajeDeRegla } from "../formulario.ts";
+import { campo, campoOpcional, ESTADO_AVISO, type Formulario, leerFormulario, mensajeDeRegla } from "../formulario.ts";
 import { type Html, type NavProyectos, pagina, type RespuestaHtml } from "../plantilla.ts";
-import { type DependenciasWeb, destinoSeguro, usuarioActual } from "../sesion.ts";
+import {
+	claveRecordada,
+	type DependenciasWeb,
+	destinoSeguro,
+	recordarProyecto,
+	TODOS_LOS_PROYECTOS,
+	usuarioActual,
+} from "../sesion.ts";
 
 declare module "hono" {
 	interface ContextVariableMap {
@@ -46,13 +54,55 @@ export function prefijo(proyecto: Proyecto | undefined): string {
 }
 
 /**
+ * Qué se estaba mirando la última vez: un proyecto, o todos. La vista cruzada
+ * solo sale de haberla elegido; sin cookie, o con la clave de un proyecto que
+ * ya no existe, se vuelve al principal, que es donde cae todo por defecto.
+ */
+export type Recordado = { modo: "proyecto"; proyecto: Proyecto } | { modo: "todos" };
+
+export function proyectoRecordado(c: Context, db: DatabaseSync): Recordado {
+	const clave = claveRecordada(c);
+	if (clave === TODOS_LOS_PROYECTOS) {
+		return { modo: "todos" };
+	}
+	const recordado = clave === undefined ? undefined : buscarProyectoPorClave(db, clave);
+	const proyecto = recordado ?? buscarProyectoPorId(db, PROYECTO_PRINCIPAL);
+	return proyecto === undefined ? { modo: "todos" } : { modo: "proyecto", proyecto };
+}
+
+/**
+ * El proyecto de una página que no lo lleva en la URL: el recordado, y el
+ * principal cuando lo recordado es «todos». Es donde nace una tarea creada
+ * desde la vista cruzada.
+ */
+export function proyectoDeTrabajo(c: Context, db: DatabaseSync): Proyecto | undefined {
+	const recordado = proyectoRecordado(c, db);
+	return recordado.modo === "proyecto" ? recordado.proyecto : buscarProyectoPorId(db, PROYECTO_PRINCIPAL);
+}
+
+/**
  * Lo que la barra lateral necesita saber en cualquier página con sesión: los
  * proyectos y cuántas cosas esperan por el humano. Todas las páginas lo
  * reparten sobre `pagina`, así que el contador de la bandeja se calcula aquí
  * una sola vez y no en cada ruta.
+ *
+ * El proyecto de la barra es el de la URL cuando la página está acotada y el
+ * recordado cuando no: así los enlaces de Tareas, Funcionalidades e Informes
+ * llevan al proyecto en el que se estaba desde cualquier pantalla.
  */
 export function navProyectos(c: Context, db: DatabaseSync): NavProyectos {
-	return { proyectos: listarProyectos(db), proyecto: proyectoActual(c), pendientes: contarPendientes(db) };
+	return { proyectos: listarProyectos(db), proyecto: proyectoDeLaBarra(c, db), pendientes: contarPendientes(db) };
+}
+
+/**
+ * A qué proyecto apuntan la barra lateral y la acción «Nueva tarea»: el de la
+ * URL si la página está acotada, y si no el recordado. `undefined` solo cuando
+ * se eligieron todos los proyectos, que es la única forma de llegar a las
+ * rutas sin prefijo.
+ */
+export function proyectoDeLaBarra(c: Context, db: DatabaseSync): Proyecto | undefined {
+	const recordado = proyectoRecordado(c, db);
+	return proyectoActual(c) ?? (recordado.modo === "proyecto" ? recordado.proyecto : undefined);
 }
 
 function paginaSinProyecto(c: Context, db: DatabaseSync, clave: string): RespuestaHtml {
@@ -84,6 +134,9 @@ export function exigeProyecto(deps: DependenciasWeb): MiddlewareHandler {
 			return paginaSinProyecto(c, deps.db, clave);
 		}
 		c.set("proyecto", proyecto);
+		// Una vez por petición: la barra lateral de cualquier otra página volverá
+		// a este proyecto sin preguntar.
+		recordarProyecto(c, deps.config, proyecto.clave);
 		await next();
 		return;
 	};
@@ -118,7 +171,7 @@ type ColorDe = (nombre: string) => Color | null;
 function filaProyecto(db: DatabaseSync, fila: Fila, colorDe: ColorDe): Html {
 	const { proyecto } = fila;
 	return html`<tr>
-			<td>${chipProyecto(proyecto.clave)}</td>
+			<td>${chipProyecto(proyecto)}</td>
 			<td>
 				<a href="${`/p/${proyecto.clave}/tareas`}">${proyecto.nombre}</a>
 				${proyecto.descripcion === "" ? html`` : html`<span class="pequeno silencio">${proyecto.descripcion}</span>`}
@@ -160,7 +213,9 @@ function camposProyecto(proyecto: Proyecto | null): Html {
 			<span>Verificación</span>
 			<input type="text" name="verificacion" value="${proyecto?.verificacion ?? ""}" placeholder="cd server && npm test">
 			<span class="ayuda">El comando que tiene que pasar la parte que integra la rama.</span>
-		</label>`;
+		</label>
+		<p class="nombre-campo">Color</p>
+		${selectorDeColor(proyecto === null ? "Color del proyecto" : `Color de ${proyecto.clave}`, proyecto?.color ?? null)}`;
 }
 
 function tarjetaNuevoProyecto(): Html {
@@ -174,7 +229,7 @@ function tarjetaNuevoProyecto(): Html {
 				<label>
 					<span>Clave</span>
 					<input type="text" name="clave" placeholder="WEB" required>
-					<span class="ayuda">De dos a seis caracteres, mayúsculas y cifras, empezando por letra. Va en las URLs y no se cambia.</span>
+					<span class="ayuda">De dos a ocho caracteres, mayúsculas y cifras, empezando por letra. Va en las URLs y no se cambia.</span>
 				</label>
 				${camposProyecto(null)}
 				<button type="submit" class="principal">Crear proyecto</button>
@@ -243,7 +298,7 @@ function paginaNoEncontrado(c: Context, deps: DependenciasWeb): RespuestaHtml {
 function paginaEditar(c: Context, deps: DependenciasWeb, proyecto: Proyecto, aviso: string | null): RespuestaHtml {
 	const cuerpo = html`<form method="post" action="/proyectos/${proyecto.id}/editar">
 			<p class="nombre-campo">Clave</p>
-			<p>${chipProyecto(proyecto.clave)} <span class="silencio">se fija al crear el proyecto y no se cambia.</span></p>
+			<p>${chipProyecto(proyecto)} <span class="silencio">se fija al crear el proyecto y no se cambia.</span></p>
 			${camposProyecto(proyecto)}
 			<div class="acciones">
 				<button type="submit" class="principal">Guardar cambios</button>
@@ -264,6 +319,16 @@ function paginaEditar(c: Context, deps: DependenciasWeb, proyecto: Proyecto, avi
 	);
 }
 
+/**
+ * El color elegido en el formulario. Sin elegir ninguno no se manda el campo:
+ * es lo que hace que el alta reparta el menos usado y que la edición deje el
+ * que ya tenía.
+ */
+function colorElegido(formulario: Formulario): { color?: string } {
+	const color = campoOpcional(formulario, "color");
+	return color === null ? {} : { color };
+}
+
 /** Rutas de proyectos: la lista con su alta, la edición, el borrado y el salto de vista. */
 export function registrarRutasProyectos(app: Hono, deps: DependenciasWeb): void {
 	app.get("/proyectos", (c) => paginaProyectos(c, deps, null));
@@ -278,6 +343,7 @@ export function registrarRutasProyectos(app: Hono, deps: DependenciasWeb): void 
 				repositorio: campoOpcional(formulario, "repositorio"),
 				ramaPrincipal: campoOpcional(formulario, "ramaPrincipal"),
 				verificacion: campoOpcional(formulario, "verificacion"),
+				...colorElegido(formulario),
 				actor: { usuarioId: usuarioActual(c).id },
 			});
 			return c.redirect("/proyectos", 302);
@@ -305,6 +371,7 @@ export function registrarRutasProyectos(app: Hono, deps: DependenciasWeb): void 
 				repositorio: campoOpcional(formulario, "repositorio"),
 				ramaPrincipal: campoOpcional(formulario, "ramaPrincipal"),
 				verificacion: campoOpcional(formulario, "verificacion"),
+				...colorElegido(formulario),
 				actor: { usuarioId: usuarioActual(c).id },
 			});
 			return c.redirect("/proyectos", 302);
@@ -321,7 +388,7 @@ export function registrarRutasProyectos(app: Hono, deps: DependenciasWeb): void 
 		}
 		const cuerpo = html`<section class="caja caja-estrecha">
 			<p>
-				Se borra el proyecto ${chipProyecto(proyecto.clave)} <strong>${proyecto.nombre}</strong>. Solo se
+				Se borra el proyecto ${chipProyecto(proyecto)} <strong>${proyecto.nombre}</strong>. Solo se
 				puede si ya no le queda ninguna tarea ni ningún terminal.
 			</p>
 			<div class="acciones">
@@ -358,5 +425,13 @@ export function registrarRutasProyectos(app: Hono, deps: DependenciasWeb): void 
 
 	// El selector de la barra lateral, sin JavaScript: manda aquí el destino que
 	// lleva puesto cada opción. Solo se admite una ruta de este mismo servidor.
-	app.get("/ir", (c) => c.redirect(destinoSeguro(c.req.query("destino")), 302));
+	// Un destino sin prefijo es la vista cruzada, que es una elección: se
+	// recuerda como tal, porque ninguna ruta la va a escribir después.
+	app.get("/ir", (c) => {
+		const destino = destinoSeguro(c.req.query("destino"));
+		if (!destino.startsWith("/p/")) {
+			recordarProyecto(c, deps.config, TODOS_LOS_PROYECTOS);
+		}
+		return c.redirect(destino, 302);
+	});
 }

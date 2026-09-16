@@ -200,8 +200,9 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 		assert.match(preguntas, /¿Qué separador usamos\?/);
 		assert.match(preguntas, new RegExp(`action="/tareas/${formatearId(tareas.bloqueada.id)}/responder/P1"`));
 		assert.match(preguntas, /<input type="hidden" name="volver" value="\/">/);
-		// El chip del proyecto va en la línea de cada tarea: la bandeja los cruza.
-		assert.match(preguntas, /<span class="insignia proyecto color-gris">DEFAULT<\/span>/);
+		// El chip del proyecto va en la línea de cada tarea, con su color: la
+		// bandeja los cruza.
+		assert.match(preguntas, /<span class="insignia proyecto color-azul">DEFAULT<\/span>/);
 
 		const aprobar = bloque(cuerpo, "Aprueba");
 		assert.match(aprobar, /Plan: una cola\./);

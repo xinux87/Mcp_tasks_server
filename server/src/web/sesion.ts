@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Context, MiddlewareHandler } from "hono";
-import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie";
+import { deleteCookie, getCookie, getSignedCookie, setCookie, setSignedCookie } from "hono/cookie";
 import type { Config } from "../config.ts";
 import { buscarUsuarioPorId, type Usuario } from "../db/consultas.ts";
 
@@ -42,6 +42,37 @@ export async function iniciarSesion(c: Context, config: Config, usuarioId: numbe
 		secure: esSeguro(config),
 		maxAge: SEGUNDOS_SESION,
 	});
+}
+
+/**
+ * Nombre de la cookie que recuerda qué proyecto se está mirando, y el valor
+ * que significa «todos»: la vista cruzada es una elección, no lo que sale por
+ * no haber elegido.
+ */
+export const COOKIE_PROYECTO = "proyecto";
+export const TODOS_LOS_PROYECTOS = "todos";
+
+/** Un año: es una preferencia, no una sesión. */
+const SEGUNDOS_PROYECTO = 365 * 24 * 60 * 60;
+
+/**
+ * Recuerda el proyecto que se está mirando. Va sin firmar porque no da acceso
+ * a nada: lo único que decide es a dónde apuntan los enlaces de la barra
+ * lateral, y una clave que no exista se ignora al leerla.
+ */
+export function recordarProyecto(c: Context, config: Config, clave: string): void {
+	setCookie(c, COOKIE_PROYECTO, clave, {
+		path: "/",
+		httpOnly: true,
+		sameSite: "Lax",
+		secure: esSeguro(config),
+		maxAge: SEGUNDOS_PROYECTO,
+	});
+}
+
+/** La clave recordada, tal como llegó. `undefined` si no hay cookie. */
+export function claveRecordada(c: Context): string | undefined {
+	return getCookie(c, COOKIE_PROYECTO);
 }
 
 /** Borra la cookie de sesión. */

@@ -50,7 +50,7 @@ import {
 } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
 import { NOMBRE_MARCA } from "../vocabulario.ts";
-import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
+import { navProyectos, prefijo, proyectoActual, proyectoDeLaBarra } from "./proyectos.ts";
 
 /** Las marcas por las que se puede filtrar, en el orden en que se muestran. */
 export const MARCAS: readonly Marca[] = [
@@ -326,8 +326,8 @@ function fasesLegibles(item: ItemIndice): string {
 type Vecindad = {
 	dependencias: Map<number, number[]>;
 	funcionalidades: Map<number, string>;
-	/** La clave de cada proyecto, solo en la vista cruzada: acotada sobraría. */
-	proyectos: Map<number, string> | null;
+	/** El proyecto de cada tarea, solo en la vista cruzada: acotada sobraría. */
+	proyectos: Map<number, Proyecto> | null;
 };
 
 function vecindadDe(db: DatabaseSync, items: ItemIndice[], conFuncionalidad: boolean, conProyecto: boolean): Vecindad {
@@ -352,7 +352,7 @@ function vecindadDe(db: DatabaseSync, items: ItemIndice[], conFuncionalidad: boo
 			items.map((item) => item.id),
 		),
 		funcionalidades,
-		proyectos: conProyecto ? new Map(listarProyectos(db).map((proyecto) => [proyecto.id, proyecto.clave])) : null,
+		proyectos: conProyecto ? new Map(listarProyectos(db).map((proyecto) => [proyecto.id, proyecto])) : null,
 	};
 }
 
@@ -382,7 +382,7 @@ export function progresoDe(item: ItemIndice): Html {
 function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
 	const id = formatearId(item.id);
 	const funcionalidad = item.padreId === null ? undefined : vecindad.funcionalidades.get(item.padreId);
-	const clave = vecindad.proyectos?.get(item.proyectoId);
+	const proyecto = vecindad.proyectos?.get(item.proyectoId);
 	const tokens = tokensConPresupuesto(item.tokensConHijas, item.presupuesto);
 	// El filete de la izquierda es la misma señal que la etiqueta: se ve de lejos
 	// cuáles de todo el tablero esperan por el humano.
@@ -390,7 +390,7 @@ function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
 	return html`<article class="tarjeta${espera ? " espera" : ""}" data-id="${id}" data-estado="${item.estado}">
 			<div class="linea">
 				<a class="id-tarea" href="/tareas/${id}">${id}</a>
-				${clave === undefined ? html`` : chipProyecto(clave)}
+				${proyecto === undefined ? html`` : chipProyecto(proyecto)}
 				${esperaPorTi(item.estado, item.marcas)}
 				${insigniaTipoDeItem(item)}
 				${insigniasMarcas(item.marcas)}
@@ -546,11 +546,11 @@ function franjasDe(db: DatabaseSync, items: ItemIndice[]): Franja[] {
  */
 function franja(db: DatabaseSync, { cual, items }: Franja, vecindad: Vecindad): Html {
 	const id = cual === null ? "" : formatearId(cual.id);
-	const clave = cual === null ? undefined : vecindad.proyectos?.get(cual.proyectoId);
+	const proyecto = cual === null ? undefined : vecindad.proyectos?.get(cual.proyectoId);
 	const cabecera =
 		cual === null
 			? html`<h2>Sueltas</h2>`
-			: html`${clave === undefined ? html`` : chipProyecto(clave)}
+			: html`${proyecto === undefined ? html`` : chipProyecto(proyecto)}
 				<a class="id-tarea" href="/tareas/${id}">${id}</a>
 				<h2><a href="/tareas/${id}">${cual.titulo}</a></h2>
 				${insigniaEstado(cual.estado)}
@@ -602,7 +602,7 @@ function paginaKanban(c: Context, deps: DependenciasWeb): RespuestaHtml {
 			usuario: usuarioActual(c),
 			vista: "kanban",
 			revision: revisionActual(db),
-			acciones: accionNuevaTarea(prefijo(acotado)),
+			acciones: accionNuevaTarea(prefijo(proyectoDeLaBarra(c, db))),
 			ancho: "completo",
 			cuerpo,
 		}),

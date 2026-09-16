@@ -3,7 +3,7 @@ import type { Context, Hono } from "hono";
 import { html } from "hono/html";
 import { revisionActual } from "../../db/consultas.ts";
 import { consumoDeTarea } from "../../db/consumo.ts";
-import { buscarProyectoPorClave, listarProyectos } from "../../db/proyectos.ts";
+import { buscarProyectoPorClave, listarProyectos, type Proyecto } from "../../db/proyectos.ts";
 import { buscarTarea, type ItemIndice, listarTareas, type Tarea } from "../../db/tareas.ts";
 import { formatearId } from "../../md/ids.ts";
 import {
@@ -102,11 +102,11 @@ function filaFuncionalidad(fila: Fila, creadorDe: Creador, claves: Claves): Html
 		usuarioId: fila.tarea.creadaPorUsuarioId,
 		terminalId: fila.tarea.creadaPorTerminalId,
 	});
-	const clave = claves?.get(fila.item.proyectoId);
+	const proyecto = claves?.get(fila.item.proyectoId);
 	return html`<tr>
 			<td>
 				<a class="id-tarea" href="/tareas/${id}">${id}</a>
-				${clave === undefined ? html`` : chipProyecto(clave)}
+				${proyecto === undefined ? html`` : chipProyecto(proyecto)}
 				<a href="/tareas/${id}">${fila.item.titulo}</a>
 			</td>
 			<td>${insigniaEstado(fila.item.estado)}</td>
@@ -119,8 +119,8 @@ function filaFuncionalidad(fila: Fila, creadorDe: Creador, claves: Claves): Html
 		</tr>`;
 }
 
-/** La clave de cada proyecto, solo en la vista cruzada: acotada sobraría. */
-type Claves = Map<number, string> | null;
+/** El proyecto de cada fila, solo en la vista cruzada: acotada sobraría. */
+type Claves = Map<number, Proyecto> | null;
 
 function tabla(filas: Fila[], creadorDe: Creador, claves: Claves): Html {
 	if (filas.length === 0) {
@@ -151,7 +151,7 @@ export function registrarRutasFuncionalidades(app: Hono, deps: DependenciasWeb):
 		const abiertas = filas.filter((fila) => fila.item.estado !== "finished");
 		const cerradas = filas.filter((fila) => fila.item.estado === "finished");
 		const creadorDe = buscadorDeCreador(deps.db);
-		const claves = acotado === undefined ? new Map(listarProyectos(deps.db).map((cual) => [cual.id, cual.clave])) : null;
+		const claves = acotado === undefined ? new Map(listarProyectos(deps.db).map((cual) => [cual.id, cual])) : null;
 		const base = prefijo(acotado);
 
 		const filtros =

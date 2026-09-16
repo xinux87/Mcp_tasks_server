@@ -2045,12 +2045,14 @@ details.caja[open] > summary {
 
 /* --- el tipo manda en el formulario de tarea ------------------------------- */
 
-/* Una pregunta solo tiene fase de análisis y una funcionalidad no tiene
-   autoejecución. El servidor ya lo ignora al guardar; esto lo esconde en el
-   momento en que se elige el tipo, sin JavaScript. */
+/* Una pregunta solo tiene fase de análisis, una funcionalidad no tiene
+   autoejecución y no es parte de ninguna otra. El servidor ya lo ignora al
+   guardar; esto lo esconde en el momento en que se elige el tipo, sin
+   JavaScript. */
 form:has(select[name="tipo"] option[value="pregunta"]:checked) fieldset[data-fase="ejecucion"],
 form:has(select[name="tipo"] option[value="pregunta"]:checked) label[data-casilla="autoejecucion"],
-form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label[data-casilla="autoejecucion"] {
+form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label[data-casilla="autoejecucion"],
+form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(select[name="padre"]) {
 	display: none;
 }
 

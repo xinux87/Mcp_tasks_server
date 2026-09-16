@@ -3,6 +3,7 @@ import { html, raw } from "hono/html";
 import { listarTerminales, listarUsuarios } from "../db/admin.ts";
 import { COLORES_USUARIO } from "../db/colores.ts";
 import type { TipoComentario } from "../db/hilo.ts";
+import { listarProyectos, type Proyecto } from "../db/proyectos.ts";
 import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
 import { formatearId } from "../md/ids.ts";
 import { abreviar, edad, horasDesde, SIN_DATO } from "./formatos.ts";
@@ -242,12 +243,32 @@ export function chipAutor(autor: string, colorDe: (nombre: string) => Color | nu
 	return chipUsuario(autor, null);
 }
 
+/** Lo que hace falta para pintar el chip de un proyecto. Un `Proyecto` lo cumple. */
+export type ConChip = {
+	clave: string;
+	color: Color;
+};
+
 /**
- * Un proyecto: su clave en una etiqueta gris. No hay color por proyecto, que
- * los colores son de los usuarios; la clave sola ya lo distingue.
+ * Un proyecto: su clave en una etiqueta de su color. El color es del proyecto
+ * entero, así que la misma clave se reconoce igual en el tablero, en la ficha
+ * y en la lista de terminales.
  */
-export function chipProyecto(clave: string): Html {
-	return etiqueta(clave, "gris", "proyecto");
+export function chipProyecto(proyecto: ConChip): Html {
+	return etiqueta(proyecto.clave, proyecto.color, "proyecto");
+}
+
+/**
+ * Cómo se busca el proyecto de una tarea o de un terminal al pintar, cuando lo
+ * único que se tiene es su identificador. Se lee la tabla una vez por página,
+ * como en `buscadorDeColor`: hay una fila por tarjeta y ninguna puede consultar
+ * la base por su cuenta.
+ */
+export type BuscaProyecto = (proyectoId: number) => Proyecto | undefined;
+
+export function buscadorDeProyecto(db: DatabaseSync): BuscaProyecto {
+	const proyectos = new Map(listarProyectos(db).map((proyecto) => [proyecto.id, proyecto]));
+	return (proyectoId) => proyectos.get(proyectoId);
 }
 
 /**

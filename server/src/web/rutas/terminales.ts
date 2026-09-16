@@ -17,8 +17,10 @@ import type { Usuario } from "../../db/consultas.ts";
 import { listarProyectos, PROYECTO_PRINCIPAL, type Proyecto } from "../../db/proyectos.ts";
 import { direccionesDelServidor } from "../../direcciones.ts";
 import {
+	type BuscaProyecto,
 	bloqueCodigo,
 	buscadorDeColor,
+	buscadorDeProyecto,
 	type Color,
 	chipDeAlta,
 	chipProyecto,
@@ -180,14 +182,15 @@ function formularioAgentes(terminal: TerminalListado): Html {
 		</form>`;
 }
 
-function filaTerminal(db: DatabaseSync, terminal: TerminalListado, colorDe: ColorDe): Html {
+function filaTerminal(db: DatabaseSync, terminal: TerminalListado, colorDe: ColorDe, proyectoDe: BuscaProyecto): Html {
 	const revocado = terminal.revocadoEn !== null;
+	const proyecto = proyectoDe(terminal.proyectoId);
 	return html`<tr>
 			<td>
 				${terminal.nombre}
 				${terminal.ruta === null ? html`` : html`<span class="pequeno silencio">${terminal.ruta}</span>`}
 			</td>
-			<td>${chipProyecto(terminal.proyecto)}</td>
+			<td>${proyecto === undefined ? html`` : chipProyecto(proyecto)}</td>
 			<td class="pequeno celda-cuenta">${terminal.cuenta}</td>
 			<td>${chipUsuario(terminal.usuario, colorDe(terminal.usuario))}</td>
 			<td>${insigniaTerminal(terminal)}</td>
@@ -261,6 +264,7 @@ function tarjetaNuevoTerminal(proyectos: readonly Proyecto[]): Html {
 function paginaTerminales(c: Context, deps: DependenciasWeb, aviso: string | null): RespuestaHtml {
 	const terminales = listarTerminales(deps.db);
 	const colorDe = buscadorDeColor(deps.db);
+	const proyectoDe = buscadorDeProyecto(deps.db);
 	const tabla =
 		terminales.length === 0
 			? html`<p class="silencio">Ninguno todavía.</p>`
@@ -273,7 +277,7 @@ function paginaTerminales(c: Context, deps: DependenciasWeb, aviso: string | nul
 								<th>Creado por</th><th>Revocado por</th><th></th>
 							</tr>
 						</thead>
-						<tbody>${terminales.map((terminal) => filaTerminal(deps.db, terminal, colorDe))}</tbody>
+						<tbody>${terminales.map((terminal) => filaTerminal(deps.db, terminal, colorDe, proyectoDe))}</tbody>
 					</table>
 				</div>`;
 

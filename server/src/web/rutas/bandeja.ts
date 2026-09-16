@@ -4,7 +4,7 @@ import { html } from "hono/html";
 import { bandejaDelHumano } from "../../db/bandeja.ts";
 import { revisionActual } from "../../db/consultas.ts";
 import { type Comentario, comentariosDeTarea, preguntasDeTarea, type TipoComentario } from "../../db/hilo.ts";
-import { listarProyectos } from "../../db/proyectos.ts";
+import { listarProyectos, type Proyecto } from "../../db/proyectos.ts";
 import { type ItemIndice, listarTareas } from "../../db/tareas.ts";
 import { formatearId } from "../../md/ids.ts";
 import { buscadorDeColor, chipProyecto, edadEnColumna } from "../componentes.ts";
@@ -25,7 +25,7 @@ import { navProyectos } from "./proyectos.ts";
  */
 
 /** La clave de cada proyecto, para el chip de cada línea. Una lectura por página. */
-type Claves = Map<number, string>;
+type Claves = Map<number, Proyecto>;
 
 /** Lo que hace falta para pintar cualquier bloque. Se arma una vez por página. */
 type Entorno = {
@@ -50,9 +50,9 @@ function ultimo(db: DatabaseSync, tareaId: number, tipo: TipoComentario): Coment
  */
 function linea(item: ItemIndice, claves: Claves, cuanto?: Html): Html {
 	const id = formatearId(item.id);
-	const clave = claves.get(item.proyectoId);
+	const proyecto = claves.get(item.proyectoId);
 	return html`<p class="linea-bandeja">
-			${clave === undefined ? html`` : chipProyecto(clave)}
+			${proyecto === undefined ? html`` : chipProyecto(proyecto)}
 			<a class="id-tarea" href="/tareas/${id}">${id}</a>
 			<span class="titulo">${item.titulo}</span>
 			${cuanto ?? edadEnColumna(item)}
@@ -149,7 +149,7 @@ export function paginaBandeja(c: Context, deps: DependenciasWeb, aviso: string |
 	const bandeja = bandejaDelHumano(db, ahora);
 	const entorno: Entorno = {
 		db,
-		claves: new Map(listarProyectos(db).map((proyecto) => [proyecto.id, proyecto.clave])),
+		claves: new Map(listarProyectos(db).map((proyecto) => [proyecto.id, proyecto])),
 		colorDe: buscadorDeColor(db),
 		items: listarTareas(db),
 	};

@@ -465,7 +465,7 @@ test("la página de informes exige sesión y enseña las cuatro preguntas con su
 		assert.ok(cuerpo.includes("<h2>Ritmo</h2>"), "falta el ritmo");
 		assert.match(cuerpo, /Transiciones registradas desde \d{4}-\d{2}-\d{2}/);
 		// La entrada de la barra lateral, al final del bloque de tareas.
-		assert.match(cuerpo, /<a class="enlace-nav" href="\/informes" aria-current="page">Informes/);
+		assert.match(cuerpo, /<a class="enlace-nav" href="\/p\/DEFAULT\/informes" aria-current="page">Informes/);
 	} finally {
 		await montaje.cerrar();
 	}

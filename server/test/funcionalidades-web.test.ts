@@ -139,7 +139,8 @@ test("una funcionalidad se crea con su rama y sale en su propia lista", async ()
 		assert.ok(!lista.includes('class="progreso"'), "sin partes no hay barra de progreso");
 		// Se refresca sola, como la lista de tareas.
 		assert.match(lista, /<body data-vista="funcionalidades" data-revision="\d+">/);
-		assert.match(lista, /<a class="enlace-nav" href="\/funcionalidades" aria-current="page">/);
+		// La navegación lleva al proyecto que se está mirando, que sin cookie es el principal.
+		assert.match(lista, /<a class="enlace-nav" href="\/p\/DEFAULT\/funcionalidades" aria-current="page">/);
 	} finally {
 		await montaje.cerrar();
 	}

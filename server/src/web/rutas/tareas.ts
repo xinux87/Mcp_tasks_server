@@ -8,7 +8,7 @@ import type { ConsumoDeTarea } from "../../db/consumo.ts";
 import { dependenciasPendientes, dependientesDe } from "../../db/dependencias.ts";
 import { editarTareaBacklog, exigirTitulo } from "../../db/edicion.ts";
 import { type Comentario, comentarioHumano, iteracionesDe, responder, type TipoComentario } from "../../db/hilo.ts";
-import { buscarProyectoPorId, listarProyectos, PROYECTO_PRINCIPAL, type Proyecto } from "../../db/proyectos.ts";
+import { buscarProyectoPorId, listarProyectos, type Proyecto } from "../../db/proyectos.ts";
 import {
 	aprobarEjecucion,
 	borrarTarea,
@@ -106,7 +106,7 @@ import {
 	progresoDe,
 	tablero,
 } from "./kanban.ts";
-import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
+import { navProyectos, prefijo, proyectoActual, proyectoDeLaBarra, proyectoDeTrabajo } from "./proyectos.ts";
 
 const ESTADOS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
 
@@ -128,8 +128,6 @@ type ValoresTarea = {
 	titulo: string;
 	descripcion: string;
 	tipo: TipoTarea;
-	/** Proyecto en el que vive. Nulo es «el que traiga la ruta, o el principal». */
-	proyectoId: number | null;
 	/** Rama de git en la que se trabaja. Una parte hereda la de su funcionalidad. */
 	rama: string | null;
 	/** La funcionalidad de la que esta tarea es parte, si cuelga de alguna. */
@@ -148,8 +146,7 @@ type ValoresTarea = {
 const TAREA_VACIA: ValoresTarea = {
 	titulo: "",
 	descripcion: "",
-	tipo: "tarea",
-	proyectoId: null,
+	tipo: "pregunta",
 	rama: null,
 	padreId: null,
 	dependeDe: [],
@@ -172,17 +169,17 @@ type OpcionesTarea = {
 	activos: TerminalListado[];
 	padres: ItemIndice[];
 	candidatas: ItemIndice[];
-	/** Entre qué proyectos se elige, o `null` si lo fija la ruta del tablero. */
-	proyectos: Proyecto[] | null;
+	/** En qué proyecto vive o va a nacer. No se elige: se enseña. */
+	proyecto: Proyecto | undefined;
 };
 
-function opcionesDeTarea(db: DatabaseSync, tareaId: number | null, conProyecto = true): OpcionesTarea {
+function opcionesDeTarea(db: DatabaseSync, tareaId: number | null, proyecto: Proyecto | undefined): OpcionesTarea {
 	const items = listarTareas(db);
 	return {
 		activos: terminalesActivos(db),
 		padres: items.filter((item) => item.tipo === "funcionalidad" && item.estado !== "finished" && item.id !== tareaId),
 		candidatas: items.filter((item) => item.estado !== "finished" && item.id !== tareaId),
-		proyectos: conProyecto ? listarProyectos(db) : null,
+		proyecto,
 	};
 }
 
@@ -273,7 +270,6 @@ function valoresCrudos(formulario: Formulario): ValoresTarea {
 		titulo: campo(formulario, "titulo"),
 		descripcion: campo(formulario, "descripcion"),
 		tipo,
-		proyectoId: numeroONull(campo(formulario, "proyecto")),
 		rama: campoOpcional(formulario, "rama"),
 		padreId: idONull(campo(formulario, "padre")),
 		dependeDe: idsDeFormulario(formulario, "dependeDe"),
@@ -358,21 +354,16 @@ function fase(
 }
 
 /**
- * El desplegable del proyecto. Una tarea cambia de proyecto solo en `backlog`
- * y solo si está sola: la regla la comprueba la base al guardar.
+ * El proyecto de la tarea, de solo lectura: el del tablero desde el que se
+ * crea, o el que se estaba mirando. No se elige aquí ni se cambia después; una
+ * mudanza es de la ficha del proyecto, no del alta de una tarea.
  */
-function selectProyecto(proyectos: Proyecto[], elegido: number | null): Html {
-	const principal = elegido ?? PROYECTO_PRINCIPAL;
-	return html`<label>
-			<span>Proyecto</span>
-			<select name="proyecto">
-				${proyectos.map(
-					(cual) =>
-						html`<option value="${cual.id}"${cual.id === principal ? raw(" selected") : ""}>${cual.clave} — ${cual.nombre}</option>`,
-				)}
-			</select>
-			<span class="ayuda">El repositorio en el que vive. Solo se cambia mientras está por definir y si la tarea no cuelga de nada.</span>
-		</label>`;
+function filaProyecto(proyecto: Proyecto | undefined): Html {
+	if (proyecto === undefined) {
+		return html``;
+	}
+	return html`<p class="nombre-campo">Proyecto</p>
+		<p>${chipProyecto(proyecto)} <span class="silencio">${proyecto.nombre}</span></p>`;
 }
 
 /** El desplegable del tipo: qué clase de encargo es esta tarea. */
@@ -426,49 +417,31 @@ function selectDependencias(candidatas: ItemIndice[], elegidas: number[]): Html 
 }
 
 /**
- * El formulario de una tarea, compartido por «Nueva tarea» y «Editar». En una
- * pregunta no se pintan ni la autoejecución ni la ejecución: esa tarea solo
- * tiene fase de análisis y el comentario de análisis la cierra. Una
- * funcionalidad no tiene autoejecución (su descomposición la aprueba siempre
- * el humano), pero sí asignaciones: son las que heredan sus partes.
+ * El formulario de una tarea, compartido por «Nueva tarea» y «Editar». Se
+ * pintan siempre todos los campos: lo que no aplica a un tipo lo esconde la
+ * hoja de estilos en cuanto se elige, sin JavaScript, y así cambiar de tipo no
+ * deja el formulario a medias. El servidor vuelve a ignorarlo al guardar: una
+ * pregunta no tiene ejecución ni autoejecución, y una funcionalidad aprueba
+ * siempre el humano.
  */
 function camposTarea(valores: ValoresTarea, opciones: OpcionesTarea): Html {
-	const esPregunta = valores.tipo === "pregunta";
 	const esFuncionalidad = valores.tipo === "funcionalidad";
-	const autoejecucion =
-		valores.tipo === "tarea"
-			? casilla(
-					"autoejecucion",
-					valores.autoejecucion,
-					"Autoejecución",
-					"La ejecución arranca sola cuando el análisis termina sin preguntas abiertas.",
-				)
-			: html``;
-	const ejecucion = esPregunta
-		? html``
-		: fase(
-				esFuncionalidad ? "Ejecución de las partes (por defecto)" : "Ejecución",
-				"ejecucion",
-				valores.ejecucionModelo,
-				valores.ejecucionTerminalId,
-				opciones.activos,
-			);
-	return html`<label>
+	return html`${filaProyecto(opciones.proyecto)}
+		<label>
 			<span>Título</span>
 			<input type="text" name="titulo" value="${valores.titulo}" required>
 		</label>
+		${selectTipo(valores.tipo)}
 		<label>
 			<span>Descripción (Markdown)</span>
 			<textarea name="descripcion" rows="10">${valores.descripcion}</textarea>
 		</label>
-		${opciones.proyectos === null ? html`` : selectProyecto(opciones.proyectos, valores.proyectoId)}
-		${selectTipo(valores.tipo)}
 		<label>
 			<span>Rama</span>
 			<input type="text" name="rama" value="${valores.rama ?? ""}" placeholder="evolutivo/csv">
 			<span class="ayuda">Los agentes trabajarán en esta rama.</span>
 		</label>
-		${esFuncionalidad ? html`` : selectPadre(opciones.padres, valores.padreId)}
+		${selectPadre(opciones.padres, valores.padreId)}
 		${selectDependencias(opciones.candidatas, valores.dependeDe)}
 		<label>
 			<span>Presupuesto en tokens</span>
@@ -479,7 +452,12 @@ function camposTarea(valores: ValoresTarea, opciones: OpcionesTarea): Html {
 					: "Tope de la tarea con sus hijas. Pasarse solo avisa, no frena nada."
 			}</span>
 		</label>
-		${autoejecucion}
+		${casilla(
+			"autoejecucion",
+			valores.autoejecucion,
+			"Autoejecución",
+			"La ejecución arranca sola cuando el análisis termina sin preguntas abiertas.",
+		)}
 		<datalist id="modelos">${MODELOS_SUGERIDOS.map((modelo) => html`<option value="${modelo}"></option>`)}</datalist>
 		<div class="fases">
 			${fase(
@@ -489,7 +467,13 @@ function camposTarea(valores: ValoresTarea, opciones: OpcionesTarea): Html {
 				valores.analisisTerminalId,
 				opciones.activos,
 			)}
-			${ejecucion}
+			${fase(
+				esFuncionalidad ? "Ejecución de las partes (por defecto)" : "Ejecución",
+				"ejecucion",
+				valores.ejecucionModelo,
+				valores.ejecucionTerminalId,
+				opciones.activos,
+			)}
 		</div>`;
 }
 
@@ -508,9 +492,9 @@ function filaTarea(
 			? null
 			: creadorDe({ usuarioId: tarea.creadaPorUsuarioId, terminalId: tarea.creadaPorTerminalId });
 	const funcionalidad = item.padreId === null ? undefined : deQuien.get(item.padreId);
-	const clave = claves?.get(item.proyectoId);
+	const proyecto = claves?.get(item.proyectoId);
 	return html`<tr>
-			<td>${enlaceTarea(item.id)} ${clave === undefined ? html`` : chipProyecto(clave)}</td>
+			<td>${enlaceTarea(item.id)} ${proyecto === undefined ? html`` : chipProyecto(proyecto)}</td>
 			<td>
 				${esperaPorTi(item.estado, item.marcas)}${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas)}${item.titulo} ${progresoDe(item)}
 				${
@@ -527,8 +511,8 @@ function filaTarea(
 		</tr>`;
 }
 
-/** La clave de cada proyecto, solo en la vista cruzada: acotada sobraría. */
-type Claves = Map<number, string> | null;
+/** El proyecto de cada fila, solo en la vista cruzada: acotada sobraría. */
+type Claves = Map<number, Proyecto> | null;
 
 function tablaLista(
 	db: DatabaseSync,
@@ -670,7 +654,7 @@ function proyectoLegible(db: DatabaseSync, proyectoId: number): Html {
 	if (proyecto === undefined) {
 		return html`<span class="silencio">${SIN_DATO}</span>`;
 	}
-	return html`<a href="/p/${proyecto.clave}/tareas">${chipProyecto(proyecto.clave)}</a> ${proyecto.nombre}`;
+	return html`<a href="/p/${proyecto.clave}/tareas">${chipProyecto(proyecto)}</a> ${proyecto.nombre}`;
 }
 
 /**
@@ -1046,7 +1030,6 @@ function detallesEditar(db: DatabaseSync, tarea: Tarea, dependeDe: number[]): Ht
 						titulo: tarea.titulo,
 						descripcion: tarea.descripcion,
 						tipo: tarea.tipo,
-						proyectoId: tarea.proyectoId,
 						rama: tarea.rama,
 						padreId: tarea.padreId,
 						dependeDe,
@@ -1057,7 +1040,7 @@ function detallesEditar(db: DatabaseSync, tarea: Tarea, dependeDe: number[]): Ht
 						ejecucionModelo: tarea.ejecucionModelo,
 						ejecucionTerminalId: tarea.ejecucionTerminalId,
 					},
-					opcionesDeTarea(db, tarea.id),
+					opcionesDeTarea(db, tarea.id, buscarProyectoPorId(db, tarea.proyectoId)),
 				)}
 				<div class="acciones">
 					<button type="submit" class="principal">Guardar cambios</button>
@@ -1138,7 +1121,7 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	const creadorDe = buscadorDeCreador(db);
 	const deQuien = funcionalidadesDe(db, items);
 	// En la vista acotada el proyecto es el de la página: el chip solo repetiría.
-	const claves = acotado === undefined ? new Map(listarProyectos(db).map((cual) => [cual.id, cual.clave])) : null;
+	const claves = acotado === undefined ? new Map(listarProyectos(db).map((cual) => [cual.id, cual])) : null;
 	const cuerpo = html`${formularioFiltros(db, activos, filtros, acotado)}
 		${COLUMNAS.map((estado) =>
 			grupoColumna(
@@ -1165,7 +1148,7 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 			// La tabla tiene seis columnas: en 60 rem se aprieta o se desplaza.
 			ancho: "completo",
 			revision: revisionActual(db),
-			acciones: accionNuevaTarea(prefijo(acotado)),
+			acciones: accionNuevaTarea(prefijo(proyectoDeLaBarra(c, db))),
 			cuerpo,
 		}),
 	);
@@ -1181,19 +1164,20 @@ function valoresIniciales(c: Context): ValoresTarea {
 	const padre = c.req.query("padre") ?? "";
 	return {
 		...TAREA_VACIA,
-		tipo: esTipoTarea(tipo) ? tipo : "tarea",
+		tipo: esTipoTarea(tipo) ? tipo : TAREA_VACIA.tipo,
 		padreId: idONull(padre),
 	};
 }
 
 function paginaNueva(c: Context, deps: DependenciasWeb, valores: ValoresTarea, aviso: string | null): RespuestaHtml {
 	const esFuncionalidad = valores.tipo === "funcionalidad";
-	// Desde un tablero acotado el proyecto viene en la ruta y no se elige: la
-	// tarea nace donde se está mirando.
+	// El proyecto no se elige: desde un tablero acotado es el de la ruta, y
+	// desde la vista cruzada el que se estaba mirando. La tarea nace donde se
+	// está mirando.
 	const acotado = proyectoActual(c);
 	const base = prefijo(acotado);
 	const cuerpo = html`<form method="post" action="${base}/tareas">
-			${camposTarea(valores, opcionesDeTarea(deps.db, null, acotado === undefined))}
+			${camposTarea(valores, opcionesDeTarea(deps.db, null, acotado ?? proyectoDeTrabajo(c, deps.db)))}
 			<div class="acciones">
 				<button type="submit" class="principal">${esFuncionalidad ? "Crear funcionalidad" : "Crear tarea"}</button>
 				<a class="boton" href="${valores.padreId === null ? `${base}/tareas` : `/tareas/${formatearId(valores.padreId)}`}">Cancelar</a>
@@ -1208,7 +1192,6 @@ function paginaNueva(c: Context, deps: DependenciasWeb, valores: ValoresTarea, a
 			vista: "tarea-nueva",
 			proposito: PROPOSITO_ALTA,
 			migas: [{ texto: "Tareas", href: `${base}/tareas` }, { texto: titulo }],
-			etiquetas: acotado === undefined ? undefined : chipProyecto(acotado.clave),
 			aviso,
 			cuerpo,
 		}),
@@ -1436,17 +1419,17 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 	app.get("/p/:clave/tareas/nueva", (c) => paginaNueva(c, deps, valoresIniciales(c), null));
 
 	// Desde un tablero acotado la tarea nace en ese proyecto; desde la vista
-	// cruzada, en el que diga el desplegable.
+	// cruzada, en el que se estaba mirando, que es el que enseñó el formulario.
 	const crear = async (c: Context): Promise<RespuestaHtml> => {
 		const formulario = await leerFormulario(c);
 		const activos = terminalesActivos(deps.db);
 		try {
-			const { proyectoId, ...valores } = valoresDeFormulario(formulario, activos);
-			const elegido = proyectoActual(c)?.id ?? proyectoId;
+			const valores = valoresDeFormulario(formulario, activos);
+			const elegido = proyectoActual(c) ?? proyectoDeTrabajo(c, deps.db);
 			const tarea = crearTareaHumana(deps.db, {
 				...valores,
 				usuarioId: usuarioActual(c).id,
-				...(elegido === null ? {} : { proyectoId: elegido }),
+				...(elegido === undefined ? {} : { proyectoId: elegido.id }),
 			});
 			return c.redirect(`/tareas/${formatearId(tarea.id)}`, 302);
 		} catch (error) {
@@ -1471,12 +1454,10 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 		}
 		const formulario = await leerFormulario(c);
 		try {
-			const { proyectoId, ...valores } = valoresDeFormulario(formulario, terminalesActivos(deps.db));
 			editarTareaBacklog(deps.db, {
-				...valores,
+				...valoresDeFormulario(formulario, terminalesActivos(deps.db)),
 				tareaId,
 				usuarioId: usuarioActual(c).id,
-				...(proyectoId === null ? {} : { proyectoId }),
 			});
 			return c.redirect(`/tareas/${formatearId(tareaId)}`, 302);
 		} catch (error) {

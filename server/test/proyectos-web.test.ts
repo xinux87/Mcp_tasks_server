@@ -70,9 +70,24 @@ async function entrar(montaje: Montaje): Promise<string> {
 	return primera;
 }
 
-/** El chip de un proyecto, tal como lo pinta `chipProyecto`. */
-function chip(clave: string): string {
-	return `<span class="insignia proyecto color-gris">${clave}</span>`;
+/**
+ * El chip de un proyecto, tal como lo pinta `chipProyecto`. El color se
+ * reparte por orden de alta: DEFAULT es el primero de la lista y WEB, el
+ * segundo.
+ */
+function chip(clave: string, color = "azul"): string {
+	return `<span class="insignia proyecto color-${color}">${clave}</span>`;
+}
+
+/** La clave que el servidor pide recordar en esta respuesta, si pide alguna. */
+function recordado(respuesta: Response): string | undefined {
+	const cookie = respuesta.headers.getSetCookie().find((cual) => cual.startsWith("proyecto="));
+	return cookie === undefined ? undefined : (cookie.split(";")[0] ?? "").slice("proyecto=".length);
+}
+
+/** La cookie de sesión con el proyecto recordado, como la mandaría el navegador. */
+function conProyecto(cookie: string, clave: string): string {
+	return `${cookie}; proyecto=${clave}`;
 }
 
 /** Un proyecto nuevo con una tarea suya, que es el montaje de casi todo. */
@@ -95,7 +110,7 @@ test("la vista acotada solo trae las tareas de su proyecto y la cruzada las ense
 			assert.match(cuerpo, /Tarea del principal/, `${ruta} no trae la del principal`);
 			assert.match(cuerpo, /Tarea de la web/, `${ruta} no trae la de la web`);
 			assert.ok(cuerpo.includes(chip("DEFAULT")), `${ruta} no pinta el chip de DEFAULT`);
-			assert.ok(cuerpo.includes(chip("WEB")), `${ruta} no pinta el chip de WEB`);
+			assert.ok(cuerpo.includes(chip("WEB", "verde")), `${ruta} no pinta el chip de WEB`);
 			assert.match(cuerpo, /<select name="proyecto">/, `${ruta} no trae el filtro por proyecto`);
 		}
 
@@ -157,9 +172,14 @@ test("el selector de la barra lateral lleva puesto el proyecto de la URL", async
 		const cookie = await entrar(montaje);
 		conDosProyectos(montaje);
 
+		// Los proyectos primero y «Todos» al final: la vista cruzada se elige.
 		const cruzada = await (await pedir(montaje, "/tareas", { cookie })).text();
-		assert.match(cruzada, /<option value="\/tareas" selected>Todos los proyectos<\/option>/);
-		assert.match(cruzada, /<option value="\/p\/WEB\/tareas">WEB — La web nueva<\/option>/);
+		assert.match(
+			cruzada,
+			/<option value="\/p\/WEB\/tareas">WEB — La web nueva<\/option>\s*<option value="\/tareas">Todos los proyectos<\/option>/,
+		);
+		// Sin cookie, el principal: la cruzada no sale por no haber elegido.
+		assert.match(cruzada, /<option value="\/p\/DEFAULT\/tareas" selected>DEFAULT — Default<\/option>/);
 
 		// En una vista acotada, la opción del proyecto y el destino de cada vista.
 		const kanban = await (await pedir(montaje, "/p/WEB/tareas/kanban", { cookie })).text();
@@ -178,6 +198,44 @@ test("el selector de la barra lateral lleva puesto el proyecto de la URL", async
 		// Un destino de fuera no se sigue: se vuelve a la lista.
 		const fuera = await pedir(montaje, "/ir?destino=https%3A%2F%2Fotro.sitio", { cookie });
 		assert.equal(fuera.headers.get("location"), "/tareas");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("la web recuerda el proyecto que se está mirando, y la vista cruzada se elige a mano", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		conDosProyectos(montaje);
+
+		// Cualquier página acotada pide recordar su clave.
+		const acotada = await pedir(montaje, "/p/WEB/tareas", { cookie });
+		assert.equal(recordado(acotada), "WEB");
+
+		// Con ella, la navegación de cualquier otra página vuelve a ese proyecto,
+		// pero `/tareas` sigue siendo la vista cruzada: manda la URL.
+		const conWeb = conProyecto(cookie, "WEB");
+		const actividad = await (await pedir(montaje, "/actividad", { cookie: conWeb })).text();
+		assert.match(actividad, /<a class="enlace-nav" href="\/p\/WEB\/tareas">Tareas<\/a>/);
+		assert.match(actividad, /<a class="enlace-nav" href="\/p\/WEB\/informes">Informes<\/a>/);
+		const todas = await (await pedir(montaje, "/tareas", { cookie: conWeb })).text();
+		assert.match(todas, /Tarea del principal/);
+		assert.match(todas, /Tarea de la web/);
+
+		// Sin cookie, el principal; con una clave que ya no existe, también.
+		const sinCookie = await (await pedir(montaje, "/actividad", { cookie })).text();
+		assert.match(sinCookie, /<a class="enlace-nav" href="\/p\/DEFAULT\/tareas">Tareas<\/a>/);
+		const borrada = await (await pedir(montaje, "/actividad", { cookie: conProyecto(cookie, "NADA") })).text();
+		assert.match(borrada, /<a class="enlace-nav" href="\/p\/DEFAULT\/tareas">Tareas<\/a>/);
+
+		// Elegir «Todos los proyectos» pasa por `/ir` con un destino sin prefijo:
+		// eso es lo que recuerda la vista cruzada, y la navegación la respeta.
+		const salto = await pedir(montaje, "/ir?destino=%2Ftareas", { cookie: conWeb });
+		assert.equal(recordado(salto), "todos");
+		const cruzada = await (await pedir(montaje, "/actividad", { cookie: conProyecto(cookie, "todos") })).text();
+		assert.match(cruzada, /<a class="enlace-nav" href="\/tareas">Tareas<\/a>/);
+		assert.match(cruzada, /<option value="\/tareas" selected>Todos los proyectos<\/option>/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -212,7 +270,7 @@ test("la página de proyectos crea, edita y borra, con sus tres errores de borra
 
 		// La tabla, con sus cuentas y quién lo creó.
 		const lista = await (await pedir(montaje, "/proyectos", { cookie })).text();
-		assert.ok(lista.includes(chip("DEFAULT")) && lista.includes(chip("WEB")));
+		assert.ok(lista.includes(chip("DEFAULT")) && lista.includes(chip("WEB", "verde")));
 		assert.match(lista, /<th>Rama principal<\/th>/);
 		assert.match(lista, /<th class="numero">Tareas abiertas<\/th>/);
 		assert.match(lista, /<span class="chip color-azul"><span class="inicial">A<\/span>ana<\/span>/);
@@ -272,6 +330,44 @@ test("la página de proyectos crea, edita y borra, con sus tres errores de borra
 	}
 });
 
+test("el proyecto se crea con el color de sus siglas y se le cambia después", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+
+		// El alta ofrece los ocho colores, con «automático» puesto.
+		const formulario = await (await pedir(montaje, "/proyectos", { cookie })).text();
+		assert.match(formulario, /<label class="muestra muestra-auto">/);
+		assert.match(formulario, /De dos a ocho caracteres/);
+
+		const alta = await pedir(montaje, "/proyectos", {
+			cookie,
+			formulario: { clave: "WEB", nombre: "La web nueva", descripcion: "", color: "rojo" },
+		});
+		assert.equal(alta.status, 302);
+		const web = listarProyectos(montaje.db).find((cual) => cual.clave === "WEB");
+		assert.equal(web?.color, "rojo");
+		assert.ok((await (await pedir(montaje, "/proyectos", { cookie })).text()).includes(chip("WEB", "rojo")));
+
+		// La edición vuelve con el suyo marcado y lo cambia.
+		const editar = await (await pedir(montaje, `/proyectos/${web?.id}/editar`, { cookie })).text();
+		assert.match(editar, /<input type="radio" name="color" value="rojo" checked>/);
+		const guardado = await pedir(montaje, `/proyectos/${web?.id}/editar`, {
+			cookie,
+			formulario: { nombre: "La web nueva", descripcion: "", color: "morado" },
+		});
+		assert.equal(guardado.status, 302);
+		assert.equal(listarProyectos(montaje.db).find((cual) => cual.clave === "WEB")?.color, "morado");
+
+		// Y el chip de una tarjeta del tablero cruzado lleva ese color.
+		crearTareaHumana(montaje.db, { titulo: "Tarea de la web", descripcion: "d", usuarioId: 1, proyectoId: web?.id });
+		const kanban = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
+		assert.ok(kanban.includes(chip("WEB", "morado")), "la tarjeta no lleva el color del proyecto");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
 test("el terminal se da de alta en un proyecto y la lista lo enseña", async () => {
 	const montaje = montar();
 	try {
@@ -293,7 +389,7 @@ test("el terminal se da de alta en un proyecto y la lista lo enseña", async () 
 
 		const lista = await (await pedir(montaje, "/terminales", { cookie })).text();
 		assert.match(lista, /<th>Proyecto<\/th>/);
-		assert.ok(lista.includes(chip("WEB")));
+		assert.ok(lista.includes(chip("WEB", "verde")));
 	} finally {
 		await montaje.cerrar();
 	}
@@ -322,36 +418,42 @@ test("la ficha enseña el proyecto y el alta acotada crea la tarea en él", asyn
 		assert.equal(creada.headers.get("location"), "/tareas/T-0003");
 		assert.equal(buscarTarea(montaje.db, 3)?.proyectoId, web);
 
-		// Desde la vista cruzada se elige, con el principal puesto.
-		const cruzada = await (await pedir(montaje, "/tareas/nueva", { cookie })).text();
-		assert.match(cruzada, /<option value="1" selected>DEFAULT — Default<\/option>/);
+		// Sin prefijo, el proyecto es el que se estaba mirando: se enseña y no se
+		// elige, y la tarea nace en él.
+		const conWeb = conProyecto(cookie, "WEB");
+		const cruzada = await (await pedir(montaje, "/tareas/nueva", { cookie: conWeb })).text();
+		assert.ok(!cruzada.includes('<select name="proyecto">'), "el proyecto no se elige en el alta");
+		assert.ok(cruzada.includes(chip("WEB", "verde")), "el alta no dice en qué proyecto nace");
 		const enLaWeb = await pedir(montaje, "/tareas", {
-			cookie,
-			formulario: {
-				titulo: "Elegida a mano",
-				descripcion: "",
-				proyecto: String(web),
-				analisisTerminal: "",
-				ejecucionTerminal: "",
-			},
+			cookie: conWeb,
+			formulario: { titulo: "Nacida en lo mirado", descripcion: "", analisisTerminal: "", ejecucionTerminal: "" },
 		});
 		assert.equal(enLaWeb.status, 302);
 		assert.equal(buscarTarea(montaje.db, 4)?.proyectoId, web);
 
-		// Y la edición en backlog cambia de proyecto una tarea que está sola.
-		const mudanza = await pedir(montaje, "/tareas/T-0004/editar", {
+		// Sin nada recordado, el principal.
+		const enElPrincipal = await pedir(montaje, "/tareas", {
+			cookie,
+			formulario: { titulo: "Nacida en el principal", descripcion: "", analisisTerminal: "", ejecucionTerminal: "" },
+		});
+		assert.equal(enElPrincipal.status, 302);
+		assert.equal(buscarTarea(montaje.db, 5)?.proyectoId, 1);
+
+		// Y la edición en backlog no muda de proyecto: enseña el suyo, sin desplegable.
+		const ficha4 = await (await pedir(montaje, "/tareas/T-0004", { cookie })).text();
+		assert.ok(!ficha4.includes('<select name="proyecto">'), "la edición no cambia de proyecto");
+		const edicion = await pedir(montaje, "/tareas/T-0004/editar", {
 			cookie,
 			formulario: {
-				titulo: "Elegida a mano",
+				titulo: "Nacida en lo mirado",
 				descripcion: "",
-				proyecto: "1",
 				tipo: "tarea",
 				analisisTerminal: "",
 				ejecucionTerminal: "",
 			},
 		});
-		assert.equal(mudanza.status, 302);
-		assert.equal(buscarTarea(montaje.db, 4)?.proyectoId, 1);
+		assert.equal(edicion.status, 302);
+		assert.equal(buscarTarea(montaje.db, 4)?.proyectoId, web);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -414,7 +516,7 @@ test("las funcionalidades se acotan al proyecto y llevan su chip en la vista cru
 		const cruzada = await (await pedir(montaje, "/funcionalidades", { cookie })).text();
 		assert.match(cruzada, /Evolutivo del principal/);
 		assert.match(cruzada, /Evolutivo de la web/);
-		assert.ok(cruzada.includes(chip("WEB")));
+		assert.ok(cruzada.includes(chip("WEB", "verde")));
 
 		const acotada = await (await pedir(montaje, "/p/WEB/funcionalidades", { cookie })).text();
 		assert.match(acotada, /Evolutivo de la web/);

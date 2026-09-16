@@ -258,17 +258,20 @@ function enlaceNav(entrada: EntradaNav, vista: string, prefijo: string, pendient
  * lleva puesto su destino, que es la misma vista en el proyecto elegido, así
  * que sin JavaScript basta con enviar el formulario; con él, `cliente.ts`
  * esconde el botón y navega al cambiar.
+ *
+ * Los proyectos van primero y «Todos los proyectos» al final: mirar todos a la
+ * vez es lo excepcional, y se elige a mano.
  */
 function selectorProyecto(proyectos: readonly Proyecto[], proyecto: Proyecto | undefined, vista: string): Html {
 	const ruta = rutaDeVista(vista);
 	return html`<form class="selector-proyecto" method="get" action="/ir">
 			<label class="solo-lectores" for="ir-proyecto">Proyecto</label>
 			<select id="ir-proyecto" name="destino">
-				<option value="${ruta}"${proyecto === undefined ? raw(" selected") : ""}>Todos los proyectos</option>
 				${proyectos.map(
 					(cual) =>
 						html`<option value="/p/${cual.clave}${ruta}"${cual.id === proyecto?.id ? raw(" selected") : ""}>${cual.clave} — ${cual.nombre}</option>`,
 				)}
+				<option value="${ruta}"${proyecto === undefined ? raw(" selected") : ""}>Todos los proyectos</option>
 			</select>
 			<button type="submit" class="pequeno">Ir</button>
 		</form>`;

@@ -126,7 +126,8 @@ test("el kanban pinta las cinco columnas con sus tarjetas", async () => {
 		// Cabecera de página con su acción, y el tablero a todo lo ancho.
 		assert.match(cuerpo, /<div class="dentro dentro-completo">/);
 		assert.match(cuerpo, /<header class="cabecera-pagina">[\s\S]*?<h1>Tareas<\/h1>/);
-		assert.match(cuerpo, /<a class="boton principal" href="\/tareas\/nueva">Nueva tarea<\/a>/);
+		// El alta lleva al proyecto que se está mirando, que sin cookie es el principal.
+		assert.match(cuerpo, /<a class="boton principal" href="\/p\/DEFAULT\/tareas\/nueva">Nueva tarea<\/a>/);
 		// Cada columna se encabeza con la etiqueta de su estado y el contador.
 		assert.match(
 			cuerpo,
@@ -672,7 +673,7 @@ test("el kanban de un proyecto agrupa solo sus funcionalidades", async () => {
 		assert.deepEqual(franjas(cruzada), ["T-0001", "T-0003", "sueltas"]);
 		assert.match(
 			cruzada,
-			/<span class="insignia proyecto color-gris">WEB<\/span>\s*<a class="id-tarea" href="\/tareas\/T-0003">/,
+			/<span class="insignia proyecto color-verde">WEB<\/span>\s*<a class="id-tarea" href="\/tareas\/T-0003">/,
 		);
 	} finally {
 		await montaje.cerrar();

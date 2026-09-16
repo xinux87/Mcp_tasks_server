@@ -201,7 +201,7 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		// ocupa todo el ancho como el kanban.
 		assert.match(cuerpoLista, /<div class="dentro dentro-completo">/);
 		assert.match(cuerpoLista, /<header class="cabecera-pagina">/);
-		assert.match(cuerpoLista, /<a class="boton principal" href="\/tareas\/nueva">Nueva tarea<\/a>/);
+		assert.match(cuerpoLista, /<a class="boton principal" href="\/p\/DEFAULT\/tareas\/nueva">Nueva tarea<\/a>/);
 		// Sin filtros puestos no hay nada que quitar.
 		assert.doesNotMatch(cuerpoLista, /Quitar filtros/);
 		assert.match(await (await pedir(montaje, "/tareas?estado=backlog", { cookie })).text(), /Quitar filtros/);
@@ -224,6 +224,34 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		assert.match(cuerpoFicha, /Pasar a preparadas/);
 		assert.doesNotMatch(cuerpoFicha, /Finalizar/);
 		assert.match(cuerpoFicha, /<h2>Actividad<\/h2>/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el formulario de tarea abre como pregunta, con el tipo bajo el título y el proyecto fijo", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const nueva = await (await pedir(montaje, "/tareas/nueva", { cookie })).text();
+
+		// Lo que más se pide es una pregunta: es lo que trae puesto.
+		assert.match(nueva, /<option value="pregunta" selected>Pregunta<\/option>/);
+		// Y el tipo va justo debajo del título, antes de la descripción: es la
+		// decisión que cambia todo lo demás del formulario.
+		const titulo = nueva.indexOf('<input type="text" name="titulo"');
+		const tipo = nueva.indexOf('<select name="tipo">');
+		const descripcion = nueva.indexOf('<textarea name="descripcion"');
+		assert.ok(titulo > 0 && titulo < tipo && tipo < descripcion, "el tipo no va entre el título y la descripción");
+
+		// El proyecto se enseña, no se elige.
+		assert.ok(!nueva.includes('<select name="proyecto">'), "el proyecto no se elige");
+		assert.match(nueva, /<p class="nombre-campo">Proyecto<\/p>/);
+		assert.match(nueva, /<span class="insignia proyecto color-azul">DEFAULT<\/span>/);
+
+		// Lo que se pide por la dirección manda sobre lo que trae puesto.
+		const otra = await (await pedir(montaje, "/tareas/nueva?tipo=funcionalidad", { cookie })).text();
+		assert.match(otra, /<option value="funcionalidad" selected>Funcionalidad<\/option>/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -259,8 +287,9 @@ test("una pregunta se crea con su tipo, sale con badge y sin nada de ejecución"
 		assert.match(cuerpo, /<dt>Tipo<\/dt>/);
 		assert.doesNotMatch(cuerpo, /<dt>Ejecución<\/dt>/);
 		assert.doesNotMatch(cuerpo, /<dt>Autoejecución<\/dt>/);
-		// Al editarla, el formulario tampoco enseña la ejecución.
-		assert.doesNotMatch(cuerpo, /name="ejecucionModelo"/);
+		// El formulario sí la lleva, escondida por la hoja: es lo que hace que
+		// cambiar el tipo a tarea la enseñe sin recargar ni JavaScript.
+		assert.match(cuerpo, /name="ejecucionModelo"/);
 		// El desplegable de tipo vuelve con la pregunta elegida.
 		assert.match(cuerpo, /<option value="pregunta" selected>Pregunta<\/option>/);
 		// Y en la lista, su columna de ejecución queda vacía.
