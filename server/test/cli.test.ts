@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 import { abrirBaseDeDatos, rutaBaseDeDatos } from "../src/db/abrir.ts";
 import { crearParte } from "../src/db/funcionalidades.ts";
 import { comentarAnalisis, preguntar } from "../src/db/hilo.ts";
-import { tomarTarea } from "../src/db/tareas.ts";
+import { exigirTarea, tomarTarea } from "../src/db/tareas.ts";
+import { formatearId } from "../src/md/ids.ts";
 
 const CLI = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 
@@ -47,6 +48,16 @@ function cli(dataDir: string, ...argumentos: string[]): Salida {
 	}
 }
 
+/** El identificador visible de la tarea que ocupa esa fila, leído de la base. */
+function idFila(dataDir: string, fila: number): string {
+	const db = abrirBaseDeDatos(rutaBaseDeDatos(dataDir));
+	try {
+		return formatearId(exigirTarea(db, fila).codigo);
+	} finally {
+		db.close();
+	}
+}
+
 /** El CLI que tiene que salir bien: si no, el test enseña lo que imprimió. */
 function bien(dataDir: string, ...argumentos: string[]): string {
 	const resultado = cli(dataDir, ...argumentos);
@@ -74,19 +85,25 @@ test("el CLI crea usuario, terminal y tarea, la mueve y la enseña", () => {
 			"--ejecucion",
 			"opus@portatil-a",
 		);
-		assert.match(creada, /^creada: T-0001$/m);
+		assert.match(creada, new RegExp(`^creada: ${idFila(dataDir, 1)}$`, "m"));
 
 		// En backlog la tarea existe pero el agente no la ve.
 		assert.match(
 			bien(dataDir, "listar"),
-			/^- T-0001 · backlog · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-a · ejecucion: opus@portatil-a$/m,
+			new RegExp(
+				`^- ${idFila(dataDir, 1)} · backlog · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-a · ejecucion: opus@portatil-a$`,
+				"m",
+			),
 		);
 		assert.equal(bien(dataDir, "listar", "prepared").trim(), "Ninguna.");
 
-		assert.match(bien(dataDir, "mover-tarea", "ana", "T-0001", "prepared"), /^movida: T-0001 · prepared$/m);
+		assert.match(
+			bien(dataDir, "mover-tarea", "ana", idFila(dataDir, 1), "prepared"),
+			new RegExp(`^movida: ${idFila(dataDir, 1)} · prepared$`, "m"),
+		);
 
-		const documento = bien(dataDir, "ver-tarea", "T-0001");
-		assert.match(documento, /^id: T-0001$/m);
+		const documento = bien(dataDir, "ver-tarea", idFila(dataDir, 1));
+		assert.match(documento, new RegExp(`^id: ${idFila(dataDir, 1)}$`, "m"));
 		assert.match(documento, /^estado: prepared$/m);
 		assert.match(documento, /^ {2}modelo: sonnet\n {2}terminal: portatil-a$/m);
 		assert.match(documento, /^## Hilo\n\nNinguno\.$/m);
@@ -138,14 +155,17 @@ test("el CLI crea una pregunta que solo tiene análisis y se cierra al responder
 			"--analisis",
 			"sonnet@portatil-a",
 		);
-		bien(dataDir, "mover-tarea", "ana", "T-0001", "prepared");
+		bien(dataDir, "mover-tarea", "ana", idFila(dataDir, 1), "prepared");
 
-		const documento = bien(dataDir, "ver-tarea", "T-0001");
+		const documento = bien(dataDir, "ver-tarea", idFila(dataDir, 1));
 		assert.match(documento, /^tipo: pregunta$/m);
 		assert.doesNotMatch(documento, /^ejecucion:$/m);
 		assert.match(
 			bien(dataDir, "listar"),
-			/^- T-0001 · prepared · pregunta · ¿Cuánto se tarda hoy en cerrar el mes\? · analisis: sonnet@portatil-a$/m,
+			new RegExp(
+				`^- ${idFila(dataDir, 1)} · prepared · pregunta · ¿Cuánto se tarda hoy en cerrar el mes\\? · analisis: sonnet@portatil-a$`,
+				"m",
+			),
 		);
 
 		// La respuesta la escribe el agente por el MCP: aquí con la función de
@@ -158,8 +178,8 @@ test("el CLI crea una pregunta que solo tiene análisis y se cierra al responder
 			db.close();
 		}
 
-		assert.match(bien(dataDir, "ver-tarea", "T-0001"), /^estado: done$/m);
-		assert.match(bien(dataDir, "listar", "done"), /^- T-0001 · done · pregunta · /m);
+		assert.match(bien(dataDir, "ver-tarea", idFila(dataDir, 1)), /^estado: done$/m);
+		assert.match(bien(dataDir, "listar", "done"), new RegExp(`^- ${idFila(dataDir, 1)} · done · pregunta · `, "m"));
 	} finally {
 		rmSync(dataDir, { recursive: true, force: true });
 	}
@@ -172,13 +192,13 @@ test("un error de regla en el CLI sale con su código y termina en 1", () => {
 		bien(dataDir, "crear-tarea", "ana", "Una", "d");
 
 		// De backlog no se pasa a done: no es una de las cuatro transiciones.
-		const salto = cli(dataDir, "mover-tarea", "ana", "T-0001", "done");
+		const salto = cli(dataDir, "mover-tarea", "ana", idFila(dataDir, 1), "done");
 		assert.equal(salto.codigo, 1);
 		assert.match(salto.salida, /^transicion_no_permitida: /m);
 
 		// Volver atrás sin nota tampoco.
-		bien(dataDir, "mover-tarea", "ana", "T-0001", "prepared");
-		const sinNota = cli(dataDir, "mover-tarea", "ana", "T-0001", "backlog");
+		bien(dataDir, "mover-tarea", "ana", idFila(dataDir, 1), "prepared");
+		const sinNota = cli(dataDir, "mover-tarea", "ana", idFila(dataDir, 1), "backlog");
 		assert.equal(sinNota.codigo, 1);
 		assert.match(sinNota.salida, /^nota_obligatoria: /m);
 
@@ -197,7 +217,7 @@ test("el CLI contesta una pregunta por el texto de la opción y aprueba el anál
 		bien(dataDir, "crear-usuario", "ana", "secreta");
 		bien(dataDir, "crear-terminal", "ana", "portatil-a", "ana@ejemplo.com");
 		bien(dataDir, "crear-tarea", "ana", "Una", "d", "--analisis", "sonnet@portatil-a", "--sin-autoejecucion");
-		bien(dataDir, "mover-tarea", "ana", "T-0001", "prepared");
+		bien(dataDir, "mover-tarea", "ana", idFila(dataDir, 1), "prepared");
 
 		// La pregunta y el análisis los escribe el agente por el MCP: aquí se
 		// dejan puestos con las funciones de dominio para probar solo los dos
@@ -222,21 +242,24 @@ test("el CLI contesta una pregunta por el texto de la opción y aprueba el anál
 		}
 
 		assert.match(bien(dataDir, "listar"), / · bloqueada · /);
-		const contestada = bien(dataDir, "responder", "ana", "T-0001", "P1", "Punto y coma", "ya lo cambiaremos");
-		assert.match(contestada, /^contestada: T-0001 · P1 · Punto y coma$/m);
+		const contestada = bien(dataDir, "responder", "ana", idFila(dataDir, 1), "P1", "Punto y coma", "ya lo cambiaremos");
+		assert.match(contestada, new RegExp(`^contestada: ${idFila(dataDir, 1)} · P1 · Punto y coma$`, "m"));
 
-		const documento = bien(dataDir, "ver-tarea", "T-0001");
+		const documento = bien(dataDir, "ver-tarea", idFila(dataDir, 1));
 		assert.match(documento, /^### respuesta · humano:ana · .+ · P1$/m);
 		assert.match(documento, /^Opción: \*\*Punto y coma\*\*$/m);
 		assert.match(documento, /^Nota: ya lo cambiaremos$/m);
 
 		// Sin autoejecución la tarea espera aprobación: la marca lo dice.
 		assert.match(bien(dataDir, "listar"), / · análisis listo · /);
-		assert.match(bien(dataDir, "aprobar", "ana", "T-0001"), /^aprobada: T-0001$/m);
+		assert.match(
+			bien(dataDir, "aprobar", "ana", idFila(dataDir, 1)),
+			new RegExp(`^aprobada: ${idFila(dataDir, 1)}$`, "m"),
+		);
 		assert.doesNotMatch(bien(dataDir, "listar"), /análisis listo/);
 
 		// Una pregunta ya contestada no se vuelve a contestar.
-		const otraVez = cli(dataDir, "responder", "ana", "T-0001", "P1", "No hacer nada");
+		const otraVez = cli(dataDir, "responder", "ana", idFila(dataDir, 1), "P1", "No hacer nada");
 		assert.equal(otraVez.codigo, 1);
 		assert.match(otraVez.salida, /^pregunta_ya_respondida: /m);
 	} finally {
@@ -263,34 +286,39 @@ test("el CLI crea una funcionalidad con rama y dependencias, la aprueba y borra 
 			"--ejecucion",
 			"opus@portatil-a",
 		);
-		const documento = bien(dataDir, "ver-tarea", "T-0001");
+		const documento = bien(dataDir, "ver-tarea", idFila(dataDir, 1));
 		assert.match(documento, /^tipo: funcionalidad$/m);
 		assert.match(documento, /^rama: evolutivo\/csv$/m);
 		// Una funcionalidad no lleva bloque de ejecución, aunque sus partes lo hereden.
 		assert.doesNotMatch(documento, /^ejecucion:$/m);
-		assert.match(bien(dataDir, "listar"), /^- T-0001 · backlog · funcionalidad 0\/0 · /m);
+		assert.match(bien(dataDir, "listar"), new RegExp(`^- ${idFila(dataDir, 1)} · backlog · funcionalidad 0\\/0 · `, "m"));
 
 		// Dependencias y padre desde la línea de comandos.
 		bien(dataDir, "crear-tarea", "ana", "Primera", "d");
-		bien(dataDir, "crear-tarea", "ana", "Segunda", "d", "--depende-de", "T-0002");
-		assert.match(bien(dataDir, "ver-tarea", "T-0003"), /^dependeDe: \[T-0002\]$/m);
-		bien(dataDir, "crear-tarea", "ana", "Una parte a mano", "d", "--padre", "T-0001");
-		assert.match(bien(dataDir, "ver-tarea", "T-0004"), /^padre: T-0001$/m);
+		bien(dataDir, "crear-tarea", "ana", "Segunda", "d", "--depende-de", idFila(dataDir, 2));
+		assert.match(
+			bien(dataDir, "ver-tarea", idFila(dataDir, 3)),
+			new RegExp(`^dependeDe: \\[${idFila(dataDir, 2)}\\]$`, "m"),
+		);
+		bien(dataDir, "crear-tarea", "ana", "Una parte a mano", "d", "--padre", idFila(dataDir, 1));
+		assert.match(bien(dataDir, "ver-tarea", idFila(dataDir, 4)), new RegExp(`^padre: ${idFila(dataDir, 1)}$`, "m"));
 
 		// Solo una funcionalidad puede ser padre.
-		const padreMalo = cli(dataDir, "crear-tarea", "ana", "Otra", "d", "--padre", "T-0002");
+		const padreMalo = cli(dataDir, "crear-tarea", "ana", "Otra", "d", "--padre", idFila(dataDir, 2));
 		assert.equal(padreMalo.codigo, 1);
 		assert.match(padreMalo.salida, /^padre_no_es_funcionalidad: /m);
 
 		// Borrar: lo que permite podar la descomposición.
-		assert.match(bien(dataDir, "borrar-tarea", "ana", "T-0004"), /^borrada: T-0004 · Una parte a mano$/m);
+		const aMano = idFila(dataDir, 4);
+		assert.match(bien(dataDir, "borrar-tarea", "ana", aMano), new RegExp(`^borrada: ${aMano} · Una parte a mano$`, "m"));
 		assert.doesNotMatch(bien(dataDir, "listar"), /Una parte a mano/);
 
 		// Fuera de backlog también se borra; lo que frena es tener hijas.
-		bien(dataDir, "mover-tarea", "ana", "T-0002", "prepared");
-		assert.match(bien(dataDir, "borrar-tarea", "ana", "T-0002"), /^borrada: T-0002 · Primera$/m);
+		bien(dataDir, "mover-tarea", "ana", idFila(dataDir, 2), "prepared");
+		const primera = idFila(dataDir, 2);
+		assert.match(bien(dataDir, "borrar-tarea", "ana", primera), new RegExp(`^borrada: ${primera} · Primera$`, "m"));
 
-		bien(dataDir, "mover-tarea", "ana", "T-0001", "prepared");
+		bien(dataDir, "mover-tarea", "ana", idFila(dataDir, 1), "prepared");
 
 		// La descomposición la hace el agente por el MCP: aquí con las funciones
 		// de dominio, para probar solo la aprobación del humano.
@@ -303,15 +331,30 @@ test("el CLI crea una funcionalidad con rama y dependencias, la aprueba y borra 
 			db.close();
 		}
 
-		assert.match(bien(dataDir, "listar"), /^- T-0001 · prepared · funcionalidad 0\/1 · análisis listo · /m);
-		assert.match(bien(dataDir, "aprobar", "ana", "T-0001"), /^aprobada: T-0001$/m);
+		assert.match(
+			bien(dataDir, "listar"),
+			new RegExp(`^- ${idFila(dataDir, 1)} · prepared · funcionalidad 0\\/1 · análisis listo · `, "m"),
+		);
+		assert.match(
+			bien(dataDir, "aprobar", "ana", idFila(dataDir, 1)),
+			new RegExp(`^aprobada: ${idFila(dataDir, 1)}$`, "m"),
+		);
 		const tras = bien(dataDir, "listar");
 		// La parte sale del backlog, y con ella la de integrar la rama, que ya
 		// cuenta en el progreso de la funcionalidad. Los identificadores empiezan
 		// en T-0005: el T-0004 se borró y ese número no se vuelve a repartir.
-		assert.match(tras, /^- T-0001 · doing · funcionalidad 0\/2 · /m);
-		assert.match(tras, /^- T-0005 · prepared · Sacar los datos · .+ · padre: T-0001$/m);
-		assert.match(tras, /^- T-0006 · prepared · esperando · Integrar la rama `evolutivo\/csv` en la principal · /m);
+		assert.match(tras, new RegExp(`^- ${idFila(dataDir, 1)} · doing · funcionalidad 0\\/2 · `, "m"));
+		assert.match(
+			tras,
+			new RegExp(`^- ${idFila(dataDir, 5)} · prepared · Sacar los datos · .+ · padre: ${idFila(dataDir, 1)}$`, "m"),
+		);
+		assert.match(
+			tras,
+			new RegExp(
+				`^- ${idFila(dataDir, 6)} · prepared · esperando · Integrar la rama \`evolutivo\\/csv\` en la principal · `,
+				"m",
+			),
+		);
 	} finally {
 		rmSync(dataDir, { recursive: true, force: true });
 	}

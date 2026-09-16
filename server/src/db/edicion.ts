@@ -7,7 +7,14 @@ import { tokensAbreviados } from "./consumo.ts";
 import { dependenciasDe, detalleDependencias, escribirDependencias } from "./dependencias.ts";
 import { autorHumano } from "./hilo.ts";
 import { exigirProyectoPorId } from "./proyectos.ts";
-import { exigirPadreFuncionalidad, exigirPresupuesto, exigirTarea, type Tarea, type TipoTarea } from "./tareas.ts";
+import {
+	buscarTarea,
+	exigirPadreFuncionalidad,
+	exigirPresupuesto,
+	exigirTarea,
+	type Tarea,
+	type TipoTarea,
+} from "./tareas.ts";
 
 /**
  * Un título vacío deja la tarea sin nada que leer en el índice. Se comprueba
@@ -71,9 +78,10 @@ function presupuestoComoTexto(presupuesto: number | null): string {
 	return presupuesto === null ? "—" : tokensAbreviados(presupuesto);
 }
 
-/** `T-0050`, o «ninguno» cuando la tarea no cuelga de nadie. */
-function nombreDePadre(padreId: number | null): string {
-	return padreId === null ? "ninguno" : formatearId(padreId);
+/** `T-K7M3XQ`, o «ninguno» cuando la tarea no cuelga de nadie. */
+function nombreDePadre(conexion: DatabaseSync, padreId: number | null): string {
+	const padre = padreId === null ? undefined : buscarTarea(conexion, padreId);
+	return padre === undefined ? "ninguno" : formatearId(padre.codigo);
 }
 
 /** `análisis: sonnet@portatil → opus`, o nada si la fase se quedó igual. */
@@ -114,7 +122,7 @@ function cambiosDeLaEdicion(conexion: DatabaseSync, antes: Tarea, despues: Edici
 		cambios.push(`rama: ${antes.rama ?? "ninguna"} → ${despues.rama ?? "ninguna"}`);
 	}
 	if (despues.padreId !== undefined && antes.padreId !== despues.padreId) {
-		cambios.push(`padre: ${nombreDePadre(antes.padreId)} → ${nombreDePadre(despues.padreId)}`);
+		cambios.push(`padre: ${nombreDePadre(conexion, antes.padreId)} → ${nombreDePadre(conexion, despues.padreId)}`);
 	}
 	cambios.push(
 		cambioDeFase(

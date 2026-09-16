@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
 import { registrarConsumo } from "../db/consumo.ts";
+import { idDeCodigo } from "../db/tareas.ts";
 import { bloqueConsumo } from "../md/documento.ts";
 import { parsearId } from "../md/ids.ts";
 import { conErroresDeRegla } from "./errores.ts";
@@ -24,7 +25,7 @@ export function registrarHerramientaReportarConsumo(server: McpServer, db: Datab
 			description:
 				"Suma al consumo de la tarea lo que gastó un subagente de fase. Se llama al terminar cada subagente, copiando tal cual las cifras del aviso de Claude Code: nunca las estimes ni las redondees. Devuelve el consumo acumulado de la tarea.",
 			inputSchema: z.object({
-				id: z.string().describe("Identificador de la tarea, con la forma T-0042."),
+				id: z.string().describe("Identificador de la tarea, con la forma T-K7M3XQ."),
 				fase: z.enum(["analisis", "ejecucion"]).describe("Fase a la que se imputa el gasto."),
 				modelo: z
 					.string()
@@ -38,7 +39,7 @@ export function registrarHerramientaReportarConsumo(server: McpServer, db: Datab
 		async ({ id, fase, modelo, tokens, herramientas, duracionMs }) =>
 			conErroresDeRegla(() => {
 				const consumo = registrarConsumo(db, {
-					tareaId: parsearId(id),
+					tareaId: idDeCodigo(db, parsearId(id)),
 					fase,
 					modelo,
 					terminalId,

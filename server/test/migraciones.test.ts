@@ -613,3 +613,48 @@ test("la migración del comentario funde nota y avance, y renombra la acción de
 		rmSync(carpeta, { recursive: true, force: true });
 	}
 });
+
+test("la migración del código deja a las tareas de antes con su número de siempre", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-codigo.sql"));
+		assert.ok(cual > 0, "no está la migración del código");
+
+		// Dos tareas ya escritas, con ids que no son correlativos: es lo que hay
+		// en una base en marcha cuando llega la columna nueva.
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('ana', 'h', 'azul', ?)").run(FECHA);
+		for (const id of [7, 142]) {
+			db
+				.prepare(
+					`INSERT INTO tareas (id, proyecto_id, titulo, descripcion, tipo, estado, orden, creada, actualizada, estado_desde, revision)
+					VALUES (?, 1, 'De antes', 'd', 'tarea', 'doing', 1, ?, ?, ?, 3)`,
+				)
+				.run(id, FECHA, FECHA, FECHA);
+		}
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		// Cada una conserva su número como código, con sus cuatro cifras: un id
+		// ya citado en un hilo o en un commit sigue valiendo.
+		assert.deepEqual(
+			db
+				.prepare("SELECT id, codigo FROM tareas ORDER BY id")
+				.all()
+				.map((fila) => `${String(fila.id)} → ${String(fila.codigo)}`),
+			["7 → 0007", "142 → 0142"],
+		);
+
+		// Y dos tareas no pueden compartir código.
+		assert.throws(() => {
+			db.prepare("UPDATE tareas SET codigo = '0007' WHERE id = 142").run();
+		});
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});

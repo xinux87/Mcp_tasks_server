@@ -14,6 +14,7 @@ import {
 	tareasParaTerminalDesde,
 	tomarTarea,
 } from "../src/db/tareas.ts";
+import { formatearId } from "../src/md/ids.ts";
 import { lineaIndice } from "../src/md/indice.ts";
 import { codigoDe, montar } from "./comun.ts";
 
@@ -46,7 +47,7 @@ test("una tarea no depende de sí misma, ni de una que no existe, ni cierra un c
 	try {
 		const primera = tarea(banco, "Primera");
 		const segunda = tarea(banco, "Segunda", [primera.id]);
-		assert.deepEqual(dependenciasDe(banco.db, segunda.id), [primera.id]);
+		assert.deepEqual(dependenciasDe(banco.db, segunda.id), [primera.codigo]);
 
 		assert.equal(
 			codigoDe(() =>
@@ -107,10 +108,10 @@ test("las dependencias se fijan en backlog, dejan rastro y ahí se congelan", ()
 			actor: { usuarioId: banco.ana },
 		});
 		// Sin repetidas y en orden, aunque llegaran de cualquier manera.
-		assert.deepEqual(dependenciasDe(banco.db, segunda.id), [primera.id, otra.id]);
+		assert.deepEqual(dependenciasDe(banco.db, segunda.id), [primera.codigo, otra.codigo]);
 		const rastro = actividadDe(banco.db, "tarea", segunda.id);
 		assert.equal(rastro.at(-1)?.accion, "editar_tarea");
-		assert.equal(rastro.at(-1)?.detalle, "dependencias: T-0001, T-0002");
+		assert.equal(rastro.at(-1)?.detalle, `dependencias: ${formatearId(primera.codigo)}, ${formatearId(otra.codigo)}`);
 
 		moverTareaHumano(banco.db, { tareaId: segunda.id, usuarioId: banco.ana, estado: "prepared" });
 		assert.equal(
@@ -133,7 +134,7 @@ test("con una dependencia sin cerrar la tarea espera: ni se toma ni sale en nove
 		assert.deepEqual(marcasDe(exigirTarea(banco.db, segunda.id), 0, 1), ["esperando"]);
 		assert.deepEqual(itemIndiceDe(banco.db, segunda.id).marcas, ["esperando"]);
 		assert.match(lineaIndice(itemIndiceDe(banco.db, segunda.id)), / · prepared · esperando · Segunda · /);
-		assert.deepEqual(dependenciasPendientes(banco.db, segunda.id), [primera.id]);
+		assert.deepEqual(dependenciasPendientes(banco.db, segunda.id), [primera.codigo]);
 
 		// Analizar algo antes de que exista aquello de lo que depende es
 		// analizar a ciegas: las dos fases se cortan igual.

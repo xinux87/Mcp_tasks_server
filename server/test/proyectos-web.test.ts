@@ -8,7 +8,8 @@ import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { listarTerminales } from "../src/db/admin.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
 import { crearProyecto, listarProyectos } from "../src/db/proyectos.ts";
-import { borrarTarea, buscarTarea, crearTareaHumana } from "../src/db/tareas.ts";
+import { borrarTarea, buscarTarea, crearTareaHumana, exigirTarea } from "../src/db/tareas.ts";
+import { formatearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 /**
@@ -98,6 +99,11 @@ function conDosProyectos(montaje: Montaje): { web: number } {
 	return { web };
 }
 
+/** El identificador visible de la tarea que ocupa esa fila. */
+function idFila(montaje: Montaje, fila: number): string {
+	return formatearId(exigirTarea(montaje.db, fila).codigo);
+}
+
 test("la vista acotada solo trae las tareas de su proyecto y la cruzada las enseña con su chip", async () => {
 	const montaje = montar();
 	try {
@@ -131,15 +137,15 @@ test("la vista acotada solo trae las tareas de su proyecto y la cruzada las ense
 		assert.match(kanban, /<a class="boton principal" href="\/p\/WEB\/tareas\/nueva">Nueva tarea<\/a>/);
 		assert.match(kanban, /data-proyecto="WEB"/);
 		assert.match(kanban, /data-fuente="\/p\/WEB\/tareas\/kanban\/tablero"/);
-		assert.match(kanban, /<a class="id-tarea" href="\/tareas\/T-0002">/);
+		assert.match(kanban, new RegExp(`<a class="id-tarea" href="\\/tareas\\/${idFila(montaje, 2)}">`));
 
 		// El fragmento que recarga el cliente sale por la misma ruta acotada.
 		const fragmento = await pedir(montaje, "/p/WEB/tareas/kanban/tablero", { cookie });
 		assert.equal(fragmento.status, 200);
 		const cuerpoFragmento = await fragmento.text();
 		assert.ok(cuerpoFragmento.trimStart().startsWith('<section id="tablero"'));
-		assert.match(cuerpoFragmento, /data-id="T-0002"/);
-		assert.ok(!cuerpoFragmento.includes('data-id="T-0001"'));
+		assert.match(cuerpoFragmento, new RegExp(`data-id="${idFila(montaje, 2)}"`));
+		assert.ok(!cuerpoFragmento.includes(`data-id="${idFila(montaje, 1)}"`));
 
 		// El filtro de la cruzada acota igual, pero el arrastre sigue siendo global.
 		const filtrada = await (await pedir(montaje, "/tareas/kanban?proyecto=WEB", { cookie })).text();
@@ -436,7 +442,7 @@ test("la ficha enseña el proyecto y el alta acotada crea la tarea en él", asyn
 		const cookie = await entrar(montaje);
 		const { web } = conDosProyectos(montaje);
 
-		const ficha = await (await pedir(montaje, "/tareas/T-0002", { cookie })).text();
+		const ficha = await (await pedir(montaje, `/tareas/${idFila(montaje, 2)}`, { cookie })).text();
 		assert.match(ficha, /<dt>Proyecto<\/dt>/);
 		assert.match(ficha, /<dd><a href="\/p\/WEB\/tareas">.*?WEB<\/span><\/a> La web nueva<\/dd>/);
 
@@ -450,7 +456,7 @@ test("la ficha enseña el proyecto y el alta acotada crea la tarea en él", asyn
 			formulario: { titulo: "Nacida en la web", descripcion: "", analisisTerminal: "", ejecucionTerminal: "" },
 		});
 		assert.equal(creada.status, 302);
-		assert.equal(creada.headers.get("location"), "/tareas/T-0003");
+		assert.equal(creada.headers.get("location"), `/tareas/${idFila(montaje, 3)}`);
 		assert.equal(buscarTarea(montaje.db, 3)?.proyectoId, web);
 
 		// Sin prefijo, el proyecto es el que se estaba mirando: se enseña y no se
@@ -475,9 +481,9 @@ test("la ficha enseña el proyecto y el alta acotada crea la tarea en él", asyn
 		assert.equal(buscarTarea(montaje.db, 5)?.proyectoId, 1);
 
 		// Y la edición en backlog no muda de proyecto: enseña el suyo, sin desplegable.
-		const ficha4 = await (await pedir(montaje, "/tareas/T-0004", { cookie })).text();
+		const ficha4 = await (await pedir(montaje, `/tareas/${idFila(montaje, 4)}`, { cookie })).text();
 		assert.ok(!ficha4.includes('<select name="proyecto">'), "la edición no cambia de proyecto");
-		const edicion = await pedir(montaje, "/tareas/T-0004/editar", {
+		const edicion = await pedir(montaje, `/tareas/${idFila(montaje, 4)}/editar`, {
 			cookie,
 			formulario: {
 				titulo: "Nacida en lo mirado",
@@ -506,7 +512,7 @@ test("arrastrar en el tablero de un proyecto coloca entre las suyas y no mueve l
 
 		// Soltar «Web dos» arriba del tablero de WEB la pone delante de «Web una»;
 		// la del principal, que no sale en ese tablero, se queda donde estaba.
-		const respuesta = await pedir(montaje, "/tareas/T-0003/orden", {
+		const respuesta = await pedir(montaje, `/tareas/${idFila(montaje, 3)}/orden`, {
 			cookie,
 			formulario: { estado: "backlog", orden: "1", proyecto: "WEB" },
 		});
@@ -516,7 +522,7 @@ test("arrastrar en el tablero de un proyecto coloca entre las suyas y no mueve l
 		assert.equal(buscarTarea(montaje.db, 2)?.orden, 3);
 
 		// Una tarjeta de otro proyecto no se coloca en ese tablero.
-		const ajena = await pedir(montaje, "/tareas/T-0001/orden", {
+		const ajena = await pedir(montaje, `/tareas/${idFila(montaje, 1)}/orden`, {
 			cookie,
 			formulario: { estado: "backlog", orden: "1", proyecto: "WEB" },
 		});

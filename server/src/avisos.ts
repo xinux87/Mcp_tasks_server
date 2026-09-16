@@ -16,7 +16,8 @@ export type TipoAviso = "pregunta" | "hecha" | "analisis_listo" | "descomposicio
 
 export type Evento = {
 	tipo: TipoAviso;
-	tareaId: number;
+	/** Código de la tarea, sin el prefijo: de aquí salen el id y el enlace. */
+	codigo: string;
 	titulo: string;
 	/** Solo en `pregunta`: es lo que se entrecomilla, en vez del título. */
 	pregunta?: string;
@@ -45,7 +46,7 @@ export type OpcionesAvisador = {
 
 /** El texto del aviso: la frase y, debajo, el enlace a la ficha. */
 export function textoDeAviso(evento: Evento, baseUrl: string): string {
-	const id = formatearId(evento.tareaId);
+	const id = formatearId(evento.codigo);
 	const asunto = evento.tipo === "pregunta" ? (evento.pregunta ?? evento.titulo) : evento.titulo;
 	return `${id} ${FRASES[evento.tipo]}: «${asunto}»\n${sinBarraFinal(baseUrl)}/tareas/${id}`;
 }

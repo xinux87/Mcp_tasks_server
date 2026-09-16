@@ -94,7 +94,7 @@ function exigirDescomposicionEnMarcha(padre: Tarea, terminalId: number): void {
 	if (padre.tipo !== "funcionalidad") {
 		throw new ErrorDeRegla(
 			"solo_desde_descomposicion",
-			`La tarea ${formatearId(padre.id)} no es una funcionalidad: las partes solo cuelgan de una funcionalidad.`,
+			`La tarea ${formatearId(padre.codigo)} no es una funcionalidad: las partes solo cuelgan de una funcionalidad.`,
 		);
 	}
 	if (padre.estado !== "prepared") {
@@ -118,7 +118,7 @@ function exigirPartesDelMismoPadre(conexion: DatabaseSync, padreId: number, depe
 		if (candidata.padreId !== padreId) {
 			throw new ErrorDeRegla(
 				"dependencia_fuera_de_la_funcionalidad",
-				`La tarea ${formatearId(otra)} no es una parte de esta funcionalidad: una parte solo depende de sus hermanas.`,
+				`La tarea ${formatearId(candidata.codigo)} no es una parte de esta funcionalidad: una parte solo depende de sus hermanas.`,
 			);
 		}
 	}
@@ -271,7 +271,7 @@ export function cerrarPadreSiProcede(conexion: DatabaseSync, revision: number, p
 		tipo: "resultado",
 		autor: AUTOR_SERVIDOR,
 		texto: partes
-			.map((hermana) => `- ${formatearId(hermana.id)} · ${hermana.titulo} · ${commitDe(conexion, hermana.id)}`)
+			.map((hermana) => `- ${formatearId(hermana.codigo)} · ${hermana.titulo} · ${commitDe(conexion, hermana.id)}`)
 			.join("\n"),
 		preguntaId: null,
 	});

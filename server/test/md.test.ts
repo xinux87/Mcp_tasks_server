@@ -13,14 +13,18 @@ import {
 	listarTareas,
 	moverTareaHumano,
 	preguntasContestadasDesde,
+	type Tarea,
 	tareasParaTerminalDesde,
 	tomarTarea,
 } from "../src/db/tareas.ts";
 import { documentoTarea } from "../src/md/documento.ts";
-import { formatearId, parsearId } from "../src/md/ids.ts";
+import { formatearId, generarCodigo, parsearId } from "../src/md/ids.ts";
 import { lineaIndice } from "../src/md/indice.ts";
 import { salidaNovedades } from "../src/md/novedades.ts";
 import { codigoDe, montar } from "./comun.ts";
+
+/** El identificador visible de una tarea: lo único que ya no se puede escribir a mano. */
+const id = (tarea: { codigo: string }): string => formatearId(tarea.codigo);
 
 /** Las fechas son las únicas que no se pueden fijar en la cadena esperada. */
 function sinFechas(markdown: string): string {
@@ -34,7 +38,7 @@ type Banco = ReturnType<typeof montar>;
  * «Formato Markdown» del CLAUDE.md: análisis, pregunta P1, respuesta, dos
  * hijas, comentario, resultado y consumo.
  */
-function ejemplo(banco: Banco): { padre: number; hija: number } {
+function ejemplo(banco: Banco): { padre: Tarea; hija: Tarea; tests: Tarea } {
 	const terminal = banco.portatil;
 	const padre = crearTareaHumana(banco.db, {
 		titulo: "Exportar el listado de clientes a CSV",
@@ -135,11 +139,11 @@ function ejemplo(banco: Banco): { padre: number; hija: number } {
 		herramientas: 9,
 		duracionMs: 300000,
 	});
-	return { padre: padre.id, hija: hija.id };
+	return { padre, hija, tests };
 }
 
-const DOCUMENTO_ESPERADO = `---
-id: T-0001
+const documentoEsperado = ({ padre, hija, tests }: { padre: Tarea; hija: Tarea; tests: Tarea }): string => `---
+id: ${id(padre)}
 proyecto: DEFAULT
 titulo: "Exportar el listado de clientes a CSV"
 tipo: tarea
@@ -177,8 +181,8 @@ para trabajarlo en su hoja de cálculo. Hoy lo copian a mano.
 
 ## Hijas
 
-- T-0002 · doing · Generar el fichero CSV
-- T-0003 · done · Tests de la exportación
+- ${id(hija)} · doing · Generar el fichero CSV
+- ${id(tests)} · done · Tests de la exportación
 
 ## Hilo
 
@@ -218,13 +222,12 @@ respeta los filtros activos y separa por punto y coma.
 
 Commit: a1b2c3d`;
 
-test("los identificadores llevan cuatro cifras como mínimo y se leen de vuelta", () => {
-	assert.equal(formatearId(42), "T-0042");
-	assert.equal(formatearId(1), "T-0001");
-	assert.equal(formatearId(123456), "T-123456");
-	assert.equal(parsearId("T-0042"), 42);
-	assert.equal(parsearId("T-123456"), 123456);
-	for (const malo of ["T-42", "42", "t-0042", "T-0042 ", "T-abcd", ""]) {
+test("el identificador lleva de cuatro a ocho caracteres y se lee de vuelta", () => {
+	assert.equal(formatearId("K7M3XQ"), "T-K7M3XQ");
+	assert.equal(formatearId("0042"), "T-0042");
+	assert.equal(parsearId("T-0042"), "0042");
+	assert.equal(parsearId("T-K7M3XQ"), "K7M3XQ");
+	for (const malo of ["T-42", "42", "t-0042", "T-0042 ", "T-abcd", "T-123456789", ""]) {
 		assert.equal(
 			codigoDe(() => parsearId(malo)),
 			"id_invalido",
@@ -232,13 +235,23 @@ test("los identificadores llevan cuatro cifras como mínimo y se leen de vuelta"
 	}
 });
 
+test("un código nuevo son seis caracteres del alfabeto, y no se repiten", () => {
+	const codigos = new Set<string>();
+	for (let vuelta = 0; vuelta < 100; vuelta += 1) {
+		const codigo = generarCodigo();
+		assert.match(codigo, /^[23456789A-HJKMNP-Z]{6}$/);
+		codigos.add(codigo);
+	}
+	assert.equal(codigos.size, 100);
+});
+
 test("el documento de la tarea del ejemplo sale carácter a carácter", () => {
 	const banco = montar();
 	try {
-		const { padre } = ejemplo(banco);
-		const completa = leerTarea(banco.db, padre);
+		const tareas = ejemplo(banco);
+		const completa = leerTarea(banco.db, tareas.padre.id);
 		assert.ok(completa);
-		assert.equal(sinFechas(documentoTarea(completa)), DOCUMENTO_ESPERADO);
+		assert.equal(sinFechas(documentoTarea(completa)), documentoEsperado(tareas));
 	} finally {
 		banco.cerrar();
 	}
@@ -247,9 +260,9 @@ test("el documento de la tarea del ejemplo sale carácter a carácter", () => {
 test("el documento de una hija lleva su padre y el de una tarea nueva va vacío", () => {
 	const banco = montar();
 	try {
-		const { hija } = ejemplo(banco);
-		const documentoHija = sinFechas(documentoTarea(leerTarea(banco.db, hija) ?? assert.fail("sin hija")));
-		assert.match(documentoHija, /^padre: T-0001$/m);
+		const { padre, hija } = ejemplo(banco);
+		const documentoHija = sinFechas(documentoTarea(leerTarea(banco.db, hija.id) ?? assert.fail("sin hija")));
+		assert.match(documentoHija, new RegExp(`^padre: ${id(padre)}$`, "m"));
 		assert.match(documentoHija, /^marcas: \[en marcha\]$/m);
 
 		const nueva = crearTareaHumana(banco.db, { titulo: "Una nueva", descripcion: "d", usuarioId: banco.ana });
@@ -257,7 +270,7 @@ test("el documento de una hija lleva su padre y el de una tarea nueva va vacío"
 		assert.equal(
 			documentoNueva,
 			`---
-id: T-0004
+id: ${id(nueva)}
 proyecto: DEFAULT
 titulo: "Una nueva"
 tipo: tarea
@@ -304,20 +317,20 @@ test("el proyecto va en el frontmatter justo debajo del id, y no en la línea de
 		});
 		assert.match(
 			sinFechas(documentoTarea(leerTarea(banco.db, suya.id) ?? assert.fail("sin tarea"))),
-			/^id: T-0001\nproyecto: WEB\ntitulo: "Pintar el tablero"$/m,
+			new RegExp(`^id: ${id(suya)}\nproyecto: WEB\ntitulo: "Pintar el tablero"$`, "m"),
 		);
 
 		// Sin decir proyecto, la tarea nace en el principal.
 		const principal = crearTareaHumana(banco.db, { titulo: "Otra", descripcion: "d", usuarioId: banco.ana });
 		assert.match(
 			sinFechas(documentoTarea(leerTarea(banco.db, principal.id) ?? assert.fail("sin tarea"))),
-			/^id: T-0002\nproyecto: DEFAULT\n/m,
+			new RegExp(`^id: ${id(principal)}\nproyecto: DEFAULT\n`, "m"),
 		);
 
 		// El índice no lo lleva: el agente solo ve tareas de su proyecto.
 		assert.equal(
 			lineaIndice(itemIndiceDe(banco.db, suya.id)),
-			"- T-0001 · backlog · Pintar el tablero · analisis: sin asignar · ejecucion: sin asignar",
+			`- ${id(suya)} · backlog · Pintar el tablero · analisis: sin asignar · ejecucion: sin asignar`,
 		);
 	} finally {
 		banco.cerrar();
@@ -344,7 +357,7 @@ test("una pregunta se ve en el frontmatter y no lleva bloque ni segmento de ejec
 
 		assert.equal(
 			lineaIndice(itemIndiceDe(banco.db, pregunta.id)),
-			"- T-0001 · prepared · pregunta · ¿Cuánto se tarda hoy en cerrar el mes? · analisis: sonnet@portatil-ana",
+			`- ${id(pregunta)} · prepared · pregunta · ¿Cuánto se tarda hoy en cerrar el mes? · analisis: sonnet@portatil-ana`,
 		);
 
 		// Las marcas van después de «pregunta», nunca antes.
@@ -357,7 +370,7 @@ test("una pregunta se ve en el frontmatter y no lleva bloque ni segmento de ejec
 		moverTareaHumano(banco.db, { tareaId: sinAsignar.id, usuarioId: banco.ana, estado: "prepared" });
 		assert.equal(
 			lineaIndice(itemIndiceDe(banco.db, sinAsignar.id)),
-			"- T-0002 · prepared · pregunta · sin terminal · ¿Y el cierre de año? · analisis: sin asignar",
+			`- ${id(sinAsignar)} · prepared · pregunta · sin terminal · ¿Y el cierre de año? · analisis: sin asignar`,
 		);
 	} finally {
 		banco.cerrar();
@@ -367,18 +380,18 @@ test("una pregunta se ve en el frontmatter y no lleva bloque ni segmento de ejec
 test("la línea de índice pone las marcas entre el estado y el título", () => {
 	const banco = montar();
 	try {
-		ejemplo(banco);
-		crearTareaHumana(banco.db, {
+		const { padre, hija, tests } = ejemplo(banco);
+		const suelta = crearTareaHumana(banco.db, {
 			titulo: "Migrar el envío de correos a la cola",
 			descripcion: "d",
 			usuarioId: banco.ana,
 		});
 		const lineas = listarTareas(banco.db, {}).map(lineaIndice);
 		assert.deepEqual(lineas, [
-			"- T-0004 · backlog · Migrar el envío de correos a la cola · analisis: sin asignar · ejecucion: sin asignar",
-			"- T-0002 · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-ana · padre: T-0001",
-			"- T-0003 · done · Tests de la exportación · analisis: sonnet · ejecucion: opus@portatil-ana · padre: T-0001",
-			"- T-0001 · done · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-ana · ejecucion: opus@portatil-ana",
+			`- ${id(suelta)} · backlog · Migrar el envío de correos a la cola · analisis: sin asignar · ejecucion: sin asignar`,
+			`- ${id(hija)} · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-ana · padre: ${id(padre)}`,
+			`- ${id(tests)} · done · Tests de la exportación · analisis: sonnet · ejecucion: opus@portatil-ana · padre: ${id(padre)}`,
+			`- ${id(padre)} · done · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-ana · ejecucion: opus@portatil-ana`,
 		]);
 	} finally {
 		banco.cerrar();
@@ -399,7 +412,7 @@ test("el presupuesto va tras la autoejecución, y pasarse es una marca más", ()
 		assert.match(documento(), /^autoejecucion: true\npresupuesto: 200000\nmarcas: \[\]$/m);
 		assert.equal(
 			lineaIndice(itemIndiceDe(banco.db, tarea.id)),
-			"- T-0001 · backlog · Exportar el listado · analisis: sin asignar · ejecucion: sin asignar",
+			`- ${id(tarea)} · backlog · Exportar el listado · analisis: sin asignar · ejecucion: sin asignar`,
 		);
 
 		registrarConsumo(banco.db, {
@@ -414,7 +427,7 @@ test("el presupuesto va tras la autoejecución, y pasarse es una marca más", ()
 		assert.match(documento(), /^marcas: \[sobre presupuesto\]$/m);
 		assert.equal(
 			lineaIndice(itemIndiceDe(banco.db, tarea.id)),
-			"- T-0001 · backlog · sobre presupuesto · Exportar el listado · analisis: sin asignar · ejecucion: sin asignar",
+			`- ${id(tarea)} · backlog · sobre presupuesto · Exportar el listado · analisis: sin asignar · ejecucion: sin asignar`,
 		);
 
 		// Sin tope no hay línea en el frontmatter: no diría nada.
@@ -431,7 +444,7 @@ test("el presupuesto va tras la autoejecución, y pasarse es una marca más", ()
 test("novedades lista lo cambiado y las preguntas contestadas, y sin nada solo la revisión", () => {
 	const banco = montar();
 	try {
-		ejemplo(banco);
+		const { padre, hija } = ejemplo(banco);
 		const salida = salidaNovedades({
 			revision: 190,
 			tareas: tareasParaTerminalDesde(banco.db, { terminalId: banco.portatil, revision: 0 }),
@@ -443,11 +456,11 @@ test("novedades lista lo cambiado y las preguntas contestadas, y sin nada solo l
 
 ## Tareas nuevas o cambiadas
 
-- T-0002 · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-ana · padre: T-0001
+- ${id(hija)} · doing · en marcha · Generar el fichero CSV · analisis: sonnet · ejecucion: opus@portatil-ana · padre: ${id(padre)}
 
 ## Preguntas contestadas
 
-- T-0001 · P1 · Punto y coma`,
+- ${id(padre)} · P1 · Punto y coma`,
 		);
 
 		assert.equal(salidaNovedades({ revision: 190, tareas: [], preguntas: [] }), "revision: 190");
@@ -491,13 +504,17 @@ test("una funcionalidad enseña su rama, su progreso y sus partes; una parte, su
 			texto: "Dos partes: los datos y el botón.",
 		});
 		aprobarEjecucion(banco.db, { tareaId: evolutivo.id, usuarioId: banco.ana });
+		// La parte que integra la rama la crea el servidor al aprobar: es la última.
+		const integrar =
+			listarTareas(banco.db, {}).find((item) => item.titulo.startsWith("Integrar la rama")) ??
+			assert.fail("sin parte de integración");
 
 		// La funcionalidad: rama, progreso, sin bloque de ejecución y con sus
 		// partes en el bloque de hijas, cada una con lo que la precede.
 		assert.equal(
 			sinFechas(documentoTarea(leerTarea(banco.db, evolutivo.id) ?? assert.fail("sin funcionalidad"))),
 			`---
-id: T-0001
+id: ${id(evolutivo)}
 proyecto: DEFAULT
 titulo: "Que los comerciales se bajen sus listados"
 tipo: funcionalidad
@@ -521,9 +538,9 @@ Hoy copian los datos a mano y se equivocan.
 
 ## Hijas
 
-- T-0002 · prepared · Sacar los datos del listado
-- T-0003 · prepared · Poner el botón de descarga · depende de: T-0002
-- T-0004 · prepared · Integrar la rama \`evolutivo/csv\` en la principal · depende de: T-0002, T-0003
+- ${id(datos)} · prepared · Sacar los datos del listado
+- ${id(boton)} · prepared · Poner el botón de descarga · depende de: ${id(datos)}
+- ${id(integrar)} · prepared · Integrar la rama \`evolutivo/csv\` en la principal · depende de: ${id(datos)}, ${id(boton)}
 
 ## Hilo
 
@@ -534,17 +551,23 @@ Dos partes: los datos y el botón.`,
 
 		// La parte: su padre, la rama heredada, de qué depende y la marca de que espera.
 		const documentoParte = sinFechas(documentoTarea(leerTarea(banco.db, boton.id) ?? assert.fail("sin parte")));
-		assert.match(documentoParte, /^padre: T-0001\nautoejecucion: true\nrama: evolutivo\/csv\ndependeDe: \[T-0002\]$/m);
+		assert.match(
+			documentoParte,
+			new RegExp(
+				`^padre: ${id(evolutivo)}\nautoejecucion: true\nrama: evolutivo/csv\ndependeDe: \\[${id(datos)}\\]$`,
+				"m",
+			),
+		);
 		assert.match(documentoParte, /^marcas: \[esperando\]$/m);
 		assert.match(documentoParte, /^ejecucion:\n {2}modelo: opus$/m);
 
 		assert.equal(
 			lineaIndice(itemIndiceDe(banco.db, evolutivo.id)),
-			"- T-0001 · doing · funcionalidad 0/3 · Que los comerciales se bajen sus listados · analisis: sonnet@portatil-ana",
+			`- ${id(evolutivo)} · doing · funcionalidad 0/3 · Que los comerciales se bajen sus listados · analisis: sonnet@portatil-ana`,
 		);
 		assert.equal(
 			lineaIndice(itemIndiceDe(banco.db, boton.id)),
-			"- T-0003 · prepared · esperando · Poner el botón de descarga · analisis: sonnet@portatil-ana · ejecucion: opus@portatil-ana · padre: T-0001",
+			`- ${id(boton)} · prepared · esperando · Poner el botón de descarga · analisis: sonnet@portatil-ana · ejecucion: opus@portatil-ana · padre: ${id(evolutivo)}`,
 		);
 	} finally {
 		banco.cerrar();

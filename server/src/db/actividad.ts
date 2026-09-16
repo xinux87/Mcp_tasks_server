@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
-import { ahora, entero, enteroOpcional, sentencia, texto } from "./base.ts";
+import { ahora, entero, enteroOpcional, sentencia, texto, textoOpcional } from "./base.ts";
 
 /**
  * El rastro de las acciones humanas. Lo que hace un agente ya está en el hilo
@@ -59,6 +59,12 @@ export type Actividad = {
 	accion: string;
 	objeto: ObjetoActividad;
 	objetoId: number;
+	/**
+	 * El identificador visible de la tarea, si es una tarea y todavía existe. Se
+	 * resuelve en la misma consulta: la lista pinta cien filas y no puede
+	 * consultar la base en cada una.
+	 */
+	objetoCodigo: string | null;
 	objetoNombre: string;
 	detalle: string;
 	creado: string;
@@ -74,7 +80,11 @@ export type NuevaActividad = {
 	detalle?: string;
 };
 
-const COLUMNAS = "id, usuario_id, usuario_nombre, accion, objeto, objeto_id, objeto_nombre, detalle, creado";
+const COLUMNAS = `a.id, a.usuario_id, a.usuario_nombre, a.accion, a.objeto, a.objeto_id, a.objeto_nombre,
+	a.detalle, a.creado, t.codigo AS objeto_codigo`;
+
+/** De dónde se leen las filas: con el código de la tarea cuando la acción es sobre una. */
+const DE_ACTIVIDAD = "FROM actividad a LEFT JOIN tareas t ON a.objeto = 'tarea' AND t.id = a.objeto_id";
 
 function esObjeto(valor: string): valor is ObjetoActividad {
 	const nombres: readonly string[] = OBJETOS;
@@ -97,6 +107,7 @@ function comoActividad(fila: Record<string, unknown>): Actividad {
 		accion: texto(fila, "accion"),
 		objeto: comoObjeto(fila),
 		objetoId: entero(fila, "objeto_id"),
+		objetoCodigo: textoOpcional(fila, "objeto_codigo"),
 		objetoNombre: texto(fila, "objeto_nombre"),
 		detalle: texto(fila, "detalle"),
 		creado: texto(fila, "creado"),
@@ -158,9 +169,9 @@ const DESDE_EL_ALTA = `(SELECT COALESCE(MAX(id), 0) FROM actividad WHERE objeto 
 export function actividadDe(db: DatabaseSync, objeto: ObjetoActividad, objetoId: number): Actividad[] {
 	return sentencia(
 		db,
-		`SELECT ${COLUMNAS} FROM actividad
-			WHERE objeto = ? AND objeto_id = ? AND id >= ${DESDE_EL_ALTA}
-			ORDER BY id`,
+		`SELECT ${COLUMNAS} ${DE_ACTIVIDAD}
+			WHERE a.objeto = ? AND a.objeto_id = ? AND a.id >= ${DESDE_EL_ALTA}
+			ORDER BY a.id`,
 	)
 		.all(objeto, objetoId, objeto, objetoId)
 		.map(comoActividad);
@@ -168,7 +179,7 @@ export function actividadDe(db: DatabaseSync, objeto: ObjetoActividad, objetoId:
 
 /** Lo último que ha pasado en todo el servidor, de lo más nuevo a lo más antiguo. */
 export function actividadReciente(db: DatabaseSync, limite: number): Actividad[] {
-	return sentencia(db, `SELECT ${COLUMNAS} FROM actividad ORDER BY id DESC LIMIT ?`)
+	return sentencia(db, `SELECT ${COLUMNAS} ${DE_ACTIVIDAD} ORDER BY a.id DESC LIMIT ?`)
 		.all(Math.max(0, Math.trunc(limite)))
 		.map(comoActividad);
 }

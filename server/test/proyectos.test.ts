@@ -540,7 +540,7 @@ test("una dependencia no cruza de proyecto, venga por donde venga", () => {
 			terminalId,
 			dependeDe: [primera.id],
 		});
-		assert.deepEqual(dependenciasDe(banco.db, segunda.id), [primera.id]);
+		assert.deepEqual(dependenciasDe(banco.db, segunda.id), [primera.codigo]);
 	} finally {
 		banco.cerrar();
 	}

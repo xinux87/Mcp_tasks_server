@@ -9,7 +9,7 @@ import { crearTerminalConToken } from "../src/auth/tokens.ts";
 import { crearAvisador, type Enviar, type Evento } from "../src/avisos.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
-import { aprobarEjecucion, crearTareaHumana, moverTareaHumano, type Tarea } from "../src/db/tareas.ts";
+import { aprobarEjecucion, crearTareaHumana, idDeCodigo, moverTareaHumano, type Tarea } from "../src/db/tareas.ts";
 import { formatearId, parsearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
@@ -25,19 +25,19 @@ function vaciar(): Promise<void> {
 
 const EVENTOS: [Evento, string][] = [
 	[
-		{ tipo: "pregunta", tareaId: 42, titulo: "Exportar el listado", pregunta: "¿Qué separador usamos en el CSV?" },
-		"T-0042 pregunta: «¿Qué separador usamos en el CSV?»",
+		{ tipo: "pregunta", codigo: "K7M3XQ", titulo: "Exportar el listado", pregunta: "¿Qué separador usamos en el CSV?" },
+		"T-K7M3XQ pregunta: «¿Qué separador usamos en el CSV?»",
 	],
 	[
-		{ tipo: "hecha", tareaId: 42, titulo: "Exportar el listado de clientes a CSV" },
-		"T-0042 hecha: «Exportar el listado de clientes a CSV»",
+		{ tipo: "hecha", codigo: "K7M3XQ", titulo: "Exportar el listado de clientes a CSV" },
+		"T-K7M3XQ hecha: «Exportar el listado de clientes a CSV»",
 	],
 	[
-		{ tipo: "analisis_listo", tareaId: 42, titulo: "Exportar el listado de clientes a CSV" },
+		{ tipo: "analisis_listo", codigo: "0042", titulo: "Exportar el listado de clientes a CSV" },
 		"T-0042 análisis listo: «Exportar el listado de clientes a CSV»",
 	],
 	[
-		{ tipo: "descomposicion_lista", tareaId: 50, titulo: "Que los comerciales se bajen sus listados" },
+		{ tipo: "descomposicion_lista", codigo: "0050", titulo: "Que los comerciales se bajen sus listados" },
 		"T-0050 descomposición lista: «Que los comerciales se bajen sus listados»",
 	],
 ];
@@ -59,7 +59,7 @@ test("cada aviso son dos líneas: la frase y el enlace a la ficha", async () => 
 		enviados,
 		EVENTOS.map(([evento, primeraLinea]) => ({
 			url: URL_AVISOS,
-			texto: `${primeraLinea}\n${BASE_URL_PRUEBA}/tareas/${formatearId(evento.tareaId)}`,
+			texto: `${primeraLinea}\n${BASE_URL_PRUEBA}/tareas/${formatearId(evento.codigo)}`,
 		})),
 	);
 });
@@ -87,8 +87,8 @@ test("un envío que falla no lanza: deja una línea en stderr y sigue", async ()
 			},
 		});
 		// Si se propagara, estas dos líneas tumbarían el test.
-		rota({ tipo: "hecha", tareaId: 1, titulo: "Una tarea" });
-		sincrona({ tipo: "hecha", tareaId: 1, titulo: "Una tarea" });
+		rota({ tipo: "hecha", codigo: "0001", titulo: "Una tarea" });
+		sincrona({ tipo: "hecha", codigo: "0001", titulo: "Una tarea" });
 		await vaciar();
 	} finally {
 		console.error = original;
@@ -212,15 +212,15 @@ function tareaEnPrepared(montaje: Montaje, titulo: string, autoejecucion = true,
 }
 
 /** El enlace a la ficha, que es la segunda línea de cualquier aviso. */
-function ficha(tareaId: number): string {
-	return `${BASE_URL_PRUEBA}/tareas/${formatearId(tareaId)}`;
+function ficha(tarea: Tarea): string {
+	return `${BASE_URL_PRUEBA}/tareas/${formatearId(tarea.codigo)}`;
 }
 
 test("preguntar avisa con la pregunta y el enlace de la ficha", async () => {
 	const montaje = await montar();
 	try {
 		const tarea = tareaEnPrepared(montaje, "Exportar el listado de clientes a CSV");
-		const id = formatearId(tarea.id);
+		const id = formatearId(tarea.codigo);
 		await llamar(montaje, "tomar_tarea", { id, fase: "analisis" });
 		assert.deepEqual(await montaje.recoger(), []);
 
@@ -236,7 +236,7 @@ test("preguntar avisa con la pregunta y el enlace de la ficha", async () => {
 			recomendacion: "Punto y coma",
 		});
 
-		assert.deepEqual(await montaje.recoger(), [`${id} pregunta: «¿Qué separador usamos en el CSV?»\n${ficha(tarea.id)}`]);
+		assert.deepEqual(await montaje.recoger(), [`${id} pregunta: «¿Qué separador usamos en el CSV?»\n${ficha(tarea)}`]);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -246,7 +246,7 @@ test("un resultado avisa de la tarea hecha; un comentario no avisa de nada", asy
 	const montaje = await montar();
 	try {
 		const tarea = tareaEnPrepared(montaje, "Exportar el listado de clientes a CSV");
-		const id = formatearId(tarea.id);
+		const id = formatearId(tarea.codigo);
 		await llamar(montaje, "tomar_tarea", { id, fase: "analisis" });
 		// Con autoejecución, el análisis no espera a nadie: no hay aviso.
 		await llamar(montaje, "comentar_tarea", { id, tipo: "analisis", texto: "Plan: un botón y un fichero." });
@@ -255,9 +255,7 @@ test("un resultado avisa de la tarea hecha; un comentario no avisa de nada", asy
 		assert.deepEqual(await montaje.recoger(), []);
 
 		await llamar(montaje, "comentar_tarea", { id, tipo: "resultado", texto: "Hecho.\n\nCommit: a1b2c3d" });
-		assert.deepEqual(await montaje.recoger(), [
-			`${id} hecha: «Exportar el listado de clientes a CSV»\n${ficha(tarea.id)}`,
-		]);
+		assert.deepEqual(await montaje.recoger(), [`${id} hecha: «Exportar el listado de clientes a CSV»\n${ficha(tarea)}`]);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -267,12 +265,12 @@ test("un análisis sin autoejecución avisa de que espera aprobación", async ()
 	const montaje = await montar();
 	try {
 		const tarea = tareaEnPrepared(montaje, "Migrar el envío de correos a la cola", false);
-		const id = formatearId(tarea.id);
+		const id = formatearId(tarea.codigo);
 		await llamar(montaje, "tomar_tarea", { id, fase: "analisis" });
 		await llamar(montaje, "comentar_tarea", { id, tipo: "analisis", texto: "Plan: una cola y un reintento." });
 
 		assert.deepEqual(await montaje.recoger(), [
-			`${id} análisis listo: «Migrar el envío de correos a la cola»\n${ficha(tarea.id)}`,
+			`${id} análisis listo: «Migrar el envío de correos a la cola»\n${ficha(tarea)}`,
 		]);
 	} finally {
 		await montaje.cerrar();
@@ -295,12 +293,12 @@ test("una pregunta del humano avisa como hecha en cuanto se responde", async () 
 			usuarioId: montaje.usuarioId,
 			estado: "prepared",
 		});
-		const id = formatearId(tarea.id);
+		const id = formatearId(tarea.codigo);
 		await llamar(montaje, "tomar_tarea", { id, fase: "analisis" });
 		// En una pregunta el comentario `analisis` es la respuesta y la deja en done.
 		await llamar(montaje, "comentar_tarea", { id, tipo: "analisis", texto: "Unos 200.000 tokens de media." });
 
-		assert.deepEqual(await montaje.recoger(), [`${id} hecha: «¿Cuánto nos cuesta cada tarea?»\n${ficha(tarea.id)}`]);
+		assert.deepEqual(await montaje.recoger(), [`${id} hecha: «¿Cuánto nos cuesta cada tarea?»\n${ficha(tarea)}`]);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -310,7 +308,7 @@ test("la descomposición de una funcionalidad avisa, y cerrar su última parte a
 	const montaje = await montar();
 	try {
 		const evolutivo = tareaEnPrepared(montaje, "Que los comerciales se bajen sus listados", true, "funcionalidad");
-		const evolutivoId = formatearId(evolutivo.id);
+		const evolutivoId = formatearId(evolutivo.codigo);
 		await llamar(montaje, "tomar_tarea", { id: evolutivoId, fase: "analisis" });
 		const creada = await llamar(montaje, "crear_tarea", {
 			titulo: "Poner el botón de descarga",
@@ -319,13 +317,13 @@ test("la descomposición de una funcionalidad avisa, y cerrar su última parte a
 			padre: evolutivoId,
 		});
 		const parteId = creada.split("\n")[0]?.replace("creada: ", "") ?? "";
-		assert.match(parteId, /^T-\d{4}$/);
+		assert.match(parteId, /^T-[0-9A-Z]{6}$/);
 		// Crear la parte no avisa: lo que espera al humano es la descomposición.
 		assert.deepEqual(await montaje.recoger(), []);
 
 		await llamar(montaje, "comentar_tarea", { id: evolutivoId, tipo: "analisis", texto: "Una sola parte: el botón." });
 		assert.deepEqual(await montaje.recoger(), [
-			`${evolutivoId} descomposición lista: «Que los comerciales se bajen sus listados»\n${ficha(evolutivo.id)}`,
+			`${evolutivoId} descomposición lista: «Que los comerciales se bajen sus listados»\n${ficha(evolutivo)}`,
 		]);
 
 		// El humano aprueba la descomposición: la parte sale a prepared.
@@ -344,7 +342,11 @@ test("la descomposición de una funcionalidad avisa, y cerrar su última parte a
 		// en su misma transacción. Eso lo hace él desde la web, así que no avisa:
 		// ya lo sabe. El aviso de la funcionalidad solo saldría si la cerrara la
 		// transacción de un agente.
-		moverTareaHumano(montaje.db, { tareaId: parsearId(parteId), usuarioId: montaje.usuarioId, estado: "finished" });
+		moverTareaHumano(montaje.db, {
+			tareaId: idDeCodigo(montaje.db, parsearId(parteId)),
+			usuarioId: montaje.usuarioId,
+			estado: "finished",
+		});
 		assert.deepEqual(await montaje.recoger(), []);
 	} finally {
 		await montaje.cerrar();

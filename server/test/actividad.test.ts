@@ -20,7 +20,15 @@ import { COLORES_USUARIO } from "../src/db/colores.ts";
 import { buscarUsuarioPorNombre, crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { editarTareaBacklog } from "../src/db/edicion.ts";
 import { comentarAnalisis, comentarioHumano, preguntar, responder } from "../src/db/hilo.ts";
-import { aprobarEjecucion, crearTareaHumana, moverTareaHumano, reordenar, tomarTarea } from "../src/db/tareas.ts";
+import {
+	aprobarEjecucion,
+	crearTareaHumana,
+	exigirTarea,
+	moverTareaHumano,
+	reordenar,
+	tomarTarea,
+} from "../src/db/tareas.ts";
+import { formatearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA, codigoDe, montar } from "./comun.ts";
 
 /** Las acciones del rastro de un objeto, en el orden en que se escribieron. */
@@ -423,7 +431,8 @@ test("la actividad de una tarea se enlaza a su ficha desde la lista global", asy
 
 		const cuerpo = await (await pedir(montaje, "/actividad", { cookie })).text();
 		assert.match(cuerpo, /creó la tarea/);
-		assert.match(cuerpo, /<a class="id-tarea" href="\/tareas\/T-0001">T-0001<\/a>/);
+		const id = formatearId(exigirTarea(montaje.db, 1).codigo);
+		assert.match(cuerpo, new RegExp(`<a class="id-tarea" href="/tareas/${id}">${id}</a>`));
 		assert.match(cuerpo, /<span class="objeto">Exportar clientes<\/span>/);
 	} finally {
 		await montaje.cerrar();

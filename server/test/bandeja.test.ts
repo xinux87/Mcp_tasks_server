@@ -198,7 +198,7 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 
 		const preguntas = bloque(cuerpo, "Contesta");
 		assert.match(preguntas, /¿Qué separador usamos\?/);
-		assert.match(preguntas, new RegExp(`action="/tareas/${formatearId(tareas.bloqueada.id)}/responder/P1"`));
+		assert.match(preguntas, new RegExp(`action="/tareas/${formatearId(tareas.bloqueada.codigo)}/responder/P1"`));
 		assert.match(preguntas, /<input type="hidden" name="volver" value="\/">/);
 		// El chip del proyecto va en la línea de cada tarea, con su color: la
 		// bandeja los cruza.
@@ -218,7 +218,10 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 		assert.match(revisar, /Finalizar/);
 		// El cuadro de comentar, con su vuelta a la bandeja: otra iteración se
 		// pide desde aquí, sin abrir la ficha.
-		assert.match(revisar, /<form class="comentar" method="post" action="\/tareas\/T-0006\/comentar">/);
+		assert.match(
+			revisar,
+			new RegExp(`<form class="comentar" method="post" action="/tareas/${formatearId(tareas.hecha.codigo)}/comentar">`),
+		);
 		assert.match(revisar, /<input type="hidden" name="volver" value="\/">/);
 		assert.match(revisar, /<p class="silencio">Comentar devuelve la tarea al agente para otra iteración<\/p>/);
 		assert.doesNotMatch(revisar, /name="iterar"/);
@@ -236,7 +239,7 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 			[tareas.vieja, "Define"],
 		];
 		for (const [cual, suyo] of donde) {
-			const id = formatearId(cual.id);
+			const id = formatearId(cual.codigo);
 			for (const titulo of ["Contesta", "Aprueba", "Revisa", "Define"]) {
 				const trozo = bloque(cuerpo, titulo);
 				if (titulo === suyo) {
@@ -273,14 +276,14 @@ test("se contesta y se finaliza desde la bandeja, sin abrir la ficha", async () 
 		const cookie = await entrar(montaje);
 		const tareas = bandejaDePrueba(montaje.db);
 
-		const contestada = await pedir(montaje, `/tareas/${formatearId(tareas.bloqueada.id)}/responder/P1`, {
+		const contestada = await pedir(montaje, `/tareas/${formatearId(tareas.bloqueada.codigo)}/responder/P1`, {
 			cookie,
 			formulario: { opcion: "Punto y coma", nota: "", volver: "/" },
 		});
 		assert.equal(contestada.status, 302);
 		assert.equal(contestada.headers.get("location"), "/");
 
-		const finalizada = await pedir(montaje, `/tareas/${formatearId(tareas.hecha.id)}/mover`, {
+		const finalizada = await pedir(montaje, `/tareas/${formatearId(tareas.hecha.codigo)}/mover`, {
 			cookie,
 			formulario: { estado: "finished", nota: "", volver: "/" },
 		});
@@ -302,7 +305,7 @@ test("se pide otra iteración desde la bandeja y la tarea vuelve a En curso", as
 		const cookie = await entrar(montaje);
 		const tareas = bandejaDePrueba(montaje.db);
 
-		const otra = await pedir(montaje, `/tareas/${formatearId(tareas.hecha.id)}/comentar`, {
+		const otra = await pedir(montaje, `/tareas/${formatearId(tareas.hecha.codigo)}/comentar`, {
 			cookie,
 			formulario: { texto: "Falta el pie del informe.", volver: "/" },
 		});
@@ -324,7 +327,7 @@ test("una acción que rompe una regla vuelve a pintar la bandeja con el mensaje"
 		const suelta = tarea(montaje.db, "Exportar clientes");
 
 		// Aprobar una tarea que está en backlog no vale: no hay análisis que aprobar.
-		const respuesta = await pedir(montaje, `/tareas/${formatearId(suelta.id)}/aprobar`, {
+		const respuesta = await pedir(montaje, `/tareas/${formatearId(suelta.codigo)}/aprobar`, {
 			cookie,
 			formulario: { volver: "/" },
 		});

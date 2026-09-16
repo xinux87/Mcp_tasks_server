@@ -10,8 +10,8 @@ import { bloqueCodigo } from "./componentes.ts";
  */
 const renderizador = new MarkdownIt({ html: false, linkify: false });
 
-/** Un identificador de tarea tal como se cita en el hilo: `T-0042`. */
-const ID_TAREA = /T-\d{4,}/g;
+/** Un identificador de tarea tal como se cita en el hilo: `T-K7M3XQ` o `T-0042`. */
+const ID_TAREA = /T-[0-9A-Z]{4,8}/g;
 
 /** Un token de texto suelto, con el nivel de anidamiento que le toca. */
 function tokenTexto(state: StateCore, contenido: string, nivel: number): Token {

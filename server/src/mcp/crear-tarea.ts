@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
 import { crearParte } from "../db/funcionalidades.ts";
-import { crearHija, crearPropuesta, itemIndiceDe, type Tarea } from "../db/tareas.ts";
+import { crearHija, crearPropuesta, idDeCodigo, itemIndiceDe, type Tarea } from "../db/tareas.ts";
 import { ErrorDeRegla } from "../errores.ts";
 import { formatearId, parsearId } from "../md/ids.ts";
 import { lineaIndice } from "../md/indice.ts";
@@ -11,11 +11,11 @@ import { conErroresDeRegla } from "./errores.ts";
 export const NOMBRE = "crear_tarea";
 
 /** El padre es obligatorio en las clases que cuelgan de otra tarea. */
-function exigirPadre(clase: string, padre: string | undefined): number {
+function exigirPadre(db: DatabaseSync, clase: string, padre: string | undefined): number {
 	if (padre === undefined) {
 		throw new ErrorDeRegla("padre_obligatorio", `Una tarea de clase «${clase}» necesita el identificador de su padre.`);
 	}
-	return parsearId(padre);
+	return idDeCodigo(db, parsearId(padre));
 }
 
 /**
@@ -71,19 +71,19 @@ export function registrarHerramientaCrearTarea(server: McpServer, db: DatabaseSy
 				}
 				let creada: Tarea;
 				if (clase === "hija") {
-					creada = crearHija(db, { titulo, descripcion, padreId: exigirPadre(clase, padre), terminalId });
+					creada = crearHija(db, { titulo, descripcion, padreId: exigirPadre(db, clase, padre), terminalId });
 				} else if (clase === "parte") {
 					creada = crearParte(db, {
 						titulo,
 						descripcion,
-						padreId: exigirPadre(clase, padre),
+						padreId: exigirPadre(db, clase, padre),
 						terminalId,
-						dependeDe: (dependeDe ?? []).map(parsearId),
+						dependeDe: (dependeDe ?? []).map((otra) => idDeCodigo(db, parsearId(otra))),
 					});
 				} else {
 					creada = crearPropuesta(db, { titulo, descripcion, terminalId, tipo });
 				}
-				return [`creada: ${formatearId(creada.id)}`, lineaIndice(itemIndiceDe(db, creada.id))].join("\n");
+				return [`creada: ${formatearId(creada.codigo)}`, lineaIndice(itemIndiceDe(db, creada.id))].join("\n");
 			}),
 	);
 }

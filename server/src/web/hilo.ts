@@ -59,11 +59,11 @@ export function separadorIteracion(numero: number, creado: string): Html {
  * una tarea cerrada es de solo lectura. `volver` es la ruta a la que se vuelve
  * al escribir, que es lo que usa la bandeja para no abrir la ficha.
  */
-export function cuadroDeComentar(tareaId: number, estado: Estado, volver?: string): Html {
+export function cuadroDeComentar(codigo: string, estado: Estado, volver?: string): Html {
 	if (estado === "finished") {
 		return html``;
 	}
-	return html`<form class="comentar" method="post" action="/tareas/${formatearId(tareaId)}/comentar">
+	return html`<form class="comentar" method="post" action="/tareas/${formatearId(codigo)}/comentar">
 			${volver === undefined ? html`` : html`<input type="hidden" name="volver" value="${volver}">`}
 			<textarea name="texto" rows="3" required aria-label="Mensaje para el agente" placeholder="Escribe al agente…"></textarea>
 			<div class="acciones">
@@ -89,8 +89,8 @@ function opcionDePregunta(texto: string, consecuencia: string, recomendada: bool
  * `volver` es la ruta a la que redirigir al contestar; sin él se vuelve a la
  * ficha, que es lo que hace la propia ficha.
  */
-export function formularioRespuesta(tareaId: number, pregunta: Pregunta, volver?: string): Html {
-	return html`<form class="responder" method="post" action="/tareas/${formatearId(tareaId)}/responder/P${pregunta.numero}">
+export function formularioRespuesta(codigo: string, pregunta: Pregunta, volver?: string): Html {
+	return html`<form class="responder" method="post" action="/tareas/${formatearId(codigo)}/responder/P${pregunta.numero}">
 			<fieldset>
 				<legend>Responder a P${pregunta.numero}</legend>
 				${volver === undefined ? html`` : html`<input type="hidden" name="volver" value="${volver}">`}
@@ -108,7 +108,7 @@ export function formularioRespuesta(tareaId: number, pregunta: Pregunta, volver?
 
 /** Lo que hace falta para enseñar una pregunta fuera de su hilo: de qué tarea es. */
 export type TareaDeLaPregunta = {
-	id: number;
+	codigo: string;
 	titulo: string;
 };
 
@@ -130,9 +130,9 @@ export function tarjetaPreguntaAbierta(
 ): Html {
 	// El ancla es a donde lleva el «Responder arriba» del hilo de la ficha. Lleva
 	// el id de la tarea porque la bandeja pinta preguntas de varias tareas.
-	return html`<article class="comentario pregunta-abierta" id="pregunta-${formatearId(tarea.id)}-P${pregunta.numero}">
+	return html`<article class="comentario pregunta-abierta" id="pregunta-${formatearId(tarea.codigo)}-P${pregunta.numero}">
 			<header>
-				<a class="id-tarea" href="/tareas/${formatearId(tarea.id)}">${formatearId(tarea.id)}</a>
+				<a class="id-tarea" href="/tareas/${formatearId(tarea.codigo)}">${formatearId(tarea.codigo)}</a>
 				<span>${tarea.titulo}</span>
 				<span>P${pregunta.numero}</span>
 				<span>${fechaLegible(pregunta.creada)}</span>
@@ -141,6 +141,6 @@ export function tarjetaPreguntaAbierta(
 				<p><strong>${pregunta.pregunta}</strong></p>
 				<p class="silencio">${pregunta.porQueImporta}</p>
 			</div>
-			${formularioRespuesta(tarea.id, pregunta, volver)}
+			${formularioRespuesta(tarea.codigo, pregunta, volver)}
 		</article>`;
 }

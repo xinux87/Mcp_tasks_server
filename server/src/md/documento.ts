@@ -56,15 +56,15 @@ function frontmatter(completa: TareaCompleta): string {
 	const { tarea } = completa;
 	// El proyecto va justo debajo del id: es lo primero que sitúa la tarea, y
 	// el agente solo ve tareas del suyo salvo cuando lee una dependencia ajena.
-	const lineas = ["---", `id: ${formatearId(tarea.id)}`, `proyecto: ${completa.proyecto}`];
+	const lineas = ["---", `id: ${formatearId(tarea.codigo)}`, `proyecto: ${completa.proyecto}`];
 	// El título va siempre entre comillas dobles: es texto del humano y puede
 	// llevar dos puntos, comillas o almohadillas, que en YAML significan algo.
 	lineas.push(`titulo: ${JSON.stringify(tarea.titulo)}`);
 	lineas.push(`tipo: ${tarea.tipo}`);
 	lineas.push(`estado: ${tarea.estado}`);
 	lineas.push(`orden: ${tarea.orden}`);
-	if (tarea.padreId !== null) {
-		lineas.push(`padre: ${formatearId(tarea.padreId)}`);
+	if (completa.padre !== null) {
+		lineas.push(`padre: ${formatearId(completa.padre)}`);
 	}
 	lineas.push(`autoejecucion: ${tarea.autoejecucion}`);
 	// El tope de tokens, solo cuando lo hay: sin él la línea no diría nada.
@@ -120,7 +120,7 @@ function cabecera(comentario: Comentario, numeroDePregunta: Map<number, number>)
  * detrás de qué hermanas dependen, que es el orden de la descomposición.
  */
 function lineaHija(hija: HijaDeTarea): string {
-	const partes = [formatearId(hija.id), hija.estado, hija.titulo];
+	const partes = [formatearId(hija.codigo), hija.estado, hija.titulo];
 	if (hija.dependeDe.length > 0) {
 		partes.push(`depende de: ${hija.dependeDe.map(formatearId).join(", ")}`);
 	}

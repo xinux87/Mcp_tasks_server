@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
-import { formatearId } from "../md/ids.ts";
+import { formatearId, generarCodigo } from "../md/ids.ts";
 import { type Actor, registrarActividad } from "./actividad.ts";
 import {
 	ahora,
@@ -63,6 +63,8 @@ const TIPOS: readonly TipoTarea[] = ["tarea", "pregunta", "funcionalidad"];
 
 export type Tarea = {
 	id: number;
+	/** Identificador visible, sin el prefijo: `K7M3XQ`, o `0042` en las de antes. */
+	codigo: string;
 	/** Proyecto al que pertenece. Una tarea nace en el proyecto de quien la crea. */
 	proyectoId: number;
 	titulo: string;
@@ -96,21 +98,25 @@ export type Tarea = {
 /** Una hija tal como se lista en el documento de la tarea padre. */
 export type HijaDeTarea = {
 	id: number;
+	codigo: string;
 	estado: Estado;
 	titulo: string;
-	/** Hermanas que tienen que ir antes que ella. Vacío si no depende de ninguna. */
-	dependeDe: number[];
+	/** Códigos de las hermanas que tienen que ir antes que ella. Vacío si no depende de ninguna. */
+	dependeDe: string[];
 };
 
 /** Lo que necesita `lineaIndice`: una tarea sin cuerpo ni hilo. */
 export type ItemIndice = {
 	id: number;
+	codigo: string;
 	/** La línea de índice no lo pinta: el agente solo ve tareas de su proyecto. Lo usa la web. */
 	proyectoId: number;
 	tipo: TipoTarea;
 	estado: Estado;
 	titulo: string;
 	padreId: number | null;
+	/** Código del padre, para enlazarlo sin volver a consultarlo. */
+	padreCodigo: string | null;
 	marcas: Marca[];
 	/** Cuándo entró en su estado actual: la edad en columna sale de aquí. */
 	estadoDesde: string;
@@ -138,6 +144,7 @@ export type ItemIndice = {
 /** Una pregunta contestada tal como sale en `novedades`. */
 export type PreguntaContestada = {
 	tareaId: number;
+	codigo: string;
 	numero: number;
 	opcion: string;
 };
@@ -147,11 +154,13 @@ export type TareaCompleta = {
 	tarea: Tarea;
 	/** La clave del proyecto de la tarea: es lo que va en el frontmatter. */
 	proyecto: string;
+	/** Código de la funcionalidad de la que es parte, o `null` si no cuelga de nadie. */
+	padre: string | null;
 	analisisTerminal: string | null;
 	ejecucionTerminal: string | null;
 	marcas: Marca[];
-	/** Tareas que tienen que estar `done` o `finished` antes que esta. */
-	dependeDe: number[];
+	/** Códigos de las tareas que tienen que estar `done` o `finished` antes que esta. */
+	dependeDe: string[];
 	/** Solo en una funcionalidad: cuántas partes tiene y cuántas están cerradas. */
 	partes: number | null;
 	partesCerradas: number | null;
@@ -197,6 +206,7 @@ function comoEstado(fila: Record<string, unknown>, columna: string): Estado {
 export function comoTarea(fila: Record<string, unknown>): Tarea {
 	return {
 		id: entero(fila, "id"),
+		codigo: texto(fila, "codigo"),
 		proyectoId: entero(fila, "proyecto_id"),
 		titulo: texto(fila, "titulo"),
 		descripcion: texto(fila, "descripcion"),
@@ -230,11 +240,13 @@ function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
 	const tokensConHijas = entero(fila, "tokens_con_hijas");
 	return {
 		id: tarea.id,
+		codigo: tarea.codigo,
 		proyectoId: tarea.proyectoId,
 		tipo: tarea.tipo,
 		estado: tarea.estado,
 		titulo: tarea.titulo,
 		padreId: tarea.padreId,
+		padreCodigo: textoOpcional(fila, "padre_codigo"),
 		marcas: marcasDe(tarea, entero(fila, "preguntas_abiertas"), entero(fila, "dependencias_pendientes"), tokensConHijas),
 		estadoDesde: tarea.estadoDesde,
 		bloqueadaDesde: textoOpcional(fila, "bloqueada_desde"),
@@ -271,6 +283,7 @@ const SELECT_INDICE = `
 		SELECT a.raiz, h.id FROM tareas h JOIN arbol a ON h.padre_id = a.id
 	)
 	SELECT t.*,
+		p.codigo AS padre_codigo,
 		ta.nombre AS analisis_terminal,
 		te.nombre AS ejecucion_terminal,
 		(SELECT COUNT(*) FROM preguntas p WHERE p.tarea_id = t.id AND p.respuesta_opcion IS NULL) AS preguntas_abiertas,
@@ -281,6 +294,7 @@ const SELECT_INDICE = `
 		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id AND h.estado = 'finished') AS partes_cerradas,
 		COALESCE(tk.tokens, 0) AS tokens_con_hijas
 	FROM tareas t
+	LEFT JOIN tareas p ON p.id = t.padre_id
 	LEFT JOIN terminales ta ON ta.id = t.analisis_terminal_id
 	LEFT JOIN terminales te ON te.id = t.ejecucion_terminal_id
 	LEFT JOIN (
@@ -298,6 +312,30 @@ const ORDEN_COLUMNAS =
 export function buscarTarea(db: DatabaseSync, tareaId: number): Tarea | undefined {
 	const fila = sentencia(db, "SELECT * FROM tareas WHERE id = ?").get(tareaId);
 	return fila === undefined ? undefined : comoTarea(fila);
+}
+
+/** La tarea que lleva ese código visible, o `undefined` si no hay ninguna. */
+export function buscarTareaPorCodigo(db: DatabaseSync, codigo: string): Tarea | undefined {
+	const fila = sentencia(db, "SELECT * FROM tareas WHERE codigo = ?").get(codigo);
+	return fila === undefined ? undefined : comoTarea(fila);
+}
+
+/**
+ * El número de fila de un código, o `null` si no existe. Es el paso que traduce
+ * lo que se ve (`T-K7M3XQ`) a lo que enlazan las tablas.
+ */
+export function idDeCodigoONull(db: DatabaseSync, codigo: string): number | null {
+	const fila = sentencia(db, "SELECT id FROM tareas WHERE codigo = ?").get(codigo);
+	return fila === undefined ? null : entero(fila, "id");
+}
+
+/** El mismo número de fila, exigiendo que exista: lanza `tarea_inexistente`. */
+export function idDeCodigo(db: DatabaseSync, codigo: string): number {
+	const id = idDeCodigoONull(db, codigo);
+	if (id === null) {
+		throw new ErrorDeRegla("tarea_inexistente", `No existe la tarea ${formatearId(codigo)}.`);
+	}
+	return id;
 }
 
 /** Como `buscarTarea`, pero el fallo es del agente: lanza `tarea_inexistente`. */
@@ -342,13 +380,14 @@ export function contarPreguntasAbiertas(db: DatabaseSync, tareaId: number): numb
 }
 
 function hijasDe(db: DatabaseSync, tareaId: number): HijaDeTarea[] {
-	const hijas = sentencia(db, "SELECT id, estado, titulo FROM tareas WHERE padre_id = ? ORDER BY id")
+	const hijas = sentencia(db, "SELECT id, codigo, estado, titulo FROM tareas WHERE padre_id = ? ORDER BY id")
 		.all(tareaId)
 		.map((fila) => ({
 			id: entero(fila, "id"),
+			codigo: texto(fila, "codigo"),
 			estado: comoEstado(fila, "estado"),
 			titulo: texto(fila, "titulo"),
-			dependeDe: [] as number[],
+			dependeDe: [] as string[],
 		}));
 	// Las dependencias de todas las hijas se leen de una vez: la
 	// descomposición de una funcionalidad son varias partes encadenadas.
@@ -462,6 +501,7 @@ export function leerTarea(db: DatabaseSync, tareaId: number): TareaCompleta | un
 	return {
 		tarea,
 		proyecto: exigirProyectoPorId(db, tarea.proyectoId).clave,
+		padre: tarea.padreId === null ? null : (buscarTarea(db, tarea.padreId)?.codigo ?? null),
 		analisisTerminal: nombreTerminal(db, tarea.analisisTerminalId),
 		ejecucionTerminal: nombreTerminal(db, tarea.ejecucionTerminalId),
 		marcas: marcasDe(
@@ -613,7 +653,7 @@ export function tareasParaTerminalDesde(db: DatabaseSync, { terminalId, revision
  */
 export function preguntasContestadasDesde(db: DatabaseSync, { terminalId, revision }: Desde): PreguntaContestada[] {
 	const sql = `
-		SELECT p.tarea_id, p.numero, p.respuesta_opcion
+		SELECT p.tarea_id, t.codigo, p.numero, p.respuesta_opcion
 		FROM preguntas p
 		JOIN tareas t ON t.id = p.tarea_id
 		WHERE p.respuesta_opcion IS NOT NULL
@@ -625,6 +665,7 @@ export function preguntasContestadasDesde(db: DatabaseSync, { terminalId, revisi
 		.all(terminalId, revision, terminalId, terminalId)
 		.map((fila) => ({
 			tareaId: entero(fila, "tarea_id"),
+			codigo: texto(fila, "codigo"),
 			numero: entero(fila, "numero"),
 			opcion: texto(fila, "respuesta_opcion"),
 		}));
@@ -646,10 +687,28 @@ export function siguienteOrden(db: DatabaseSync, estado: Estado): number {
 
 const INSERTAR_TAREA = `
 	INSERT INTO tareas (
-		proyecto_id, titulo, descripcion, tipo, rama, estado, orden, padre_id, autoejecucion, presupuesto,
+		codigo, proyecto_id, titulo, descripcion, tipo, rama, estado, orden, padre_id, autoejecucion, presupuesto,
 		ejecucion_aprobada, analisis_hecho, analisis_modelo, analisis_terminal_id, ejecucion_modelo, ejecucion_terminal_id,
 		en_marcha_terminal_id, creada_por_usuario_id, creada_por_terminal_id, creada, actualizada, estado_desde, revision
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+/**
+ * Cuántas veces se vuelve a sortear si el código ya está cogido. Con 31^6
+ * combinaciones el segundo intento ya es rarísimo; el tope está para que un
+ * fallo raro sea un error y no un bucle infinito.
+ */
+const INTENTOS_CODIGO = 10;
+
+/** Un código que todavía no tiene ninguna tarea. Lo único que reintenta. */
+function codigoLibre(conexion: DatabaseSync): string {
+	for (let intento = 0; intento < INTENTOS_CODIGO; intento += 1) {
+		const codigo = generarCodigo();
+		if (sentencia(conexion, "SELECT 1 FROM tareas WHERE codigo = ?").get(codigo) === undefined) {
+			return codigo;
+		}
+	}
+	throw new Error(`no se encontró un código de tarea libre en ${INTENTOS_CODIGO} intentos`);
+}
 
 /** Los campos con los que nace una tarea. Lo comparte `funcionalidades.ts`. */
 export type FilaNueva = {
@@ -676,6 +735,7 @@ export type FilaNueva = {
 export function insertarTarea(conexion: DatabaseSync, revision: number, nueva: FilaNueva): Tarea {
 	const marca = ahora();
 	const cambios = sentencia(conexion, INSERTAR_TAREA).run(
+		codigoLibre(conexion),
 		nueva.proyectoId,
 		nueva.titulo,
 		nueva.descripcion,
@@ -792,7 +852,7 @@ export function exigirPadreFuncionalidad(conexion: DatabaseSync, padreId: number
 	if (padre.tipo !== "funcionalidad") {
 		throw new ErrorDeRegla(
 			"padre_no_es_funcionalidad",
-			`La tarea ${formatearId(padre.id)} no es una funcionalidad: solo una funcionalidad tiene partes colgando.`,
+			`La tarea ${formatearId(padre.codigo)} no es una funcionalidad: solo una funcionalidad tiene partes colgando.`,
 		);
 	}
 	return padre;
@@ -1197,7 +1257,7 @@ export function tomarTarea(db: DatabaseSync, datos: Toma): Tarea {
 		if (tarea.proyectoId !== proyectoDeTerminal(conexion, datos.terminalId)) {
 			throw new ErrorDeRegla(
 				"otro_proyecto",
-				`La tarea ${formatearId(tarea.id)} es de otro proyecto: este terminal no trabaja en él.`,
+				`La tarea ${formatearId(tarea.codigo)} es de otro proyecto: este terminal no trabaja en él.`,
 			);
 		}
 		// Una funcionalidad no se ejecuta: lo que se ejecuta son sus partes.

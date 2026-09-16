@@ -9,7 +9,8 @@ import { crearTerminalConToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { crearProyecto } from "../src/db/proyectos.ts";
-import { crearTareaHumana, moverTareaHumano } from "../src/db/tareas.ts";
+import { crearTareaHumana, exigirTarea, moverTareaHumano } from "../src/db/tareas.ts";
+import { formatearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 const BASE_URL = BASE_URL_PRUEBA;
@@ -77,6 +78,11 @@ async function conectar(montaje: Montaje, token: string): Promise<Client> {
 	});
 	await cliente.connect(transporte);
 	return cliente;
+}
+
+/** El identificador visible de la tarea que ocupa esa fila. */
+function idFila(montaje: Montaje, fila: number): string {
+	return formatearId(exigirTarea(montaje.db, fila).codigo);
 }
 
 test("GET /salud responde 200 y { ok: true }", async () => {
@@ -257,7 +263,10 @@ test("novedades sin revisión sigue por donde iba el terminal", async () => {
 		crearPreparada(montaje, "Exportar el listado de clientes a CSV");
 		const segunda = textoDe((await cliente.callTool({ name: "novedades", arguments: {} })).content);
 		const alDia = revisionActual(montaje.db);
-		assert.match(segunda, /^- T-0001 · prepared · sin terminal · Exportar el listado de clientes a CSV · /m);
+		assert.match(
+			segunda,
+			new RegExp(`^- ${idFila(montaje, 1)} · prepared · sin terminal · Exportar el listado de clientes a CSV · `, "m"),
+		);
 		assert.equal(segunda.split("\n").filter((linea) => linea.startsWith("- ")).length, 1);
 		assert.equal(ultimaRevision(montaje), alDia);
 
@@ -269,7 +278,7 @@ test("novedades sin revisión sigue por donde iba el terminal", async () => {
 
 		// Pasar `revision` manda sobre lo apuntado: con 0 vuelve todo.
 		const desdeCero = textoDe((await cliente.callTool({ name: "novedades", arguments: { revision: 0 } })).content);
-		assert.match(desdeCero, /^- T-0001 · prepared · /m);
+		assert.match(desdeCero, new RegExp(`^- ${idFila(montaje, 1)} · prepared · `, "m"));
 		assert.equal(ultimaRevision(montaje), alDia);
 
 		// Una sesión nueva del mismo terminal no pasa nada y no repite nada.

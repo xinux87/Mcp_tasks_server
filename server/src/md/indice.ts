@@ -34,7 +34,7 @@ function progreso(item: ItemIndice): string {
 export function lineaIndice(item: ItemIndice): string {
 	const esTarea = item.tipo === "tarea";
 	const partes = [
-		formatearId(item.id),
+		formatearId(item.codigo),
 		item.estado,
 		...(item.tipo === "pregunta" ? ["pregunta"] : []),
 		...(item.tipo === "funcionalidad" ? [progreso(item)] : []),
@@ -42,7 +42,7 @@ export function lineaIndice(item: ItemIndice): string {
 		item.titulo,
 		`analisis: ${fase(item.analisisModelo, item.analisisTerminal)}`,
 		...(esTarea ? [`ejecucion: ${fase(item.ejecucionModelo, item.ejecucionTerminal)}`] : []),
-		...(item.padreId === null ? [] : [`padre: ${formatearId(item.padreId)}`]),
+		...(item.padreCodigo === null ? [] : [`padre: ${formatearId(item.padreCodigo)}`]),
 	];
 	return `- ${partes.join(" · ")}`;
 }

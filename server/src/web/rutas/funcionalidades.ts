@@ -97,7 +97,7 @@ function frenos(fila: Fila): Html {
 }
 
 function filaFuncionalidad(fila: Fila, creadorDe: Creador, claves: Claves): Html {
-	const id = formatearId(fila.item.id);
+	const id = formatearId(fila.item.codigo);
 	const creador = creadorDe({
 		usuarioId: fila.tarea.creadaPorUsuarioId,
 		terminalId: fila.tarea.creadaPorTerminalId,

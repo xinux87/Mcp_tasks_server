@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
 import type { Avisador } from "../avisos.ts";
 import { type ComentarioDeAgente, comentarAnalisis, comentarioDeAgente, comentarResultado } from "../db/hilo.ts";
-import { buscarTarea, type ItemIndice, itemIndiceDe, type Tarea } from "../db/tareas.ts";
+import { buscarTarea, type ItemIndice, idDeCodigo, itemIndiceDe, type Tarea } from "../db/tareas.ts";
 import { ErrorDeRegla } from "../errores.ts";
 import { parsearId } from "../md/ids.ts";
 import { lineaIndice } from "../md/indice.ts";
@@ -41,12 +41,12 @@ function funcionalidadDe(db: DatabaseSync, tareaId: number): Tarea | undefined {
  */
 function avisarDeLoQueEspera(avisar: Avisador, db: DatabaseSync, item: ItemIndice, antes: Tarea | undefined): void {
 	if (item.estado === "done") {
-		avisar({ tipo: "hecha", tareaId: item.id, titulo: item.titulo });
+		avisar({ tipo: "hecha", codigo: item.codigo, titulo: item.titulo });
 	}
 	if (item.marcas.includes("análisis listo")) {
 		avisar({
 			tipo: item.tipo === "funcionalidad" ? "descomposicion_lista" : "analisis_listo",
-			tareaId: item.id,
+			codigo: item.codigo,
 			titulo: item.titulo,
 		});
 	}
@@ -55,7 +55,7 @@ function avisarDeLoQueEspera(avisar: Avisador, db: DatabaseSync, item: ItemIndic
 	}
 	const despues = funcionalidadDe(db, item.id);
 	if (despues !== undefined && despues.estado === "done") {
-		avisar({ tipo: "hecha", tareaId: despues.id, titulo: despues.titulo });
+		avisar({ tipo: "hecha", codigo: despues.codigo, titulo: despues.titulo });
 	}
 }
 
@@ -76,7 +76,7 @@ export function registrarHerramientaComentarTarea(
 			description:
 				"Añade un comentario al hilo de la tarea: «analisis» cierra el análisis, «comentario» para contar por dónde vas o contestar al humano, y «resultado» dice qué se construyó y con qué commit, y pasa la tarea a done. Devuelve la línea de índice de la tarea tal como queda.",
 			inputSchema: z.object({
-				id: z.string().describe("Identificador de la tarea, con la forma T-0042."),
+				id: z.string().describe("Identificador de la tarea, con la forma T-K7M3XQ."),
 				tipo: z.enum(["analisis", "comentario", "resultado"]).describe("Qué clase de comentario se escribe."),
 				texto: z
 					.string()
@@ -98,7 +98,7 @@ export function registrarHerramientaComentarTarea(
 						`Un comentario de tipo ${tipo} no cambia el estado: solo «resultado» pasa la tarea a done.`,
 					);
 				}
-				const tareaId = parsearId(id);
+				const tareaId = idDeCodigo(db, parsearId(id));
 				const funcionalidadAntes = funcionalidadDe(db, tareaId);
 				ESCRITORES[tipo](db, { tareaId, terminalId, texto });
 				// Escrito y confirmado: ahora sí se avisa de lo que queda esperando.

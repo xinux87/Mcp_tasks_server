@@ -592,8 +592,8 @@ const TITULO_ABREVIADO = 40;
  * De qué funcionalidad es parte una tarea: enlace a su ficha con el título
  * abreviado. Lo enseñan igual la fila de la lista y la tarjeta del kanban.
  */
-export function enlaceFuncionalidad(padreId: number, titulo: string): Html {
-	return html`<a class="parte-de" href="/tareas/${formatearId(padreId)}">${abreviar(titulo, TITULO_ABREVIADO)}</a>`;
+export function enlaceFuncionalidad(padre: string, titulo: string): Html {
+	return html`<a class="parte-de" href="/tareas/${formatearId(padre)}">${abreviar(titulo, TITULO_ABREVIADO)}</a>`;
 }
 
 /** Una opción de un desplegable de filtro: el valor que viaja y lo que se lee. */

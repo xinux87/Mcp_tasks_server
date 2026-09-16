@@ -49,7 +49,7 @@ function ultimo(db: DatabaseSync, tareaId: number, tipo: TipoComentario): Coment
  * significa nada), pero en la bandeja sí: es justo lo que se está mirando.
  */
 function linea(item: ItemIndice, claves: Claves, cuanto?: Html): Html {
-	const id = formatearId(item.id);
+	const id = formatearId(item.codigo);
 	const proyecto = claves.get(item.proyectoId);
 	return html`<p class="linea-bandeja">
 			${proyecto === undefined ? html`` : chipProyecto(proyecto)}
@@ -91,7 +91,7 @@ function partesDeLaFuncionalidad(item: ItemIndice, entorno: Entorno): Html {
 	}
 	return html`<ul class="hijas">
 			${partes.map((parte) => {
-				const id = formatearId(parte.id);
+				const id = formatearId(parte.codigo);
 				return html`<li>${insigniaEstado(parte.estado)} <a class="id-tarea" href="/tareas/${id}">${id}</a> ${parte.titulo}</li>`;
 			})}
 		</ul>`;
@@ -108,7 +108,7 @@ function porAprobar(item: ItemIndice, entorno: Entorno): Html {
 				: tarjetaComentario(analisis, entorno.colorDe)
 		}
 		${esFuncionalidad ? partesDeLaFuncionalidad(item, entorno) : html``}
-		<form method="post" action="/tareas/${formatearId(item.id)}/aprobar">
+		<form method="post" action="/tareas/${formatearId(item.codigo)}/aprobar">
 			<input type="hidden" name="volver" value="/">
 			<button type="submit" class="principal">${esFuncionalidad ? "Aprobar descomposición" : "Aprobar ejecución"}</button>
 		</form>`;
@@ -120,14 +120,14 @@ function porAprobar(item: ItemIndice, entorno: Entorno): Html {
  */
 function porRevisar(item: ItemIndice, entorno: Entorno): Html {
 	const resultado = ultimo(entorno.db, item.id, "resultado");
-	const id = formatearId(item.id);
+	const id = formatearId(item.codigo);
 	return html`${linea(item, entorno.claves)}
 		${
 			resultado === undefined
 				? html`<p class="silencio">Sin resultado en el hilo.</p>`
 				: tarjetaComentario(resultado, entorno.colorDe)
 		}
-		${cuadroDeComentar(item.id, "done", "/")}
+		${cuadroDeComentar(item.codigo, "done", "/")}
 		<div class="acciones">
 			<form method="post" action="/tareas/${id}/mover">
 				<input type="hidden" name="estado" value="finished">

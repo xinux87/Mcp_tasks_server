@@ -22,7 +22,7 @@ export function salidaNovedades({ revision, tareas, preguntas }: Novedades): str
 		bloques.push(
 			"## Preguntas contestadas",
 			preguntas
-				.map((contestada) => `- ${formatearId(contestada.tareaId)} · P${contestada.numero} · ${contestada.opcion}`)
+				.map((contestada) => `- ${formatearId(contestada.codigo)} · P${contestada.numero} · ${contestada.opcion}`)
 				.join("\n"),
 		);
 	}

@@ -382,7 +382,7 @@ test("las novedades filtran por terminal y por revisión, y nunca traen backlog"
 		const corte = revisionActual(banco.db);
 		responder(banco.db, { preguntaId: p1.id, usuarioId: banco.ana, opcion: "Coma" });
 		assert.deepEqual(preguntasContestadasDesde(banco.db, { terminalId: banco.portatil, revision: corte }), [
-			{ tareaId: mia.id, numero: 1, opcion: "Coma" },
+			{ tareaId: mia.id, codigo: mia.codigo, numero: 1, opcion: "Coma" },
 		]);
 		assert.deepEqual(preguntasContestadasDesde(banco.db, { terminalId: banco.sobremesa, revision: corte }), []);
 		assert.deepEqual(

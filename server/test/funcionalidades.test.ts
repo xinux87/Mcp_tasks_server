@@ -103,7 +103,7 @@ test("una funcionalidad con rama: se descompone, se aprueba, se ejecuta parte a 
 		assert.equal(datos.analisisTerminalId, banco.portatil);
 		assert.equal(datos.ejecucionModelo, "opus");
 		assert.equal(datos.ejecucionTerminalId, banco.portatil);
-		assert.deepEqual(dependenciasDe(banco.db, boton.id), [datos.id]);
+		assert.deepEqual(dependenciasDe(banco.db, boton.id), [datos.codigo]);
 
 		// Una parte solo depende de sus hermanas.
 		const suelta = crearTareaHumana(banco.db, { titulo: "Suelta", descripcion: "d", usuarioId: banco.ana });
@@ -135,7 +135,10 @@ test("una funcionalidad con rama: se descompone, se aprueba, se ejecuta parte a 
 		assert.deepEqual(marcasDe(descompuesta, 0), ["análisis listo"]);
 		assert.match(lineaIndice(itemIndiceDe(banco.db, evolutivo.id)), / · prepared · funcionalidad 0\/3 · /);
 		assert.doesNotMatch(lineaIndice(itemIndiceDe(banco.db, evolutivo.id)), /ejecucion:/);
-		assert.match(lineaIndice(itemIndiceDe(banco.db, datos.id)), new RegExp(` · padre: ${formatearId(evolutivo.id)}$`));
+		assert.match(
+			lineaIndice(itemIndiceDe(banco.db, datos.id)),
+			new RegExp(` · padre: ${formatearId(evolutivo.codigo)}$`),
+		);
 
 		// Una funcionalidad no se ejecuta: se ejecutan sus partes.
 		assert.equal(
@@ -152,7 +155,7 @@ test("una funcionalidad con rama: se descompone, se aprueba, se ejecuta parte a 
 		const integrar = partes[3];
 		assert.ok(integrar);
 		assert.equal(integrar.titulo, "Integrar la rama `evolutivo/csv` en la principal");
-		assert.deepEqual(integrar.dependeDe, [datos.id, boton.id, aviso.id]);
+		assert.deepEqual(integrar.dependeDe, [datos.codigo, boton.codigo, aviso.codigo]);
 		for (const parte of [datos.id, boton.id, aviso.id, integrar.id]) {
 			assert.equal(exigirTarea(banco.db, parte).estado, "prepared", `la parte ${parte} no salió del backlog`);
 		}
@@ -194,10 +197,10 @@ test("una funcionalidad con rama: se descompone, se aprueba, se ejecuta parte a 
 		assert.equal(
 			resultado?.texto,
 			[
-				`- ${formatearId(datos.id)} · Sacar los datos del listado · Commit: aaaaaaa`,
-				`- ${formatearId(boton.id)} · Poner el botón de descarga · Commit: bbbbbbb`,
-				`- ${formatearId(aviso.id)} · Avisar cuando la descarga falle · sin commit`,
-				`- ${formatearId(integrar.id)} · Integrar la rama \`evolutivo/csv\` en la principal · Commit: eeeeeee`,
+				`- ${formatearId(datos.codigo)} · Sacar los datos del listado · Commit: aaaaaaa`,
+				`- ${formatearId(boton.codigo)} · Poner el botón de descarga · Commit: bbbbbbb`,
+				`- ${formatearId(aviso.codigo)} · Avisar cuando la descarga falle · sin commit`,
+				`- ${formatearId(integrar.codigo)} · Integrar la rama \`evolutivo/csv\` en la principal · Commit: eeeeeee`,
 			].join("\n"),
 		);
 
@@ -258,7 +261,7 @@ test("sin rama no se crea la parte de integrar, y las hijas de trabajo de una pa
 		assert.equal(cerrada?.tarea.estado, "done");
 		assert.equal(
 			cerrada?.comentarios.at(-1)?.texto,
-			`- ${formatearId(unica.id)} · Sacar los datos del listado · Commit: aaaaaaa`,
+			`- ${formatearId(unica.codigo)} · Sacar los datos del listado · Commit: aaaaaaa`,
 		);
 	} finally {
 		banco.cerrar();
@@ -294,7 +297,10 @@ test("borrar la última parte pendiente cierra la funcionalidad", () => {
 		const cerrada = leerTarea(banco.db, evolutivo.id);
 		assert.equal(cerrada?.tarea.estado, "done");
 		assert.deepEqual(partesDe(banco.db, evolutivo.id), { total: 1, cerradas: 1 });
-		assert.equal(cerrada?.comentarios.at(-1)?.texto, `- ${formatearId(hecha.id)} · La que sí se hace · Commit: bbbbbbb`);
+		assert.equal(
+			cerrada?.comentarios.at(-1)?.texto,
+			`- ${formatearId(hecha.codigo)} · La que sí se hace · Commit: bbbbbbb`,
+		);
 	} finally {
 		banco.cerrar();
 	}

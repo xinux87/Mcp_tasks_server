@@ -12,6 +12,7 @@ import {
 	esRapido,
 	type FiltroIndice,
 	type ItemIndice,
+	idDeCodigoONull,
 	listarTareas,
 	type Marca,
 	moverTareaHumano,
@@ -19,7 +20,7 @@ import {
 	type Tarea,
 } from "../../db/tareas.ts";
 import { ErrorDeRegla, esErrorDeRegla } from "../../errores.ts";
-import { formatearId, idONull, parsearId } from "../../md/ids.ts";
+import { formatearId, idONull } from "../../md/ids.ts";
 import {
 	accionNuevaTarea,
 	barraProgreso,
@@ -77,16 +78,10 @@ function esMarca(valor: string): valor is Marca {
 	return nombres.includes(valor);
 }
 
-/** El id de la ruta, o `null` si no tiene la forma `T-0042`. */
-function idDeRuta(c: Context): number | null {
-	try {
-		return parsearId(c.req.param("id") ?? "");
-	} catch (error) {
-		if (esErrorDeRegla(error)) {
-			return null;
-		}
-		throw error;
-	}
+/** La tarea de la ruta, o `null` si el identificador no existe o no tiene la forma buena. */
+function idDeRuta(db: DatabaseSync, c: Context): number | null {
+	const codigo = idONull(c.req.param("id") ?? "");
+	return codigo === null ? null : idDeCodigoONull(db, codigo);
 }
 
 // --- filtros -----------------------------------------------------------------
@@ -168,8 +163,7 @@ function esDeLaFuncionalidad(item: ItemIndice, padre: string): boolean {
 	if (padre === "") {
 		return true;
 	}
-	const padreId = idONull(padre);
-	return padreId !== null && item.padreId === padreId;
+	return item.padreCodigo === idONull(padre);
 }
 
 /**
@@ -288,7 +282,7 @@ function fasesLegibles(item: ItemIndice): string {
  * kanban pinta muchas tarjetas y no puede consultar la base en cada una.
  */
 type Vecindad = {
-	dependencias: Map<number, number[]>;
+	dependencias: Map<number, string[]>;
 	funcionalidades: Map<number, string>;
 	/** El proyecto de cada tarea, solo en la vista cruzada: acotada sobraría. */
 	proyectos: Map<number, Proyecto> | null;
@@ -321,7 +315,7 @@ function vecindadDe(db: DatabaseSync, items: ItemIndice[], conFuncionalidad: boo
 }
 
 /** `depende de T-0043`, con las que la tarea espera. Vacío si no depende de nada. */
-function dependenciasLegibles(dependeDe: number[] | undefined): Html {
+function dependenciasLegibles(dependeDe: string[] | undefined): Html {
 	if (dependeDe === undefined || dependeDe.length === 0) {
 		return html``;
 	}
@@ -344,7 +338,7 @@ export function progresoDe(item: ItemIndice): Html {
  * el id para la ruta y el estado para saber si cambió de columna.
  */
 function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
-	const id = formatearId(item.id);
+	const id = formatearId(item.codigo);
 	const funcionalidad = item.padreId === null ? undefined : vecindad.funcionalidades.get(item.padreId);
 	const proyecto = vecindad.proyectos?.get(item.proyectoId);
 	const tokens = tokensConPresupuesto(item.tokensConHijas, item.presupuesto);
@@ -363,9 +357,9 @@ function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
 			<p class="titulo">${item.titulo}</p>
 			${progresoDe(item)}
 			${
-				funcionalidad === undefined || item.padreId === null
+				funcionalidad === undefined || item.padreCodigo === null
 					? html``
-					: html`<p class="pequeno">${enlaceFuncionalidad(item.padreId, funcionalidad)}</p>`
+					: html`<p class="pequeno">${enlaceFuncionalidad(item.padreCodigo, funcionalidad)}</p>`
 			}
 			${dependenciasLegibles(vecindad.dependencias.get(item.id))}
 			<p class="pequeno silencio pie">
@@ -510,7 +504,7 @@ export function franjasDe(db: DatabaseSync, items: ItemIndice[]): Franja[] {
  * tarjeta entre hermanas. «Sueltas» no lo lleva.
  */
 export function seccionFranja(cual: ItemIndice | null, proyectos: Map<number, Proyecto> | null, dentro: Html): Html {
-	const id = cual === null ? "" : formatearId(cual.id);
+	const id = cual === null ? "" : formatearId(cual.codigo);
 	const proyecto = cual === null ? undefined : proyectos?.get(cual.proyectoId);
 	const cabecera =
 		cual === null
@@ -632,11 +626,12 @@ async function leerOrden(c: Context): Promise<Orden> {
  */
 function ambitoDe(db: DatabaseSync, tarea: Tarea, datos: Orden): AmbitoDeColumna | undefined {
 	if (datos.padre !== "") {
-		const padreId = idONull(datos.padre);
-		if (padreId === null || tarea.padreId !== padreId) {
+		const padreId = tarea.padreId;
+		const padre = padreId === null ? undefined : buscarTarea(db, padreId);
+		if (padreId === null || padre?.codigo !== idONull(datos.padre)) {
 			throw new ErrorDeRegla(
 				"padre_no_coincide",
-				`La tarea ${formatearId(tarea.id)} no es parte de ${datos.padre}: ese tablero no puede colocarla.`,
+				`La tarea ${formatearId(tarea.codigo)} no es parte de ${datos.padre}: ese tablero no puede colocarla.`,
 			);
 		}
 		return { padreId };
@@ -648,7 +643,7 @@ function ambitoDe(db: DatabaseSync, tarea: Tarea, datos: Orden): AmbitoDeColumna
 	if (proyecto === undefined || proyecto.id !== tarea.proyectoId) {
 		throw new ErrorDeRegla(
 			"otro_proyecto",
-			`La tarea ${formatearId(tarea.id)} no es del proyecto ${datos.proyecto}: ese tablero no puede colocarla.`,
+			`La tarea ${formatearId(tarea.codigo)} no es del proyecto ${datos.proyecto}: ese tablero no puede colocarla.`,
 		);
 	}
 	return { proyectoId: proyecto.id };
@@ -662,7 +657,7 @@ function ambitoDe(db: DatabaseSync, tarea: Tarea, datos: Orden): AmbitoDeColumna
 function aplicarOrden(deps: DependenciasWeb, tareaId: number, usuarioId: number, datos: Orden): void {
 	const tarea = buscarTarea(deps.db, tareaId);
 	if (tarea === undefined) {
-		throw new ErrorDeRegla("tarea_inexistente", `No existe la tarea ${formatearId(tareaId)}.`);
+		throw new ErrorDeRegla("tarea_inexistente", "Esa tarea ya no existe.");
 	}
 	if (!esEstado(datos.estado)) {
 		throw new ErrorDeRegla("estado_desconocido", `«${datos.estado}» no es ninguna de las cinco columnas.`);
@@ -695,10 +690,10 @@ export function registrarRutasKanban(app: Hono, deps: DependenciasWeb): void {
 	app.get("/p/:clave/tareas/kanban/tablero", fragmento);
 
 	app.post("/tareas/:id/orden", async (c) => {
-		const tareaId = idDeRuta(c);
+		const tareaId = idDeRuta(deps.db, c);
 		if (tareaId === null) {
 			return c.json(
-				{ codigo: "id_invalido", mensaje: "Eso no es un identificador de tarea; tiene la forma T-0042." },
+				{ codigo: "id_invalido", mensaje: "Eso no es ninguna tarea; el identificador tiene la forma T-K7M3XQ." },
 				404,
 			);
 		}

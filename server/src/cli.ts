@@ -12,6 +12,7 @@ import {
 	borrarTarea,
 	crearTareaHumana,
 	esEstado,
+	idDeCodigo,
 	leerTarea,
 	listarTareas,
 	moverTareaHumano,
@@ -39,7 +40,7 @@ const AYUDA = `Uso: node src/cli.ts <comando>
   crear-tarea <usuario> <titulo> <descripcion>
               [--analisis <modelo>[@<terminal>]] [--ejecucion <modelo>[@<terminal>]]
               [--sin-autoejecucion] [--pregunta] [--funcionalidad]
-              [--rama <rama>] [--padre <T-0042>] [--depende-de <T-0041,T-0043>]
+              [--rama <rama>] [--padre <T-K7M3XQ>] [--depende-de <T-K7M3XQ,T-0043>]
       Crea una tarea en backlog a nombre del usuario, con sus asignaciones.
       Con --pregunta la tarea solo tiene fase de análisis: ese comentario es la
       respuesta y cierra la tarea. La asignación de ejecución se ignora.
@@ -181,8 +182,8 @@ function tipoElegido(partido: Argumentos): TipoTarea {
 	return partido.funcionalidad ? "funcionalidad" : "tarea";
 }
 
-/** Lee `T-0041,T-0043` y devuelve los números de fila. Vacío si no se pasó nada. */
-function listaDeIds(valor: string | undefined): number[] {
+/** Lee `T-0041,T-K7M3XQ` y devuelve los números de fila. Vacío si no se pasó nada. */
+function listaDeIds(db: DatabaseSync, valor: string | undefined): number[] {
 	if (valor === undefined) {
 		return [];
 	}
@@ -190,7 +191,7 @@ function listaDeIds(valor: string | undefined): number[] {
 		.split(",")
 		.map((trozo) => trozo.trim())
 		.filter((trozo) => trozo !== "")
-		.map(parsearId);
+		.map((trozo) => idDeCodigo(db, parsearId(trozo)));
 }
 
 /** Lee `<modelo>[@<terminal>]`. El terminal se busca por nombre y tiene que existir. */
@@ -289,15 +290,15 @@ function comandoCrearTarea(argumentos: string[]): void {
 			usuarioId: dueno.id,
 			tipo: tipoElegido(partido),
 			rama: partido.rama ?? null,
-			padreId: partido.padre === undefined ? null : parsearId(partido.padre),
-			dependeDe: listaDeIds(partido.dependeDe),
+			padreId: partido.padre === undefined ? null : idDeCodigo(db, parsearId(partido.padre)),
+			dependeDe: listaDeIds(db, partido.dependeDe),
 			autoejecucion: !partido.sinAutoejecucion,
 			analisisModelo: analisis.modelo,
 			analisisTerminalId: analisis.terminalId,
 			ejecucionModelo: ejecucion.modelo,
 			ejecucionTerminalId: ejecucion.terminalId,
 		});
-		console.log(`creada: ${formatearId(tarea.id)}`);
+		console.log(`creada: ${formatearId(tarea.codigo)}`);
 	});
 }
 
@@ -312,8 +313,8 @@ function comandoMoverTarea(argumentos: string[]): void {
 
 	conBaseDeDatos((db) => {
 		const dueno = exigirUsuario(db, usuario);
-		const tarea = moverTareaHumano(db, { tareaId: parsearId(id), usuarioId: dueno.id, estado, nota });
-		console.log(`movida: ${formatearId(tarea.id)} · ${tarea.estado}`);
+		const tarea = moverTareaHumano(db, { tareaId: idDeCodigo(db, parsearId(id)), usuarioId: dueno.id, estado, nota });
+		console.log(`movida: ${formatearId(tarea.codigo)} · ${tarea.estado}`);
 	});
 }
 
@@ -325,8 +326,8 @@ function comandoBorrarTarea(argumentos: string[]): void {
 
 	conBaseDeDatos((db) => {
 		const dueno = exigirUsuario(db, usuario);
-		const tarea = borrarTarea(db, { tareaId: parsearId(id), actor: { usuarioId: dueno.id } });
-		console.log(`borrada: ${formatearId(tarea.id)} · ${tarea.titulo}`);
+		const tarea = borrarTarea(db, { tareaId: idDeCodigo(db, parsearId(id)), actor: { usuarioId: dueno.id } });
+		console.log(`borrada: ${formatearId(tarea.codigo)} · ${tarea.titulo}`);
 	});
 }
 
@@ -338,8 +339,8 @@ function comandoAprobar(argumentos: string[]): void {
 
 	conBaseDeDatos((db) => {
 		const dueno = exigirUsuario(db, usuario);
-		const tarea = aprobarEjecucion(db, { tareaId: parsearId(id), usuarioId: dueno.id });
-		console.log(`aprobada: ${formatearId(tarea.id)}`);
+		const tarea = aprobarEjecucion(db, { tareaId: idDeCodigo(db, parsearId(id)), usuarioId: dueno.id });
+		console.log(`aprobada: ${formatearId(tarea.codigo)}`);
 	});
 }
 
@@ -362,13 +363,14 @@ function comandoResponder(argumentos: string[]): void {
 
 	conBaseDeDatos((db) => {
 		const dueno = exigirUsuario(db, usuario);
-		const tareaId = parsearId(id);
+		const codigo = parsearId(id);
+		const tareaId = idDeCodigo(db, codigo);
 		const pregunta = preguntasDeTarea(db, tareaId).find((candidata) => candidata.numero === numero);
 		if (pregunta === undefined) {
 			fallar(`la tarea ${id} no tiene ninguna pregunta ${etiqueta}`);
 		}
 		responder(db, { preguntaId: pregunta.id, usuarioId: dueno.id, opcion, nota });
-		console.log(`contestada: ${formatearId(tareaId)} · ${etiqueta} · ${opcion}`);
+		console.log(`contestada: ${formatearId(codigo)} · ${etiqueta} · ${opcion}`);
 	});
 }
 
@@ -379,7 +381,7 @@ function comandoVerTarea(argumentos: string[]): void {
 	}
 
 	conBaseDeDatos((db) => {
-		const completa = leerTarea(db, parsearId(id));
+		const completa = leerTarea(db, idDeCodigo(db, parsearId(id)));
 		if (completa === undefined) {
 			fallar(`no existe la tarea ${id}`);
 		}

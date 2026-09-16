@@ -64,8 +64,8 @@ Cada encargo que se pasa a un subagente lleva, en este orden:
 - `tipo`: `tarea` (por defecto), `pregunta` o `funcionalidad`. Ver «Tareas que son preguntas» y «Funcionalidades».
 - `dependeDe[]`: tareas que tienen que estar `done` o `finished` antes de que esta se pueda tomar. Ver «Dependencias».
 - `rama`: rama de git en la que se trabaja la tarea, opcional. Una funcionalidad la fija y sus partes la heredan.
-- `analisis`: `modelo` y `terminal` que la analizan.
-- `ejecucion`: `modelo` y `terminal` que la ejecutan.
+- `analisis`: `agente`, `modelo` y `terminal` que la analizan. Ver «Agentes».
+- `ejecucion`: `agente`, `modelo` y `terminal` que la ejecutan.
 - `autoejecucion`: activada por defecto. Con ella, la ejecución arranca sola cuando el análisis termina sin preguntas abiertas. Desactivada, la tarea espera en `prepared` a que el humano apruebe el análisis.
 - `ejecucionAprobada`: la pone el humano desde la web cuando `autoejecucion` está desactivada y el análisis le vale. Es lo que desbloquea la ejecución en ese caso.
 - `bloqueada`: hay una pregunta sin contestar.
@@ -258,6 +258,52 @@ CREATE TABLE proyectos (
 - **`GET /proyectos`, `GET /proyectos/nuevo`, `POST /proyectos`, `GET /proyectos/:id/editar`, `POST /proyectos/:id/editar`, `GET /proyectos/:id/borrar`, `POST /proyectos/:id/borrar`** en el bloque «Configuración» de la navegación: tabla con clave (chip con su color), nombre, repositorio, rama principal, tareas abiertas, terminales y «Creado por»; el alta es una página aparte, `/proyectos/nuevo`, con los campos de arriba y el selector de color, a la que lleva el botón «Nuevo proyecto» de la cabecera (decidido el 16 de septiembre de 2026: antes era un formulario al pie de la tabla; página y no ventana emergente, como «Nueva tarea», para que funcione sin JavaScript); edición de todo salvo la clave, en su página; borrado con confirmación en página aparte.
 - **El alta de un terminal pide el proyecto** con un desplegable, `DEFAULT` preseleccionado. La lista de terminales lleva la columna Proyecto y la ruta reportada en texto suave debajo del nombre.
 - **El chip de proyecto** es la clave en una etiqueta con el color del proyecto (`etiqueta(clave, proyecto.color, "proyecto")`). Es el único sitio donde un color de la tabla de nueve identifica a algo que no es un usuario. El alta y la edición del proyecto llevan el mismo selector de color que los usuarios (`selectorDeColor`), con «automático» en el alta.
+
+## Agentes
+
+Un agente es un papel escrito en Markdown: quién es, cómo trabaja, qué mira y qué no. Se define una vez en el servidor y se asigna a la fase de una tarea; cuando el bucle lanza esa fase, el texto del agente es el contexto del subagente. Así un terminal tiene N agentes distintos apuntando a él (un revisor, un implementador, un redactor), cada uno con su modelo y su manera de hacer. Decidido el 16 de septiembre de 2026.
+
+### Campos
+
+```sql
+CREATE TABLE agentes (
+  id INTEGER PRIMARY KEY,
+  nombre TEXT NOT NULL UNIQUE,
+  descripcion TEXT NOT NULL DEFAULT '',
+  instrucciones TEXT NOT NULL,
+  modelo TEXT NOT NULL,
+  terminal_id INTEGER REFERENCES terminales(id),
+  creado TEXT NOT NULL,
+  actualizado TEXT NOT NULL
+) STRICT;
+```
+
+- **`nombre`**: corto, único, en minúsculas con guiones (`revisor`, `implementador-web`), de dos a treinta caracteres, empieza por letra (`nombre_invalido`, `nombre_repetido`). Es lo que se ve en la web, en el frontmatter y lo que pide `leer_agente`.
+- **`descripcion`**: una frase, para la lista.
+- **`instrucciones`**: el Markdown del papel. Se escribe como se le hablaría al subagente: «Eres el revisor de…». Sin límite fijo; el bucle lo copia entero al prompt.
+- **`modelo`**: uno de los conocidos (`fable`, `opus`, `sonnet`, `haiku`). Es el modelo con el que se lanza el agente.
+- **`terminal_id`**: opcional. Con él, el agente corre en ese terminal; sin él, en cualquiera. Borrar el terminal lo deja a nulo.
+- **`tareas.analisis_agente_id`** y **`tareas.ejecucion_agente_id`**, `INTEGER REFERENCES agentes(id)`, anulables. Borrar el agente las pone a nulo: la tarea conserva el modelo y el terminal copiados y sigue funcionando sin papel.
+
+### Reglas
+
+- **Asignar un agente a una fase copia su modelo y su terminal a la fase** en ese momento, en la web y en la herencia de una funcionalidad a sus partes. El modelo y el terminal de la fase siguen siendo lo que mandan en `tomar_tarea`, en el autor de los comentarios y en el consumo: el agente añade el papel, no cambia el reparto. Si después se edita el agente, las tareas ya asignadas conservan lo copiado; las instrucciones, en cambio, se leen al lanzar, así que un cambio en el texto vale desde la siguiente vuelta.
+- **Una fase con agente no deja elegir modelo ni terminal a mano**: vienen del agente. Sin agente, se eligen como hasta ahora.
+- **El bucle carga el papel**: si la fase que toca lleva `agente`, antes de lanzar el subagente llama a `leer_agente` con su nombre y pone el Markdown devuelto al principio del prompt, bajo un título «Quién eres», antes de «La tarea». Todo lo demás del prompt no cambia. Si `leer_agente` falla porque el agente ya no existe, lanza sin papel y lo dice en su línea de cierre.
+- **Crear, editar y borrar un agente dejan rastro** (`alta_agente`, `editar_agente` con los campos que cambiaron salvo `instrucciones`, que se anota como `instrucciones` a secas, `baja_agente`) con `objeto = 'agente'`, y **no suben la revisión**: nada cambia en las tareas hasta que se asigna, y asignar es editar una tarea, que ya la sube.
+- **Un agente se borra siempre**, con confirmación que dice a cuántas fases está asignado: esas fases se quedan sin papel y con su modelo y terminal copiados.
+
+### En el Markdown
+
+- **El frontmatter** de cada fase lleva `agente: revisor` como primera línea del bloque cuando lo hay; sin agente, la línea no aparece: `analisis:\n  agente: revisor\n  modelo: sonnet\n  terminal: portatil-ana`.
+- **La línea de índice** lleva el agente entre paréntesis tras la fase cuando lo hay: `analisis: sonnet@portatil-ana (revisor)`.
+- **`leer_agente`** devuelve el papel entero como documento: frontmatter con `nombre`, `modelo`, `terminal` (o `~`) y `actualizado`, y el cuerpo es `instrucciones` tal cual. `agente_inexistente` si no existe. Es de solo lectura y no está acotada al proyecto del terminal.
+
+### En la web
+
+- **`GET /agentes`, `GET /agentes/nuevo`, `POST /agentes`, `GET /agentes/:id/editar`, `POST /agentes/:id/editar`, `GET /agentes/:id/borrar`, `POST /agentes/:id/borrar`**, entrada «Agentes» en el bloque «Configuración», entre Proyectos y Terminales. Lista: nombre, descripción, modelo, terminal (o «cualquiera»), fases asignadas (cuántas tareas abiertas lo llevan), «Creado por». Alta y edición en página aparte, como los proyectos: nombre (solo en el alta), descripción, instrucciones en un `<textarea rows="18">` monoespaciado, modelo como desplegable, terminal como desplegable con «cualquiera». Frase de propósito: «Un agente es un papel: quién es, cómo trabaja y con qué modelo. Las tareas se lo asignan por fase.».
+- **El formulario de tarea**, en cada tarjeta de fase, lleva primero el desplegable «Agente» («ninguno» y los agentes por nombre); al elegir uno, `cliente.ts` pone su modelo y su terminal en los otros dos desplegables y los deshabilita (con `data-modelo` y `data-terminal` en cada `<option>`); «ninguno» los vuelve a habilitar. El servidor no se fía: si llega `agente`, copia modelo y terminal del agente e ignora los otros dos campos.
+- **La ficha** enseña el agente en las filas Análisis y Ejecución de las propiedades: `revisor · sonnet@portatil-ana`, con el nombre enlazado a la edición del agente.
 
 ## Formato Markdown
 
@@ -721,7 +767,7 @@ CREATE TABLE actividad (
   usuario_id INTEGER REFERENCES usuarios(id),
   usuario_nombre TEXT NOT NULL,
   accion TEXT NOT NULL,
-  objeto TEXT NOT NULL CHECK (objeto IN ('tarea', 'usuario', 'terminal', 'proyecto')),
+  objeto TEXT NOT NULL CHECK (objeto IN ('tarea', 'usuario', 'terminal', 'proyecto', 'agente')),
   objeto_id INTEGER NOT NULL,
   objeto_nombre TEXT NOT NULL,
   detalle TEXT NOT NULL,
@@ -750,6 +796,9 @@ CREATE INDEX actividad_por_objeto ON actividad (objeto, objeto_id, id);
 | `alta_proyecto` | proyecto | `clave WEB` |
 | `editar_proyecto` | proyecto | solo los campos que cambiaron, como en `editar_tarea` |
 | `baja_proyecto` | proyecto | vacío |
+| `alta_agente` | agente | `modelo sonnet` |
+| `editar_agente` | agente | los campos que cambiaron; `instrucciones` a secas si cambió el texto |
+| `baja_agente` | agente | `3 fases quedan sin agente` |
 
 - **Se escribe en la misma transacción que la acción**, desde las funciones de `src/db/` con `registrarActividad` de `src/db/actividad.ts`. Nunca sube la revisión por sí sola: la acción ya lo hace si es contenido, y las que no lo son (contraseña, color) tampoco lo hacen por dejar rastro.
 - **`usuario_nombre` se guarda como texto** para que sobreviva al borrado del usuario, igual que el autor del hilo; al borrar, `usuario_id` queda a nulo. `objeto_nombre` es el título de la tarea o el nombre del usuario o terminal en ese momento, para que la lista global se lea sin buscar.
@@ -848,6 +897,7 @@ Todas devuelven Markdown. Las listas devuelven un índice de una línea por elem
 | Operación | Quién la llama | Entrada | Salida |
 |---|---|---|---|
 | `registrar_terminal` | el plugin al arrancar la sesión | `ruta` y `repositorio` opcionales; el terminal sale del token | nombre del terminal, cuenta, agentes en paralelo, proyecto, rama principal, verificación y revisión actual; marca el terminal como conectado y guarda la ruta. Falla con `proyecto_no_coincide` si el repositorio reportado no es el del proyecto |
+| `leer_agente` | el bucle, antes de lanzar una fase que lleva agente | `nombre` | el papel del agente como documento Markdown; `agente_inexistente` si no existe |
 | `reportar_consumo` | el bucle, al terminar cada subagente de fase | id de tarea, fase, modelo, tokens totales, llamadas a herramientas, duración | confirmación; el servidor suma al consumo de la tarea y al de sus ancestros |
 
 ### API HTTP, fuera del MCP

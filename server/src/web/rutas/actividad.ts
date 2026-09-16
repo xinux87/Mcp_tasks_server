@@ -59,8 +59,10 @@ function porDia(filas: readonly Actividad[]): Dia[] {
  * queda cuando el objeto ya no existe.
  */
 function objetoLegible(fila: Actividad): Html {
-	if (fila.objeto === "tarea") {
-		const id = formatearId(fila.objetoId);
+	// Una tarea borrada ya no tiene código: queda el nombre que tenía, como en
+	// un usuario o un terminal de baja.
+	if (fila.objeto === "tarea" && fila.objetoCodigo !== null) {
+		const id = formatearId(fila.objetoCodigo);
 		return html`<a class="id-tarea" href="/tareas/${id}">${id}</a> <span class="objeto">${fila.objetoNombre}</span>`;
 	}
 	return html`<strong class="objeto">${fila.objetoNombre}</strong>`;
