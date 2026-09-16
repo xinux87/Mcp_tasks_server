@@ -6,8 +6,8 @@
  * Hace siete cosas, y ninguna más:
  *
  * 1. Refresco en vivo: escucha `/eventos` (SSE con la revisión global) y,
- *    según la vista, recarga el fragmento del tablero, recarga la página o
- *    muestra un aviso.
+ *    según la vista, recarga el fragmento del tablero o la página entera. En
+ *    la ficha espera si hay algo escrito sin enviar, y mientras tanto avisa.
  * 2. Arrastre del kanban con SortableJS, que envía `POST /tareas/:id/orden`.
  * 3. Recarga por intervalo de la vista de terminales, que no mueve la
  *    revisión porque su telemetría no es contenido.
@@ -46,6 +46,9 @@ let fuenteEventos = null;
 /** Temporizador del aviso del tablero, que se borra solo a los pocos segundos. */
 let temporizadorAviso = 0;
 
+/** La ficha tiene una recarga esperando a que se vacíe lo que se está escribiendo. */
+let recargaEsperando = false;
+
 function elTablero() {
 	return document.getElementById("tablero");
 }
@@ -82,8 +85,8 @@ function recargarPagina() {
 }
 
 /**
- * Aviso fijo de la ficha. No se recarga sola porque la ficha tiene
- * formularios y el humano puede estar escribiendo una nota.
+ * Aviso fijo de la ficha, solo mientras la recarga espera: la ficha tiene
+ * formularios y el humano puede estar escribiendo un comentario.
  */
 function avisarRecarga() {
 	if (document.getElementById("aviso-recarga") !== null) {
@@ -100,6 +103,44 @@ function avisarRecarga() {
 	enlace.textContent = "Recargar";
 	caja.appendChild(enlace);
 	cuerpo.appendChild(caja);
+}
+
+/** Algo escrito y sin enviar: recargar ahora lo perdería. */
+function hayTextoSinEnviar() {
+	const campos = document.querySelectorAll(
+		'textarea, input[type="text"], input[type="search"], input[type="number"]',
+	);
+	return Array.prototype.some.call(campos, function (campo) {
+		return campo.value !== "";
+	});
+}
+
+/**
+ * La ficha se recarga sola como la lista, salvo que el humano esté
+ * escribiendo: entonces avisa y espera a que el campo se vacíe. Enviar el
+ * formulario también sirve, porque la respuesta trae la página nueva; lo único
+ * que hace falta es dejar de esperar por un campo que se va con ella.
+ *
+ * Un solo par de listeners, registrados la primera vez que hace falta.
+ */
+function recargarFicha() {
+	if (!hayTextoSinEnviar()) {
+		recargarPagina();
+		return;
+	}
+	avisarRecarga();
+	if (recargaEsperando) {
+		return;
+	}
+	recargaEsperando = true;
+	document.addEventListener("input", function () {
+		if (recargaEsperando && !hayTextoSinEnviar()) {
+			recargarPagina();
+		}
+	});
+	document.addEventListener("submit", function () {
+		recargaEsperando = false;
+	});
 }
 
 // --- tablero -----------------------------------------------------------------
@@ -518,8 +559,8 @@ function alSubirLaRevision() {
 			return;
 		}
 		void recargarTablero();
-		// La ficha de una funcionalidad tiene tablero y además hilo: el tablero
-		// se repinta solo y de lo demás avisa, como cualquier otra ficha.
+		// La ficha de una funcionalidad tiene tablero y además hilo: se recarga
+		// entera como cualquier otra ficha.
 		if (vista !== "ficha") {
 			return;
 		}
@@ -531,7 +572,7 @@ function alSubirLaRevision() {
 		return;
 	}
 	if (vista === "ficha") {
-		avisarRecarga();
+		recargarFicha();
 	}
 }
 

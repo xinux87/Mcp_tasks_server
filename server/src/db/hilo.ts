@@ -483,8 +483,6 @@ export type ComentarioHumano = {
 	tareaId: number;
 	usuarioId: number;
 	texto: string;
-	/** En `done`: además de escribir, devuelve la tarea a `doing`. */
-	iterar?: boolean;
 };
 
 /**
@@ -492,9 +490,10 @@ export type ComentarioHumano = {
  * cambio posterior a salir de `backlog`, para que el agente lo lea en contexto
  * sin que se pierda qué se pidió al principio.
  *
- * Con `iterar` y la tarea en `done`, el mismo mensaje pide otra iteración: la
- * tarea vuelve a `doing` en esta misma transacción. Es la vuelta atrás de
- * antes, dicha en el chat.
+ * En `done` comentar es pedir otra iteración: si el resultado valiera se
+ * finalizaría, así que escribir algo es que falta algo. La tarea vuelve a
+ * `doing` en esta misma transacción. Es la vuelta atrás de antes, dicha en el
+ * chat, y lo decide el estado: no hay campo que la contradiga.
  */
 export function comentarioHumano(db: DatabaseSync, datos: ComentarioHumano): Comentario {
 	return escribirContenido(db, (conexion, revision) => {
@@ -502,13 +501,7 @@ export function comentarioHumano(db: DatabaseSync, datos: ComentarioHumano): Com
 		if (tarea.estado === "finished") {
 			throw new ErrorDeRegla("tarea_archivada", "Una tarea finished está archivada y es de solo lectura.");
 		}
-		const iterar = datos.iterar === true;
-		if (iterar && tarea.estado !== "done") {
-			throw new ErrorDeRegla(
-				"solo_en_done",
-				`La tarea está en ${tarea.estado}: solo se pide otra iteración sobre una tarea hecha.`,
-			);
-		}
+		const iterar = tarea.estado === "done";
 		const comentario = insertarComentario(conexion, revision, {
 			tareaId: tarea.id,
 			tipo: "comentario",

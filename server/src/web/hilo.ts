@@ -54,8 +54,8 @@ export function separadorIteracion(numero: number, creado: string): Html {
 
 /**
  * El cuadro de comentar, pegado al último mensaje: el hilo es un chat y esto es
- * la caja de escribir. En `done` el humano elige entre dejar constancia y pedir
- * otra iteración, que devuelve la tarea a `doing`. En `finished` no hay cuadro:
+ * la caja de escribir. Un solo botón en todos los estados; en `done` ese botón
+ * pide otra iteración y el cuadro lo avisa debajo. En `finished` no hay cuadro:
  * una tarea cerrada es de solo lectura. `volver` es la ruta a la que se vuelve
  * al escribir, que es lo que usa la bandeja para no abrir la ficha.
  */
@@ -68,14 +68,10 @@ export function cuadroDeComentar(tareaId: number, estado: Estado, volver?: strin
 			<textarea name="texto" rows="3" required aria-label="Mensaje para el agente" placeholder="Escribe al agente…"></textarea>
 			<div class="acciones">
 				<button type="submit" class="principal">Comentar</button>
-				${
-					// Sin clase: el botón de siempre es el secundario, y pedir otra
-					// iteración no es lo que más se hace desde aquí.
-					estado === "done"
-						? html`<button type="submit" name="iterar" value="1">Comentar y pedir otra iteración</button>`
-						: html``
-				}
 			</div>
+			${
+				estado === "done" ? html`<p class="silencio">Comentar devuelve la tarea al agente para otra iteración</p>` : html``
+			}
 		</form>`;
 }
 

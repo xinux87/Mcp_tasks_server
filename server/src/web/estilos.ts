@@ -1119,7 +1119,7 @@ button.enlace:hover {
 	margin-bottom: 0.9rem;
 }
 
-/* Aviso de la ficha: no se recarga sola, así que el humano decide cuándo. */
+/* Aviso de la ficha mientras la recarga espera a que se envíe lo escrito. */
 .aviso-recarga {
 	position: fixed;
 	top: 0;
@@ -2101,5 +2101,12 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
 
 .comentar .acciones {
 	justify-content: flex-end;
+}
+
+/* Hecha la tarea, el único botón pide otra iteración y el cuadro lo dice debajo. */
+.comentar .silencio {
+	margin: 0;
+	text-align: right;
+	font-size: 0.8125rem;
 }
 `;

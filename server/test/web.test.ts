@@ -456,24 +456,25 @@ test("comentar una tarea hecha pidiendo otra iteración la devuelve a En curso",
 		tomarTarea(montaje.db, { tareaId: 1, fase: "ejecucion", terminalId });
 		comentarResultado(montaje.db, { tareaId: 1, terminalId, texto: "Commit: a1b2c3d" });
 
-		// En `done` el cuadro ofrece las dos cosas: dejar constancia y pedir otra
-		// iteración. Todavía va por la primera: ni separador ni cuenta.
+		// En `done` el cuadro tiene un solo botón, y avisa de lo que hace.
 		const hecha = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
 		assert.match(hecha, /<form class="comentar" method="post" action="\/tareas\/T-0001\/comentar">/);
-		assert.match(hecha, /name="iterar" value="1">Comentar y pedir otra iteración/);
+		assert.match(hecha, /<p class="silencio">Comentar devuelve la tarea al agente para otra iteración<\/p>/);
+		assert.doesNotMatch(hecha, /name="iterar"/);
 		assert.doesNotMatch(hecha, /class="iteracion"/);
 		assert.doesNotMatch(hecha, /Iteración 2/);
 
 		const otra = await pedir(montaje, `/tareas/${id}/comentar`, {
 			cookie,
-			formulario: { texto: "Falta el separador.", iterar: "1" },
+			formulario: { texto: "Falta el separador." },
 		});
 		assert.equal(otra.status, 302);
 		const cuerpo = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
 		assert.match(cuerpo, /<span class="insignia estado-doing color-amarillo">En curso<\/span>/);
 		assert.match(cuerpo, /Falta el separador\./);
-		// Y ya no hay iteración que pedir: la tarea no está hecha.
-		assert.doesNotMatch(cuerpo, /name="iterar"/);
+		// En curso el cuadro sigue, sin la frase: comentar no mueve nada.
+		assert.match(cuerpo, /<form class="comentar"/);
+		assert.doesNotMatch(cuerpo, /Comentar devuelve la tarea al agente/);
 
 		// La vuelta parte el hilo: el separador abre la iteración 2 justo delante
 		// del comentario que la pidió, y las propiedades la cuentan.
@@ -520,9 +521,11 @@ test("el cuadro de comentar cierra el hilo y ofrece lo que toca en cada columna"
 		assert.match(enCurso, /placeholder="Escribe al agente…"/);
 		assert.doesNotMatch(enCurso, /<h2>Nota<\/h2>/);
 
-		// Hecha, además se puede pedir otra iteración.
+		// Hecha, el mismo botón pide otra iteración, y el cuadro lo dice.
 		comentarResultado(montaje.db, { tareaId: 1, terminalId, texto: "Commit: a1b2c3d" });
-		assert.equal(botonesDeComentar(await (await pedir(montaje, `/tareas/${id}`, { cookie })).text()), 2);
+		const hecha = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		assert.equal(botonesDeComentar(hecha), 1);
+		assert.match(hecha, /Comentar devuelve la tarea al agente para otra iteración/);
 
 		// Cerrada es de solo lectura: no hay cuadro.
 		await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "finished" } });
@@ -1721,6 +1724,28 @@ test("el tema tiene tres opciones, se aplica antes de pintar y la hoja lo sigue"
 		const js = await (await pedir(montaje, "/static/app.js")).text();
 		assert.match(js, /localStorage\.setItem\("tema"/);
 		assert.match(js, /localStorage\.removeItem\("tema"\)/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("la ficha se recarga sola, y espera si hay algo escrito sin enviar", async () => {
+	const montaje = montar();
+	try {
+		const js = await (await pedir(montaje, "/static/app.js")).text();
+		// La ficha se recarga como la lista y la bandeja.
+		assert.match(js, /if \(vista === "ficha"\) \{\s*recargarFicha\(\);/);
+		assert.match(js, /function recargarFicha\(\) \{\s*if \(!hayTextoSinEnviar\(\)\) \{\s*recargarPagina\(\);/);
+		// La salvaguarda mira los campos con contenido: un comentario a medias no
+		// se pierde por una revisión que sube.
+		assert.match(js, /function hayTextoSinEnviar\(\)/);
+		for (const campo of ["textarea", 'input\\[type="text"\\]', 'input\\[type="search"\\]', 'input\\[type="number"\\]']) {
+			assert.match(js, new RegExp(campo), `la salvaguarda mira ${campo}`);
+		}
+		// Mientras espera, avisa; y sale de la espera al vaciar el campo o enviar.
+		assert.match(js, /avisarRecarga\(\);/);
+		assert.match(js, /addEventListener\("input", function \(\) \{/);
+		assert.match(js, /addEventListener\("submit", function \(\) \{/);
 	} finally {
 		await montaje.cerrar();
 	}

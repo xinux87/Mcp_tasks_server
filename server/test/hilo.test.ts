@@ -289,22 +289,18 @@ test("el humano comenta en cualquier estado menos finished", () => {
 	}
 });
 
-test("comentar con iterar devuelve la tarea hecha a doing, con transición y rastro", () => {
+test("comentar una tarea hecha la devuelve a doing, con transición y rastro", () => {
 	const banco = montar();
 	try {
 		const tarea = enEjecucion(banco);
 		comentarResultado(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "Commit: a1b2c3d" });
 		assert.equal(exigirTarea(banco.db, tarea.id).estado, "done");
 
-		// Sin `iterar` solo deja constancia: la tarea sigue hecha.
-		comentarioHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "queda bien" });
-		assert.equal(exigirTarea(banco.db, tarea.id).estado, "done");
-
+		// En `done` no hay nada que elegir: escribir algo es que falta algo.
 		const comentario = comentarioHumano(banco.db, {
 			tareaId: tarea.id,
 			usuarioId: banco.ana,
 			texto: "falta el separador",
-			iterar: true,
 		});
 		assert.equal(comentario.tipo, "comentario");
 		assert.equal(comentario.autor, "humano:ana");
@@ -312,22 +308,23 @@ test("comentar con iterar devuelve la tarea hecha a doing, con transición y ras
 		assert.equal(vuelta.estado, "doing");
 		assert.equal(vuelta.enMarchaTerminalId, null);
 
-		const transiciones = banco.db
-			.prepare("SELECT de, a FROM transiciones WHERE tarea_id = ? ORDER BY id")
-			.all(tarea.id)
-			.map((fila) => `${String(fila.de)} → ${String(fila.a)}`);
-		assert.equal(transiciones.at(-1), "done → doing");
+		const transiciones = () =>
+			banco.db
+				.prepare("SELECT de, a FROM transiciones WHERE tarea_id = ? ORDER BY id")
+				.all(tarea.id)
+				.map((fila) => `${String(fila.de)} → ${String(fila.a)}`);
+		assert.equal(transiciones().at(-1), "done → doing");
+
+		// Y en `doing` comentar solo deja constancia: la tarea no se mueve.
+		comentarioHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "y el pie" });
+		assert.equal(exigirTarea(banco.db, tarea.id).estado, "doing");
+		assert.equal(transiciones().at(-1), "done → doing");
+
 		assert.deepEqual(
 			actividadDe(banco.db, "tarea", tarea.id)
 				.filter((fila) => fila.accion === "comentario")
 				.map((fila) => fila.detalle),
-			["queda bien", "otra iteración: falta el separador"],
-		);
-
-		// Fuera de `done` no hay iteración que pedir.
-		assert.equal(
-			codigoDe(() => comentarioHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "otra", iterar: true })),
-			"solo_en_done",
+			["otra iteración: falta el separador", "y el pie"],
 		);
 	} finally {
 		banco.cerrar();

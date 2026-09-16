@@ -220,7 +220,8 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 		// pide desde aquí, sin abrir la ficha.
 		assert.match(revisar, /<form class="comentar" method="post" action="\/tareas\/T-0006\/comentar">/);
 		assert.match(revisar, /<input type="hidden" name="volver" value="\/">/);
-		assert.match(revisar, /name="iterar" value="1">Comentar y pedir otra iteración/);
+		assert.match(revisar, /<p class="silencio">Comentar devuelve la tarea al agente para otra iteración<\/p>/);
+		assert.doesNotMatch(revisar, /name="iterar"/);
 
 		const backlog = bloque(cuerpo, "Define");
 		assert.match(backlog, /Repensar el cobro/);
@@ -303,7 +304,7 @@ test("se pide otra iteración desde la bandeja y la tarea vuelve a En curso", as
 
 		const otra = await pedir(montaje, `/tareas/${formatearId(tareas.hecha.id)}/comentar`, {
 			cookie,
-			formulario: { texto: "Falta el pie del informe.", iterar: "1", volver: "/" },
+			formulario: { texto: "Falta el pie del informe.", volver: "/" },
 		});
 		assert.equal(otra.status, 302);
 		assert.equal(otra.headers.get("location"), "/");

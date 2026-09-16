@@ -1521,9 +1521,9 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 			comentarioHumano(deps.db, {
 				tareaId,
 				usuarioId: usuarioActual(c).id,
+				// En `done`, comentar pide otra iteración: lo decide el estado de la
+				// tarea, no el formulario.
 				texto: campo(formulario, "texto"),
-				// El botón de pedir otra iteración es el que manda este campo.
-				iterar: campo(formulario, "iterar") === "1",
 			});
 			// Quien comenta desde la bandeja se queda en la bandeja.
 			return c.redirect(vuelta(formulario, tareaId), 302);
