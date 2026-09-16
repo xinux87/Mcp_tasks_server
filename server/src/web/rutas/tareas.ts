@@ -315,6 +315,23 @@ function selectTerminal(nombre: string, activos: TerminalListado[], seleccionado
 		</select>`;
 }
 
+/**
+ * El desplegable de modelo: los conocidos, «sin asignar», y el que tenga puesto
+ * la tarea si no está en la lista (un agente puede haber fijado otro). Era un
+ * campo de texto con `datalist`, pero con un valor ya escrito el navegador solo
+ * sugiere lo que empieza igual y las demás opciones no se veían.
+ */
+function selectModelo(nombre: string, seleccionado: string | null): Html {
+	const opciones =
+		seleccionado === null || MODELOS_SUGERIDOS.includes(seleccionado)
+			? MODELOS_SUGERIDOS
+			: [seleccionado, ...MODELOS_SUGERIDOS];
+	return html`<select name="${nombre}">
+			<option value=""${seleccionado === null ? raw(" selected") : ""}>sin asignar</option>
+			${opciones.map((modelo) => html`<option value="${modelo}"${modelo === seleccionado ? raw(" selected") : ""}>${modelo}</option>`)}
+		</select>`;
+}
+
 /** El presupuesto en la casilla del formulario: vacío si no hay, o si lo que llegó no era un número. */
 function valorPresupuesto(presupuesto: number | null): string {
 	return presupuesto === null || !Number.isSafeInteger(presupuesto) ? "" : String(presupuesto);
@@ -341,7 +358,7 @@ function fase(
 			<legend>${titulo}</legend>
 			<label>
 				<span>Modelo</span>
-				<input type="text" name="${prefijo}Modelo" list="modelos" value="${modelo ?? ""}">
+				${selectModelo(`${prefijo}Modelo`, modelo)}
 			</label>
 			<label>
 				<span>Terminal</span>
@@ -455,7 +472,6 @@ function camposTarea(valores: ValoresTarea, opciones: OpcionesTarea): Html {
 			"Autoejecución",
 			"La ejecución arranca sola cuando el análisis termina sin preguntas abiertas.",
 		)}
-		<datalist id="modelos">${MODELOS_SUGERIDOS.map((modelo) => html`<option value="${modelo}"></option>`)}</datalist>
 		<div class="fases">
 			${fase(
 				esFuncionalidad ? "Análisis de la funcionalidad" : "Análisis",

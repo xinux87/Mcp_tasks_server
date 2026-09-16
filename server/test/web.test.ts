@@ -1603,9 +1603,9 @@ test("el presupuesto se pone en el formulario, se ve en la ficha y avisa cuando 
 		assert.match(nueva, /<input type="number" name="presupuesto" min="0" step="1000" value="">/);
 		// Los modelos por defecto: Fable analiza y Opus ejecuta. La ejecución va
 		// marcada para que la hoja la esconda cuando el tipo elegido es pregunta.
-		assert.match(nueva, /<input type="text" name="analisisModelo" list="modelos" value="fable">/);
+		assert.match(nueva, /<select name="analisisModelo">[\s\S]*?<option value="fable" selected>fable<\/option>/);
 		assert.match(nueva, /<fieldset data-fase="ejecucion">/);
-		assert.match(nueva, /<input type="text" name="ejecucionModelo" list="modelos" value="opus">/);
+		assert.match(nueva, /<select name="ejecucionModelo">[\s\S]*?<option value="opus" selected>opus<\/option>/);
 		assert.match(nueva, /<label class="casilla" data-casilla="autoejecucion">/);
 
 		const respuesta = await pedir(montaje, "/tareas", {
