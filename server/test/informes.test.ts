@@ -20,9 +20,13 @@ import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 const DIA = 24 * 60 * 60 * 1000;
 
+// Un solo instante para todo el archivo: dos `Date.now()` que cruzan un
+// milisegundo dejaban diferencias de 1 ms y el test fallaba una de cada quince.
+const AHORA = Date.now();
+
 /** Hace tantos días, en ISO 8601 UTC. Es como se fechan los datos de prueba. */
 function hace(dias: number, horas = 0): string {
-	return new Date(Date.now() - dias * DIA - horas * 3_600_000).toISOString();
+	return new Date(AHORA - dias * DIA - horas * 3_600_000).toISOString();
 }
 
 /**
