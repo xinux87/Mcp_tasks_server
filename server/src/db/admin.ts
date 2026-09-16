@@ -435,6 +435,8 @@ export function borrarTerminal(db: DatabaseSync, terminalId: number, actorId: nu
 			sentencia(conexion, `UPDATE tareas SET ${columna} = NULL WHERE ${columna} = ?`).run(terminalId);
 		}
 		sentencia(conexion, "UPDATE consumo SET terminal_id = NULL WHERE terminal_id = ?").run(terminalId);
+		// Un agente sin terminal corre en cualquiera: el papel sobrevive al borrado.
+		sentencia(conexion, "UPDATE agentes SET terminal_id = NULL WHERE terminal_id = ?").run(terminalId);
 		sentencia(conexion, "DELETE FROM terminales WHERE id = ?").run(terminalId);
 		return terminal;
 	}).valor;

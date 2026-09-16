@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { crearAgente } from "../src/db/agentes.ts";
 import { registrarConsumo } from "../src/db/consumo.ts";
 import { crearParte } from "../src/db/funcionalidades.ts";
 import { comentarAnalisis, comentarioDeAgente, comentarResultado, preguntar, responder } from "../src/db/hilo.ts";
@@ -568,6 +569,48 @@ Dos partes: los datos y el botón.`,
 		assert.equal(
 			lineaIndice(itemIndiceDe(banco.db, boton.id)),
 			`- ${id(boton)} · prepared · esperando · Poner el botón de descarga · analisis: sonnet@portatil-ana · ejecucion: opus@portatil-ana · padre: ${id(evolutivo)}`,
+		);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("el agente va como primera línea del bloque de la fase y entre paréntesis en el índice", () => {
+	const banco = montar();
+	try {
+		const revisor = crearAgente(banco.db, {
+			nombre: "revisor",
+			instrucciones: "Eres el revisor.",
+			modelo: "sonnet",
+			terminalId: banco.portatil,
+		});
+		const suelto = crearAgente(banco.db, { nombre: "redactor", instrucciones: "Eres el redactor.", modelo: "haiku" });
+		const tarea = crearTareaHumana(banco.db, {
+			titulo: "Exportar el listado",
+			descripcion: "d",
+			usuarioId: banco.ana,
+			analisisAgenteId: revisor.id,
+			ejecucionAgenteId: suelto.id,
+		});
+		const documento = sinFechas(documentoTarea(leerTarea(banco.db, tarea.id) ?? assert.fail("sin tarea")));
+
+		// Modelo y terminal son los del agente: la fase no los elige a mano.
+		assert.match(documento, /^analisis:\n {2}agente: revisor\n {2}modelo: sonnet\n {2}terminal: portatil-ana$/m);
+		assert.match(documento, /^ejecucion:\n {2}agente: redactor\n {2}modelo: haiku\n {2}terminal: ~$/m);
+		assert.equal(
+			lineaIndice(itemIndiceDe(banco.db, tarea.id)),
+			`- ${id(tarea)} · backlog · Exportar el listado · analisis: sonnet@portatil-ana (revisor) · ejecucion: haiku (redactor)`,
+		);
+
+		// Sin agente, la línea no aparece y el índice va como siempre.
+		const sinPapel = crearTareaHumana(banco.db, { titulo: "Sin papel", descripcion: "d", usuarioId: banco.ana });
+		assert.doesNotMatch(
+			sinFechas(documentoTarea(leerTarea(banco.db, sinPapel.id) ?? assert.fail("sin tarea"))),
+			/agente:/,
+		);
+		assert.equal(
+			lineaIndice(itemIndiceDe(banco.db, sinPapel.id)),
+			`- ${id(sinPapel)} · backlog · Sin papel · analisis: sin asignar · ejecucion: sin asignar`,
 		);
 	} finally {
 		banco.cerrar();

@@ -72,8 +72,12 @@ export function crearParte(db: DatabaseSync, datos: NuevaParte): Tarea {
 			padreId: padre.id,
 			autoejecucion: padre.autoejecucion,
 			analisisHecho: false,
+			// Una parte hereda también el papel de cada fase, no solo el modelo
+			// y el terminal: es el mismo reparto de la funcionalidad.
+			analisisAgenteId: padre.analisisAgenteId,
 			analisisModelo: padre.analisisModelo,
 			analisisTerminalId: padre.analisisTerminalId,
+			ejecucionAgenteId: padre.ejecucionAgenteId,
 			ejecucionModelo: padre.ejecucionModelo,
 			ejecucionTerminalId: padre.ejecucionTerminalId,
 			enMarchaTerminalId: null,
@@ -205,8 +209,10 @@ function crearParteDeIntegracion(conexion: DatabaseSync, revision: number, funci
 		padreId: funcionalidad.id,
 		autoejecucion: funcionalidad.autoejecucion,
 		analisisHecho: false,
+		analisisAgenteId: funcionalidad.analisisAgenteId,
 		analisisModelo: funcionalidad.analisisModelo,
 		analisisTerminalId: funcionalidad.analisisTerminalId,
+		ejecucionAgenteId: funcionalidad.ejecucionAgenteId,
 		ejecucionModelo: funcionalidad.ejecucionModelo,
 		ejecucionTerminalId: funcionalidad.ejecucionTerminalId,
 		enMarchaTerminalId: null,

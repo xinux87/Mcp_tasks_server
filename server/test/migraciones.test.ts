@@ -658,3 +658,88 @@ test("la migración del código deja a las tareas de antes con su número de sie
 		rmSync(carpeta, { recursive: true, force: true });
 	}
 });
+
+test("la migración de los papeles crea la tabla, cuelga las dos fases y admite el objeto en el rastro", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		db.exec("PRAGMA foreign_keys = ON");
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre === "015-agentes.sql");
+		assert.ok(cual > 0, "no está la migración de los papeles");
+
+		// Una base en marcha: un usuario, un terminal, una tarea y su rastro.
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('ana', 'h', 'azul', ?)").run(FECHA);
+		db
+			.prepare(
+				"INSERT INTO terminales (usuario_id, nombre, cuenta, token_hash, creado) VALUES (1, 'portatil-a', 'c', 'hash', ?)",
+			)
+			.run(FECHA);
+		db
+			.prepare(
+				`INSERT INTO tareas (id, proyecto_id, codigo, titulo, descripcion, tipo, estado, orden, creada, actualizada, estado_desde, revision)
+				VALUES (7, 1, 'K7M3XQ', 'De antes', 'd', 'tarea', 'doing', 1, ?, ?, ?, 3)`,
+			)
+			.run(FECHA, FECHA, FECHA);
+		db
+			.prepare(
+				`INSERT INTO actividad (usuario_id, usuario_nombre, accion, objeto, objeto_id, objeto_nombre, detalle, creado)
+				VALUES (1, 'ana', 'crear_tarea', 'tarea', 7, 'De antes', '', ?)`,
+			)
+			.run(FECHA);
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		// La tarea de antes estrena las dos columnas sin papel: sigue trabajándose igual.
+		const tarea = db.prepare("SELECT analisis_agente_id, ejecucion_agente_id FROM tareas WHERE id = 7").get();
+		assert.equal(tarea?.analisis_agente_id, null);
+		assert.equal(tarea?.ejecucion_agente_id, null);
+
+		// La tabla existe, es STRICT y el terminal es opcional.
+		assert.ok(tablas(db).includes("agentes"), "falta la tabla agentes");
+		assert.match(String(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'agentes'").get()?.sql), /STRICT/);
+		db
+			.prepare(
+				"INSERT INTO agentes (nombre, instrucciones, modelo, creado, actualizado) VALUES ('revisor', 'i', 'sonnet', ?, ?)",
+			)
+			.run(FECHA, FECHA);
+		assert.throws(() => {
+			db
+				.prepare(
+					"INSERT INTO agentes (nombre, instrucciones, modelo, creado, actualizado) VALUES ('revisor', 'i', 'opus', ?, ?)",
+				)
+				.run(FECHA, FECHA);
+		});
+		// Y una fase no puede apuntar a un papel que no existe.
+		db.prepare("UPDATE tareas SET analisis_agente_id = 1 WHERE id = 7").run();
+		assert.throws(() => {
+			db.prepare("UPDATE tareas SET ejecucion_agente_id = 99 WHERE id = 7").run();
+		});
+
+		// El rastro de antes se conserva y ahora admite un objeto más.
+		assert.equal(db.prepare("SELECT COUNT(*) AS t FROM actividad").get()?.t, 1);
+		db
+			.prepare(
+				`INSERT INTO actividad (usuario_id, usuario_nombre, accion, objeto, objeto_id, objeto_nombre, detalle, creado)
+				VALUES (1, 'ana', 'alta_agente', 'agente', 1, 'revisor', 'modelo sonnet', ?)`,
+			)
+			.run(FECHA);
+		assert.throws(() => {
+			db.prepare("UPDATE actividad SET objeto = 'otra cosa' WHERE id = 1").run();
+		});
+		assert.deepEqual(
+			db
+				.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'actividad'")
+				.all()
+				.map((fila) => String(fila.name)),
+			["actividad_por_objeto"],
+		);
+		assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});

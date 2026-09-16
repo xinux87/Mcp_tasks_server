@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
 import { formatearId } from "../md/ids.ts";
 import { registrarActividad } from "./actividad.ts";
+import { faseConAgente } from "./agentes.ts";
 import { ahora, entero, escribirContenido, sentencia, texto } from "./base.ts";
 import { tokensAbreviados } from "./consumo.ts";
 import { dependenciasDe, detalleDependencias, escribirDependencias } from "./dependencias.ts";
@@ -51,6 +52,13 @@ export type EdicionTarea = {
 	autoejecucion: boolean;
 	/** Como la rama: sin este campo, la tarea se queda con el presupuesto que tenía. */
 	presupuesto?: number | null;
+	/**
+	 * Papel de cada fase: con él, el modelo y el terminal se copian del agente y
+	 * los que lleguen se ignoran. Sin el campo, la fase se queda con el papel que
+	 * tenía, que es lo que hace un formulario que todavía no lo enseña.
+	 */
+	analisisAgenteId?: number | null;
+	ejecucionAgenteId?: number | null;
 	analisisModelo: string | null;
 	analisisTerminalId: number | null;
 	ejecucionModelo: string | null;
@@ -59,6 +67,23 @@ export type EdicionTarea = {
 
 /** Modelo y terminal de una fase, que es lo que se compara al editar. */
 type Fase = { modelo: string | null; terminalId: number | null };
+
+/** El nombre del papel de una fase, o «ninguno» cuando no lleva. */
+function nombreDeAgente(conexion: DatabaseSync, agenteId: number | null): string {
+	const fila =
+		agenteId === null ? undefined : sentencia(conexion, "SELECT nombre FROM agentes WHERE id = ?").get(agenteId);
+	return fila === undefined ? "ninguno" : texto(fila, "nombre");
+}
+
+/** `análisis: agente revisor`, o nada si la fase sigue con el mismo papel. */
+function cambioDeAgente(
+	conexion: DatabaseSync,
+	nombre: string,
+	antes: number | null,
+	despues: number | null,
+): string | null {
+	return antes === despues ? null : `${nombre}: agente ${nombreDeAgente(conexion, despues)}`;
+}
 
 /** Una fase como `modelo@terminal`, para contar en qué se quedó al editarla. */
 function faseComoTexto(conexion: DatabaseSync, fase: Fase): string {
@@ -125,12 +150,14 @@ function cambiosDeLaEdicion(conexion: DatabaseSync, antes: Tarea, despues: Edici
 		cambios.push(`padre: ${nombreDePadre(conexion, antes.padreId)} → ${nombreDePadre(conexion, despues.padreId)}`);
 	}
 	cambios.push(
+		cambioDeAgente(conexion, "análisis", antes.analisisAgenteId, despues.analisisAgenteId ?? null),
 		cambioDeFase(
 			conexion,
 			"análisis",
 			{ modelo: antes.analisisModelo, terminalId: antes.analisisTerminalId },
 			{ modelo: despues.analisisModelo, terminalId: despues.analisisTerminalId },
 		),
+		cambioDeAgente(conexion, "ejecución", antes.ejecucionAgenteId, despues.ejecucionAgenteId ?? null),
 		cambioDeFase(
 			conexion,
 			"ejecución",
@@ -206,9 +233,29 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 		const presupuesto = datos.presupuesto === undefined ? tarea.presupuesto : exigirPresupuesto(datos.presupuesto);
 		const proyectoId = datos.proyectoId ?? tarea.proyectoId;
 		const mudanza = proyectoId === tarea.proyectoId ? null : mudarDeProyecto(conexion, tarea, proyectoId, padreId);
+		// Una fase con agente no deja elegir modelo ni terminal a mano: vienen de
+		// él. Sin el campo, la fase conserva el papel que ya tenía.
+		const analisis = faseConAgente(
+			conexion,
+			datos.analisisAgenteId === undefined ? tarea.analisisAgenteId : datos.analisisAgenteId,
+			{ modelo: datos.analisisModelo, terminalId: datos.analisisTerminalId },
+		);
+		const ejecucion = faseConAgente(
+			conexion,
+			datos.ejecucionAgenteId === undefined ? tarea.ejecucionAgenteId : datos.ejecucionAgenteId,
+			{ modelo: datos.ejecucionModelo, terminalId: datos.ejecucionTerminalId },
+		);
 		// Un terminal es de un solo proyecto: al mudar la tarea, sus asignaciones
 		// dejan de valer y cualquier terminal del proyecto nuevo puede tomarla.
-		const asignado = mudanza === null ? datos : { ...datos, analisisTerminalId: null, ejecucionTerminalId: null };
+		const asignado: EdicionTarea = {
+			...datos,
+			analisisAgenteId: analisis.agenteId,
+			analisisModelo: analisis.modelo,
+			analisisTerminalId: mudanza === null ? analisis.terminalId : null,
+			ejecucionAgenteId: ejecucion.agenteId,
+			ejecucionModelo: ejecucion.modelo,
+			ejecucionTerminalId: mudanza === null ? ejecucion.terminalId : null,
+		};
 		// Se calcula antes del UPDATE: después ya no se sabe qué había.
 		const cambios = [cambiosDeLaEdicion(conexion, tarea, asignado, titulo), mudanza ?? ""];
 		sentencia(
@@ -216,8 +263,8 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 			`UPDATE tareas
 				SET titulo = ?, descripcion = ?, tipo = ?, rama = ?, padre_id = ?, proyecto_id = ?, autoejecucion = ?,
 					presupuesto = ?,
-					analisis_modelo = ?, analisis_terminal_id = ?,
-					ejecucion_modelo = ?, ejecucion_terminal_id = ?,
+					analisis_agente_id = ?, analisis_modelo = ?, analisis_terminal_id = ?,
+					ejecucion_agente_id = ?, ejecucion_modelo = ?, ejecucion_terminal_id = ?,
 					actualizada = ?, revision = ?
 				WHERE id = ?`,
 		).run(
@@ -229,9 +276,11 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 			proyectoId,
 			datos.autoejecucion ? 1 : 0,
 			presupuesto,
-			datos.analisisModelo,
+			asignado.analisisAgenteId ?? null,
+			asignado.analisisModelo,
 			asignado.analisisTerminalId,
-			datos.ejecucionModelo,
+			asignado.ejecucionAgenteId ?? null,
+			asignado.ejecucionModelo,
 			asignado.ejecucionTerminalId,
 			ahora(),
 			revision,

@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
 import { formatearId, generarCodigo } from "../md/ids.ts";
 import { type Actor, registrarActividad } from "./actividad.ts";
+import { faseConAgente } from "./agentes.ts";
 import {
 	ahora,
 	booleano,
@@ -80,8 +81,11 @@ export type Tarea = {
 	presupuesto: number | null;
 	ejecucionAprobada: boolean;
 	analisisHecho: boolean;
+	/** Papel con el que se trabaja la fase, o `null` si no lleva ninguno. */
+	analisisAgenteId: number | null;
 	analisisModelo: string | null;
 	analisisTerminalId: number | null;
+	ejecucionAgenteId: number | null;
 	ejecucionModelo: string | null;
 	ejecucionTerminalId: number | null;
 	enMarchaTerminalId: number | null;
@@ -135,8 +139,11 @@ export type ItemIndice = {
 	tokensConHijas: number;
 	/** Tope de tokens, o `null` si no tiene: la fila y la tarjeta pintan `184 k / 200 k`. */
 	presupuesto: number | null;
+	/** Nombre del papel de cada fase, resuelto en la misma consulta. */
+	analisisAgente: string | null;
 	analisisModelo: string | null;
 	analisisTerminal: string | null;
+	ejecucionAgente: string | null;
 	ejecucionModelo: string | null;
 	ejecucionTerminal: string | null;
 };
@@ -156,7 +163,10 @@ export type TareaCompleta = {
 	proyecto: string;
 	/** Código de la funcionalidad de la que es parte, o `null` si no cuelga de nadie. */
 	padre: string | null;
+	/** Nombre del papel de cada fase, o `null` si no lleva ninguno. */
+	analisisAgente: string | null;
 	analisisTerminal: string | null;
+	ejecucionAgente: string | null;
 	ejecucionTerminal: string | null;
 	marcas: Marca[];
 	/** Códigos de las tareas que tienen que estar `done` o `finished` antes que esta. */
@@ -219,8 +229,10 @@ export function comoTarea(fila: Record<string, unknown>): Tarea {
 		presupuesto: enteroOpcional(fila, "presupuesto"),
 		ejecucionAprobada: booleano(fila, "ejecucion_aprobada"),
 		analisisHecho: booleano(fila, "analisis_hecho"),
+		analisisAgenteId: enteroOpcional(fila, "analisis_agente_id"),
 		analisisModelo: textoOpcional(fila, "analisis_modelo"),
 		analisisTerminalId: enteroOpcional(fila, "analisis_terminal_id"),
+		ejecucionAgenteId: enteroOpcional(fila, "ejecucion_agente_id"),
 		ejecucionModelo: textoOpcional(fila, "ejecucion_modelo"),
 		ejecucionTerminalId: enteroOpcional(fila, "ejecucion_terminal_id"),
 		enMarchaTerminalId: enteroOpcional(fila, "en_marcha_terminal_id"),
@@ -258,8 +270,10 @@ function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
 		hijasCerradas: entero(fila, "hijas_cerradas"),
 		tokensConHijas,
 		presupuesto: tarea.presupuesto,
+		analisisAgente: textoOpcional(fila, "analisis_agente"),
 		analisisModelo: tarea.analisisModelo,
 		analisisTerminal: textoOpcional(fila, "analisis_terminal"),
+		ejecucionAgente: textoOpcional(fila, "ejecucion_agente"),
 		ejecucionModelo: tarea.ejecucionModelo,
 		ejecucionTerminal: textoOpcional(fila, "ejecucion_terminal"),
 	};
@@ -286,6 +300,8 @@ const SELECT_INDICE = `
 		p.codigo AS padre_codigo,
 		ta.nombre AS analisis_terminal,
 		te.nombre AS ejecucion_terminal,
+		aa.nombre AS analisis_agente,
+		ae.nombre AS ejecucion_agente,
 		(SELECT COUNT(*) FROM preguntas p WHERE p.tarea_id = t.id AND p.respuesta_opcion IS NULL) AS preguntas_abiertas,
 		(SELECT MIN(p.creada) FROM preguntas p WHERE p.tarea_id = t.id AND p.respuesta_opcion IS NULL) AS bloqueada_desde,
 		${CUENTA_DEPENDENCIAS_PENDIENTES} AS dependencias_pendientes,
@@ -297,6 +313,8 @@ const SELECT_INDICE = `
 	LEFT JOIN tareas p ON p.id = t.padre_id
 	LEFT JOIN terminales ta ON ta.id = t.analisis_terminal_id
 	LEFT JOIN terminales te ON te.id = t.ejecucion_terminal_id
+	LEFT JOIN agentes aa ON aa.id = t.analisis_agente_id
+	LEFT JOIN agentes ae ON ae.id = t.ejecucion_agente_id
 	LEFT JOIN (
 		SELECT a.raiz AS id, SUM(c.tokens) AS tokens
 		FROM arbol a JOIN consumo c ON c.tarea_id = a.id
@@ -364,6 +382,15 @@ function nombreTerminal(db: DatabaseSync, terminalId: number | null): string | n
 		return null;
 	}
 	const fila = sentencia(db, "SELECT nombre FROM terminales WHERE id = ?").get(terminalId);
+	return fila === undefined ? null : texto(fila, "nombre");
+}
+
+/** El nombre del papel de una fase, que es lo que va en el frontmatter. */
+function nombreAgente(db: DatabaseSync, agenteId: number | null): string | null {
+	if (agenteId === null) {
+		return null;
+	}
+	const fila = sentencia(db, "SELECT nombre FROM agentes WHERE id = ?").get(agenteId);
 	return fila === undefined ? null : texto(fila, "nombre");
 }
 
@@ -502,7 +529,9 @@ export function leerTarea(db: DatabaseSync, tareaId: number): TareaCompleta | un
 		tarea,
 		proyecto: exigirProyectoPorId(db, tarea.proyectoId).clave,
 		padre: tarea.padreId === null ? null : (buscarTarea(db, tarea.padreId)?.codigo ?? null),
+		analisisAgente: nombreAgente(db, tarea.analisisAgenteId),
 		analisisTerminal: nombreTerminal(db, tarea.analisisTerminalId),
+		ejecucionAgente: nombreAgente(db, tarea.ejecucionAgenteId),
 		ejecucionTerminal: nombreTerminal(db, tarea.ejecucionTerminalId),
 		marcas: marcasDe(
 			tarea,
@@ -688,9 +717,10 @@ export function siguienteOrden(db: DatabaseSync, estado: Estado): number {
 const INSERTAR_TAREA = `
 	INSERT INTO tareas (
 		codigo, proyecto_id, titulo, descripcion, tipo, rama, estado, orden, padre_id, autoejecucion, presupuesto,
-		ejecucion_aprobada, analisis_hecho, analisis_modelo, analisis_terminal_id, ejecucion_modelo, ejecucion_terminal_id,
+		ejecucion_aprobada, analisis_hecho, analisis_agente_id, analisis_modelo, analisis_terminal_id,
+		ejecucion_agente_id, ejecucion_modelo, ejecucion_terminal_id,
 		en_marcha_terminal_id, creada_por_usuario_id, creada_por_terminal_id, creada, actualizada, estado_desde, revision
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /**
  * Cuántas veces se vuelve a sortear si el código ya está cogido. Con 31^6
@@ -723,8 +753,11 @@ export type FilaNueva = {
 	/** Solo lo pone el humano al crearla: una hija, una propuesta y una parte nacen sin tope. */
 	presupuesto?: number | null;
 	analisisHecho: boolean;
+	/** Sin papel si no se dice otra cosa: una propuesta y una hija nacen sin él. */
+	analisisAgenteId?: number | null;
 	analisisModelo: string | null;
 	analisisTerminalId: number | null;
+	ejecucionAgenteId?: number | null;
 	ejecucionModelo: string | null;
 	ejecucionTerminalId: number | null;
 	enMarchaTerminalId: number | null;
@@ -748,8 +781,10 @@ export function insertarTarea(conexion: DatabaseSync, revision: number, nueva: F
 		nueva.presupuesto ?? null,
 		0,
 		nueva.analisisHecho ? 1 : 0,
+		nueva.analisisAgenteId ?? null,
 		nueva.analisisModelo,
 		nueva.analisisTerminalId,
+		nueva.ejecucionAgenteId ?? null,
 		nueva.ejecucionModelo,
 		nueva.ejecucionTerminalId,
 		nueva.enMarchaTerminalId,
@@ -837,8 +872,11 @@ export type NuevaTareaHumana = {
 	autoejecucion?: boolean;
 	/** Tope de tokens. Sin él, la tarea no tiene presupuesto y nunca lleva la marca. */
 	presupuesto?: number | null;
+	/** Papel de cada fase. Con él, el modelo y el terminal se copian del agente. */
+	analisisAgenteId?: number | null;
 	analisisModelo?: string | null;
 	analisisTerminalId?: number | null;
+	ejecucionAgenteId?: number | null;
 	ejecucionModelo?: string | null;
 	ejecucionTerminalId?: number | null;
 };
@@ -863,6 +901,16 @@ export function crearTareaHumana(db: DatabaseSync, datos: NuevaTareaHumana): Tar
 	return escribirContenido(db, (conexion, revision) => {
 		const padreId = datos.padreId ?? null;
 		const padre = padreId === null ? null : exigirPadreFuncionalidad(conexion, padreId);
+		// Asignar un agente a una fase copia su modelo y su terminal: lo que
+		// llegue en esos dos campos se ignora.
+		const analisis = faseConAgente(conexion, datos.analisisAgenteId ?? null, {
+			modelo: datos.analisisModelo ?? null,
+			terminalId: datos.analisisTerminalId ?? null,
+		});
+		const ejecucion = faseConAgente(conexion, datos.ejecucionAgenteId ?? null, {
+			modelo: datos.ejecucionModelo ?? null,
+			terminalId: datos.ejecucionTerminalId ?? null,
+		});
 		const tarea = insertarTarea(conexion, revision, {
 			// Una parte cuelga de su funcionalidad: vive donde ella, aunque el
 			// formulario venga de otro tablero.
@@ -879,10 +927,12 @@ export function crearTareaHumana(db: DatabaseSync, datos: NuevaTareaHumana): Tar
 			autoejecucion: datos.autoejecucion ?? true,
 			presupuesto: exigirPresupuesto(datos.presupuesto ?? null),
 			analisisHecho: false,
-			analisisModelo: datos.analisisModelo ?? null,
-			analisisTerminalId: datos.analisisTerminalId ?? null,
-			ejecucionModelo: datos.ejecucionModelo ?? null,
-			ejecucionTerminalId: datos.ejecucionTerminalId ?? null,
+			analisisAgenteId: analisis.agenteId,
+			analisisModelo: analisis.modelo,
+			analisisTerminalId: analisis.terminalId,
+			ejecucionAgenteId: ejecucion.agenteId,
+			ejecucionModelo: ejecucion.modelo,
+			ejecucionTerminalId: ejecucion.terminalId,
 			enMarchaTerminalId: null,
 			creadaPorUsuarioId: datos.usuarioId,
 			creadaPorTerminalId: null,

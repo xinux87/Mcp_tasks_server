@@ -3,9 +3,15 @@ import { formatearId } from "./ids.ts";
 
 /**
  * Cómo se escribe una fase en la línea de índice: `modelo@terminal` cuando
- * están los dos, y `sin asignar` cuando no hay ninguno de los dos.
+ * están los dos, y `sin asignar` cuando no hay ninguno de los dos. El papel,
+ * cuando lo hay, va entre paréntesis al final.
  */
-function fase(modelo: string | null, terminal: string | null): string {
+function fase(modelo: string | null, terminal: string | null, agente: string | null): string {
+	const asignacion = quien(modelo, terminal);
+	return agente === null ? asignacion : `${asignacion} (${agente})`;
+}
+
+function quien(modelo: string | null, terminal: string | null): string {
 	if (modelo !== null && terminal !== null) {
 		return `${modelo}@${terminal}`;
 	}
@@ -40,8 +46,8 @@ export function lineaIndice(item: ItemIndice): string {
 		...(item.tipo === "funcionalidad" ? [progreso(item)] : []),
 		...item.marcas,
 		item.titulo,
-		`analisis: ${fase(item.analisisModelo, item.analisisTerminal)}`,
-		...(esTarea ? [`ejecucion: ${fase(item.ejecucionModelo, item.ejecucionTerminal)}`] : []),
+		`analisis: ${fase(item.analisisModelo, item.analisisTerminal, item.analisisAgente)}`,
+		...(esTarea ? [`ejecucion: ${fase(item.ejecucionModelo, item.ejecucionTerminal, item.ejecucionAgente)}`] : []),
 		...(item.padreCodigo === null ? [] : [`padre: ${formatearId(item.padreCodigo)}`]),
 	];
 	return `- ${partes.join(" · ")}`;

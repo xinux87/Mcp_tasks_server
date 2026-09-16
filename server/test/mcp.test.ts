@@ -7,6 +7,7 @@ import { crearApp } from "../src/app.ts";
 import { hashPassword } from "../src/auth/passwords.ts";
 import { crearTerminalConToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
+import { crearAgente, editarAgente } from "../src/db/agentes.ts";
 import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { crearProyecto } from "../src/db/proyectos.ts";
 import { crearTareaHumana, exigirTarea, moverTareaHumano } from "../src/db/tareas.ts";
@@ -131,7 +132,7 @@ test("sin bearer válido, /mcp responde 401", async () => {
 	}
 });
 
-test("con el bearer correcto el cliente MCP lista exactamente las nueve herramientas", async () => {
+test("con el bearer correcto el cliente MCP lista exactamente las diez herramientas", async () => {
 	const montaje = montar();
 	const cliente = await conectar(montaje, montaje.token);
 	try {
@@ -140,6 +141,7 @@ test("con el bearer correcto el cliente MCP lista exactamente las nueve herramie
 		assert.deepEqual(nombres, [
 			"comentar_tarea",
 			"crear_tarea",
+			"leer_agente",
 			"leer_tarea",
 			"listar_tareas",
 			"novedades",
@@ -305,6 +307,51 @@ test("la telemetría de los terminales nunca mueve la revisión global", async (
 		await cliente.callTool({ name: "registrar_terminal", arguments: {} });
 		await cliente.callTool({ name: "novedades", arguments: { revision: antes } });
 		assert.equal(revisionActual(montaje.db), antes);
+	} finally {
+		await cliente.close();
+		await montaje.cerrar();
+	}
+});
+
+test("leer_agente devuelve el papel del agente, y un nombre que no existe es un error de regla", async () => {
+	const montaje = montar();
+	const agente = crearAgente(montaje.db, {
+		nombre: "revisor",
+		descripcion: "Revisa lo entregado",
+		instrucciones: "Eres el revisor de lo que entregan los demás.\n\nNo escribes código.",
+		modelo: "sonnet",
+		terminalId: 1,
+	});
+	const cliente = await conectar(montaje, montaje.token);
+	try {
+		const papel = await cliente.callTool({ name: "leer_agente", arguments: { nombre: "revisor" } });
+		assert.notEqual(papel.isError, true);
+		assert.equal(
+			textoDe(papel.content),
+			[
+				"---",
+				"nombre: revisor",
+				"modelo: sonnet",
+				`terminal: ${montaje.nombreTerminal}`,
+				`actualizado: ${agente.actualizado}`,
+				"---",
+				"",
+				"Eres el revisor de lo que entregan los demás.",
+				"",
+				"No escribes código.",
+			].join("\n"),
+		);
+
+		// Sin terminal corre en cualquiera, y eso en el frontmatter es `~`.
+		editarAgente(montaje.db, { agenteId: agente.id, terminalId: null });
+		assert.match(
+			textoDe((await cliente.callTool({ name: "leer_agente", arguments: { nombre: "revisor" } })).content),
+			/^terminal: ~$/m,
+		);
+
+		const falta = await cliente.callTool({ name: "leer_agente", arguments: { nombre: "redactor" } });
+		assert.equal(falta.isError, true);
+		assert.match(textoDe(falta.content), /^agente_inexistente: /);
 	} finally {
 		await cliente.close();
 		await montaje.cerrar();

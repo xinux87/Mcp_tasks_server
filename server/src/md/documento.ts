@@ -1,3 +1,4 @@
+import type { Agente } from "../db/agentes.ts";
 import type { ConsumoDeTarea, ConsumoFase } from "../db/consumo.ts";
 import type { Comentario } from "../db/hilo.ts";
 import type { HijaDeTarea, TareaCompleta } from "../db/tareas.ts";
@@ -12,9 +13,22 @@ function libre(valor: string): string {
 	return valor.replace(/^\n+|\n+$/g, "");
 }
 
-/** El bloque de una fase en el frontmatter: `~` cuando falta el dato. */
-function faseFrontmatter(nombre: string, modelo: string | null, terminal: string | null): string[] {
-	return [`${nombre}:`, `  modelo: ${modelo ?? "~"}`, `  terminal: ${terminal ?? "~"}`];
+/**
+ * El bloque de una fase en el frontmatter: `~` cuando falta el dato. El papel
+ * va como primera línea del bloque, y solo cuando la fase lleva uno.
+ */
+function faseFrontmatter(
+	nombre: string,
+	agente: string | null,
+	modelo: string | null,
+	terminal: string | null,
+): string[] {
+	return [
+		`${nombre}:`,
+		...(agente === null ? [] : [`  agente: ${agente}`]),
+		`  modelo: ${modelo ?? "~"}`,
+		`  terminal: ${terminal ?? "~"}`,
+	];
 }
 
 function faseConsumo(nombre: string, fase: ConsumoFase): string[] {
@@ -84,11 +98,13 @@ function frontmatter(completa: TareaCompleta): string {
 	if (completa.partes !== null && completa.partesCerradas !== null) {
 		lineas.push(`partes: ${completa.partes}`, `partesCerradas: ${completa.partesCerradas}`);
 	}
-	lineas.push(...faseFrontmatter("analisis", tarea.analisisModelo, completa.analisisTerminal));
+	lineas.push(...faseFrontmatter("analisis", completa.analisisAgente, tarea.analisisModelo, completa.analisisTerminal));
 	// Ni una pregunta ni una funcionalidad tienen fase de ejecución: el bloque
 	// no se pinta, para que el agente no lea una asignación que no va a usar.
 	if (tarea.tipo === "tarea") {
-		lineas.push(...faseFrontmatter("ejecucion", tarea.ejecucionModelo, completa.ejecucionTerminal));
+		lineas.push(
+			...faseFrontmatter("ejecucion", completa.ejecucionAgente, tarea.ejecucionModelo, completa.ejecucionTerminal),
+		);
 	}
 	lineas.push(`creada: ${tarea.creada}`);
 	lineas.push(...lineasConsumo(completa.consumo));
@@ -152,4 +168,21 @@ export function documentoTarea(completa: TareaCompleta): string {
 	}
 
 	return bloques.join("\n\n");
+}
+
+/**
+ * El papel de un agente como documento, que es lo que devuelve `leer_agente`.
+ * El cuerpo son sus instrucciones tal cual: el bucle las copia al principio
+ * del prompt del subagente, bajo un título «Quién eres».
+ */
+export function documentoAgente(agente: Agente, terminal: string | null): string {
+	const frontmatter = [
+		"---",
+		`nombre: ${agente.nombre}`,
+		`modelo: ${agente.modelo}`,
+		`terminal: ${terminal ?? "~"}`,
+		`actualizado: ${agente.actualizado}`,
+		"---",
+	].join("\n");
+	return [frontmatter, libre(agente.instrucciones)].join("\n\n");
 }

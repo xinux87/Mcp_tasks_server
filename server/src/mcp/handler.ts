@@ -4,6 +4,7 @@ import { idTerminalDeAuthInfo } from "../auth/bearer.ts";
 import type { Avisador } from "../avisos.ts";
 import { registrarHerramientaComentarTarea } from "./comentar-tarea.ts";
 import { registrarHerramientaCrearTarea } from "./crear-tarea.ts";
+import { registrarHerramientaLeerAgente } from "./leer-agente.ts";
 import { registrarHerramientaLeerTarea } from "./leer-tarea.ts";
 import { registrarHerramientaListarTareas } from "./listar-tareas.ts";
 import { registrarHerramientaNovedades } from "./novedades.ts";
@@ -32,6 +33,7 @@ export function crearHandlerMcp(db: DatabaseSync, avisar: Avisador): McpHttpHand
 			registrarHerramientaNovedades(server, db, terminalId);
 			registrarHerramientaListarTareas(server, db, terminalId);
 			registrarHerramientaLeerTarea(server, db);
+			registrarHerramientaLeerAgente(server, db);
 			registrarHerramientaTomarTarea(server, db, terminalId);
 			registrarHerramientaComentarTarea(server, db, terminalId, avisar);
 			registrarHerramientaCrearTarea(server, db, terminalId);

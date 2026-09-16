@@ -12,6 +12,7 @@ allowed-tools:
   - mcp__tareas__novedades
   - mcp__tareas__listar_tareas
   - mcp__tareas__leer_tarea
+  - mcp__tareas__leer_agente
   - mcp__tareas__tomar_tarea
   - mcp__tareas__comentar_tarea
   - mcp__tareas__crear_tarea
@@ -21,6 +22,7 @@ allowed-tools:
   - mcp__plugin_mcp-tareas_tareas__novedades
   - mcp__plugin_mcp-tareas_tareas__listar_tareas
   - mcp__plugin_mcp-tareas_tareas__leer_tarea
+  - mcp__plugin_mcp-tareas_tareas__leer_agente
   - mcp__plugin_mcp-tareas_tareas__tomar_tarea
   - mcp__plugin_mcp-tareas_tareas__comentar_tarea
   - mcp__plugin_mcp-tareas_tareas__crear_tarea
@@ -49,7 +51,7 @@ cómo esté declarado en esta sesión:
 Busca en tu lista de herramientas cuál de los dos prefijos existe y usa ese en
 todas las llamadas, también en las que copies dentro de los prompts de los
 subagentes. Si están los dos, el de `claude mcp add` (`mcp__tareas__`) es el que
-gana. Son las mismas nueve herramientas con otro nombre:
+gana. Son las mismas diez herramientas con otro nombre:
 
 | Operación | Herramienta |
 |---|---|
@@ -57,6 +59,7 @@ gana. Son las mismas nueve herramientas con otro nombre:
 | Pedir novedades | `mcp__tareas__novedades` |
 | Listar tareas | `mcp__tareas__listar_tareas` |
 | Leer una tarea entera | `mcp__tareas__leer_tarea` |
+| Leer el papel de un agente | `mcp__tareas__leer_agente` |
 | Tomar una fase | `mcp__tareas__tomar_tarea` |
 | Comentar en el hilo | `mcp__tareas__comentar_tarea` |
 | Crear una tarea | `mcp__tareas__crear_tarea` |
@@ -132,8 +135,10 @@ atender.
 ## Paso 3. Leer y clasificar
 
 Para cada tarea que traiga `novedades`, llama a `leer_tarea` con su id y lee el
-documento entero: frontmatter (estado, marcas, `analisis.modelo`,
-`analisis.terminal`, `ejecucion.modelo`, `ejecucion.terminal`) y el hilo.
+documento entero: frontmatter (estado, marcas, `analisis.agente`,
+`analisis.modelo`, `analisis.terminal`, `ejecucion.agente`, `ejecucion.modelo`,
+`ejecucion.terminal`) y el hilo. La línea `agente:` solo aparece en las fases
+que llevan papel; cuando esté, apúntala: la necesitas en el paso 4.
 
 Clasifícala con esta tabla. La fase que toca es «análisis» mientras la tarea está
 en `prepared` y **no** tiene ningún comentario `analisis` en el hilo; es
@@ -174,7 +179,7 @@ prioridad que ha puesto el humano. Las demás esperan a la vuelta siguiente.
 
 1. Para **cada** candidata, llama a `tomar_tarea` con el id, la fase (`analisis`
    o `ejecucion`) y `modelo`: el modelo con el que vas a lanzar su subagente en
-   el punto 2, que es el del frontmatter de esa fase o, si viene vacío o no lo
+   el punto 3, que es el del frontmatter de esa fase o, si viene vacío o no lo
    reconoces, el de reserva (`fable` para análisis, `opus` para ejecución). Si
    la fase no tenía modelo asignado, el que mandes queda fijado ahí, y así firma
    los comentarios y cuadra con el consumo.
@@ -186,7 +191,13 @@ prioridad que ha puesto el humano. Las demás esperan a la vuelta siguiente.
      para lanzar el subagente.
    - `tomar_tarea` con fase `ejecucion` pasa la tarea a `doing` ella sola. No
      cambies el estado a mano.
-2. Lanza un subagente por cada tarea que hayas tomado, **todos en un mismo
+2. **Si la fase que toca lleva `agente`**, llama a `leer_agente` con ese nombre
+   y guarda el documento que devuelve: es el papel de su subagente. Una fase sin
+   `agente` no lleva papel y no hay nada que pedir.
+   - Si devuelve el error `agente_inexistente`, ese papel ya no existe: lanza el
+     subagente sin él y dilo en tu línea de cierre. No inventes uno ni descartes
+     la tarea por eso.
+3. Lanza un subagente por cada tarea que hayas tomado, **todos en un mismo
    bloque de llamadas a Agent**, para que corran a la vez. Cada uno:
    - `subagent_type`: `general-purpose`.
    - `model`: el del frontmatter de la fase que toca. El mapeo es directo:
@@ -194,8 +205,10 @@ prioridad que ha puesto el humano. Las demás esperan a la vuelta siguiente.
      Si el campo viene vacío o con un valor que no reconoces, usa `fable` para
      análisis y `opus` para ejecución, y dilo en tu línea de cierre.
    - `prompt`: la plantilla que corresponda, de las tres de más abajo, con los
-     huecos rellenos con los de **esa** tarea.
-3. Espera a que terminen todos. No lances más subagentes de los que te permite
+     huecos rellenos con los de **esa** tarea. Si su fase tiene papel, el bloque
+     «Quién eres» lleva el cuerpo del documento de `leer_agente`, sin su
+     frontmatter; si no lo tiene, ese bloque se borra entero.
+4. Espera a que terminen todos. No lances más subagentes de los que te permite
    `agentes`: con 1 es uno solo, y hasta la vuelta siguiente no hay otro.
 
 ## Paso 5. Reportar el consumo
@@ -244,6 +257,10 @@ Estas cinco reglas van copiadas en los tres prompts. No las resumas.
 Copia esto, rellena los huecos entre `<< >>` y bórralos.
 
 ```text
+## Quién eres  << SOLO SI LA FASE LLEVA AGENTE; SI NO, BORRA ESTE BLOQUE >>
+
+<< PEGA AQUÍ EL CUERPO DEL DOCUMENTO DE leer_agente, SIN SU FRONTMATTER >>
+
 Eres el agente de ANÁLISIS de la tarea << ID >> en el servidor de tareas.
 Tu trabajo es entender qué hay que hacer y dejarlo escrito. NO escribes código
 de producción ni tocas archivos del repositorio.
@@ -310,6 +327,10 @@ con el modelo de análisis. Copia esto, rellena los huecos entre `<< >>` y
 bórralos.
 
 ```text
+## Quién eres  << SOLO SI LA FASE LLEVA AGENTE; SI NO, BORRA ESTE BLOQUE >>
+
+<< PEGA AQUÍ EL CUERPO DEL DOCUMENTO DE leer_agente, SIN SU FRONTMATTER >>
+
 Eres el agente de DESCOMPOSICIÓN de la funcionalidad << ID >> en el servidor de
 tareas. Tu trabajo es partirla en partes que otros agentes puedan ejecutar. NO
 escribes código de producción ni tocas archivos del repositorio.
@@ -372,6 +393,10 @@ son las líneas que apuntaste al registrar el terminal, no algo que tengas que
 averiguar en el repositorio.
 
 ```text
+## Quién eres  << SOLO SI LA FASE LLEVA AGENTE; SI NO, BORRA ESTE BLOQUE >>
+
+<< PEGA AQUÍ EL CUERPO DEL DOCUMENTO DE leer_agente, SIN SU FRONTMATTER >>
+
 Eres el agente de EJECUCIÓN de la tarea << ID >> en el servidor de tareas.
 Implementas lo que dice el análisis y lo dejas terminado y comiteado.
 

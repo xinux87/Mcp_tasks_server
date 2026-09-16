@@ -14,9 +14,9 @@ import { ahora, entero, enteroOpcional, sentencia, texto, textoOpcional } from "
  * el nombre del actor sale de una consulta de una línea.
  */
 
-export type ObjetoActividad = "tarea" | "usuario" | "terminal" | "proyecto";
+export type ObjetoActividad = "tarea" | "usuario" | "terminal" | "proyecto" | "agente";
 
-const OBJETOS: readonly ObjetoActividad[] = ["tarea", "usuario", "terminal", "proyecto"];
+const OBJETOS: readonly ObjetoActividad[] = ["tarea", "usuario", "terminal", "proyecto", "agente"];
 
 /** Las acciones que se registran, tal como salen en la tabla de CLAUDE.md. */
 export type AccionActividad =
@@ -38,7 +38,10 @@ export type AccionActividad =
 	| "baja_terminal"
 	| "alta_proyecto"
 	| "editar_proyecto"
-	| "baja_proyecto";
+	| "baja_proyecto"
+	| "alta_agente"
+	| "editar_agente"
+	| "baja_agente";
 
 /**
  * Quién hace la acción: un usuario de la web, o un nombre suelto para lo que
