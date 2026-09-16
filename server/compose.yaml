@@ -2,7 +2,7 @@ services:
   servidor:
     build: .
     # La misma etiqueta que lleva la imagen publicada; con IMAGEN se apunta a
-    # un registro (IMAGEN=ghcr.io/<cuenta>/mcp-tareas-server:0.1.0) y
+    # un registro (IMAGEN=xinux87/mcp-tareas-server:0.1.2, en Docker Hub) y
     # `docker compose pull` la trae sin construir.
     image: ${IMAGEN:-mcp-tareas-server:0.1.0}
     # Dentro del contenedor siempre escucha en 3000, que es lo que comprueba el

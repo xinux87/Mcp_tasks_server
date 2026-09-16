@@ -66,11 +66,10 @@ ADMIN_PASSWORD=cambiala
 BASE_URL=http://localhost:9917
 DATOS=./datos
 EOF
-docker login ghcr.io -u xinux87
 docker compose up -d
 ```
 
-El `docker login` hace falta mientras el repositorio, y con él la imagen, sean privados. Abre
+La imagen es [`xinux87/mcp-tareas-server`](https://hub.docker.com/r/xinux87/mcp-tareas-server) en Docker Hub. Abre
 `http://localhost:9917` y entra como **`admin`** con la contraseña de `ADMIN_PASSWORD`; se crea sola en el
 primer arranque, cámbiala después en **Usuarios**.
 
@@ -145,15 +144,16 @@ Dentro de `server/`: `npm test`, `npm run typecheck` y `npm run lint`. El plugin
 La versión va en cuatro sitios a la vez: `server/package.json`, `plugin/.claude-plugin/plugin.json`,
 `.claude-plugin/marketplace.json` y `server/Dockerfile` (etiqueta `org.opencontainers.image.version`).
 Cada versión lleva su etiqueta `vX.Y.Z` en git, que es lo que fija `xinux87/Mcp_tasks_server#vX.Y.Z` al
-instalar el plugin. La imagen se construye y se sube con el nombre del registro que toque:
+instalar el plugin. La imagen se construye y se sube a Docker Hub, a `xinux87/mcp-tareas-server`:
 
 ```sh
 cd server
-docker build -t <registro>/mcp-tareas-server:0.1.2 .
-docker push <registro>/mcp-tareas-server:0.1.2
+docker build -t xinux87/mcp-tareas-server:0.1.2 .
+docker login -u xinux87
+docker push xinux87/mcp-tareas-server:0.1.2
 ```
 
-Desde el clon, `IMAGEN=<registro>/mcp-tareas-server:0.1.2 docker compose up` la descarga en vez de
+Desde el clon, `IMAGEN=xinux87/mcp-tareas-server:0.1.2 docker compose up` la descarga en vez de
 construirla. El `docker-compose.yml` de la raíz lleva la versión publicada en `VERSION`; al publicar una
 nueva se actualiza ahí también.
 

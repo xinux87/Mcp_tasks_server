@@ -16,7 +16,7 @@
 
 services:
   servidor:
-    image: ghcr.io/xinux87/mcp-tareas-server:${VERSION:-0.1.2}
+    image: xinux87/mcp-tareas-server:${VERSION:-0.1.2}
     ports:
       - "${PORT:-9917}:3000"
     environment:
