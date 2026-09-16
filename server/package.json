@@ -1,6 +1,6 @@
 {
 	"name": "mcp-tareas-server",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"private": true,
 	"description": "Servidor MCP de tareas: MCP, API y web en un solo proceso",
 	"license": "MIT",

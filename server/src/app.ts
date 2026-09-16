@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { createMcpHonoApp } from "@modelcontextprotocol/hono";
 import type { Hono } from "hono";
@@ -19,6 +21,14 @@ declare module "hono" {
 		parsedBody: unknown;
 	}
 }
+
+/**
+ * La skill del bucle del agente. Se lee una sola vez, de una carpeta resuelta
+ * relativa a este módulo para que funcione igual desde `src/` que desde
+ * `dist/`: el Dockerfile la copia a `dist/skill/` en el build, como los `.sql`
+ * de las migraciones.
+ */
+const SKILL = readFileSync(join(import.meta.dirname, "skill", "SKILL.md"), "utf8");
 
 export type OpcionesApp = {
 	db: DatabaseSync;
@@ -46,6 +56,10 @@ export function crearApp({ db, config, enviarAviso }: OpcionesApp): App {
 
 	// Comprobación de vida para Docker. Sin autenticación.
 	app.get("/salud", (c) => c.json({ ok: true }));
+
+	// La skill del agente, que el terminal se baja con `curl`. Sin sesión y sin
+	// token, como `/salud`: es un archivo de texto sin secretos.
+	app.get("/skill.md", (c) => c.body(SKILL, 200, { "Content-Type": "text/markdown; charset=utf-8" }));
 
 	// El bearer va delante del handler: sin token válido no se construye
 	// ningún servidor MCP.

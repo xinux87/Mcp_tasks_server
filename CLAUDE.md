@@ -857,7 +857,7 @@ Va por HTTP plano y no por MCP porque quien la llama es un script de shell, no u
 
 | Operación | Quién la llama | Entrada | Salida |
 |---|---|---|---|
-| `novedades` | el agente, en cada vuelta del bucle | última revisión que conoce | tareas en `prepared` o `doing` asignadas a este terminal, o sin terminal, nuevas o cambiadas desde esa revisión; preguntas contestadas; y la revisión actual |
+| `novedades` | el agente, en cada vuelta del bucle | `revision` opcional; sin ella, la última que el servidor guardó para este terminal | tareas en `prepared` o `doing` asignadas a este terminal, o sin terminal, nuevas o cambiadas desde esa revisión; preguntas contestadas; y la revisión actual, que el servidor guarda como última vista del terminal |
 
 Es la única llamada que hace el agente mientras espera. Si no hay novedades, devuelve solo la revisión actual. Las tareas en `backlog` nunca aparecen, ni las que llevan la marca `esperando`, ni una funcionalidad en `doing`: esa no tiene nada que un agente pueda hacer.
 
@@ -964,17 +964,16 @@ server/                    # el servidor, un paquete npm
     md/                    # render del documento de tarea, índice y novedades
     web/                   # rutas, sesión, plantillas html y CSS
     auth/                  # tokens de terminal, contraseñas, cookies
+    skill/SKILL.md         # el bucle del agente; el servidor la sirve en /skill.md
   test/                    # node:test, un archivo por módulo
   Dockerfile
   compose.yaml
-plugin/                    # el plugin de Claude Code, sin dependencias
+plugin/                    # el plugin de Claude Code, opcional: solo reporta el uso de la cuenta
   .claude-plugin/plugin.json
   .mcp.json
   hooks/hooks.json         # SessionStart: vuelca URL y token y copia la statusline
-  skills/tareas/SKILL.md   # una vuelta del bucle del agente
   scripts/statusline.sh    # reenvía el uso al servidor y pinta la línea
   scripts/guardar-config.sh
-  scripts/revision.sh      # lee y guarda la última revisión vista
   README.md                # instalación y arranque
 .claude-plugin/marketplace.json   # el catálogo: es lo que permite instalar el plugin desde este repositorio
 modelo-comunicacion.md     # el diseño original del hilo y de la señal de novedad; este archivo lo absorbe
@@ -1015,6 +1014,25 @@ Todos se ejecutan dentro de `server/`.
 | `docker compose up --build` | Levanta el servidor con su volumen. Lee `server/.env`, que no está en el repositorio: sin `SESSION_SECRET` ni `ADMIN_PASSWORD` falla al interpolar, antes de construir nada |
 
 `node --test` toma patrones glob, no directorios: `node --test test/` falla. Los tests viven fuera de `rootDir`, por eso tienen su propio `tsconfig.test.json`.
+
+## Conexión en dos comandos
+
+Un terminal se conecta sin plugin, con dos comandos en la carpeta del repositorio. Decidido el 16 de septiembre de 2026, después de que conectar exigiera instalar un catálogo y un plugin, dar dos valores de configuración, un hook que los vuelca a un archivo y un script para recordar la revisión: demasiadas piezas para un bearer y un archivo de texto.
+
+```
+claude mcp add --transport http --scope local tareas <url>/mcp --header "Authorization: Bearer <token>"
+curl -fsSL <url>/skill.md --create-dirs -o ~/.claude/skills/tareas/SKILL.md
+```
+
+Y en la sesión de Claude Code de esa carpeta, `/loop 2m /tareas`: cada dos minutos una vuelta, que sin novedades cuesta una sola llamada. Sin intervalo, `/loop` decide él el ritmo, entre un minuto y una hora, y en reposo tiende a media hora: demasiado lento para vigilar un servidor.
+
+- **El servidor sirve la skill** en `GET /skill.md`, sin sesión, como `/salud`: es un archivo de texto sin secretos. La copia canónica vive en `server/src/skill/SKILL.md` y el `Dockerfile` la copia a `dist/skill/` como hace con los `.sql`. La ruta responde `text/markdown; charset=utf-8`.
+- **La skill no depende de nada del plugin.** Sin `${CLAUDE_PLUGIN_ROOT}`, sin `${CLAUDE_PLUGIN_DATA}`, sin `revision.sh`. Su `name` es `tareas`, así que instalada como skill personal se invoca con `/tareas` y `/loop /tareas` la repite. Lista las herramientas con los dos prefijos, `mcp__tareas__*` (servidor declarado con `claude mcp add`) y `mcp__plugin_mcp-tareas_tareas__*` (plugin), y dice cuál buscar.
+- **La revisión la recuerda el servidor.** `novedades` admite `revision` opcional: sin ella parte de `terminales.ultima_revision`, que el propio `novedades` guarda al responder, y de 0 si nunca la guardó. La skill llama siempre sin `revision`: un contexto compactado o una sesión reanudada no pierden nada, porque el bucle no guarda nada. Con `revision`, como hasta ahora.
+- **El ámbito local es por carpeta**: un terminal por carpeta sale solo, sin la vía especial que hacía falta con el plugin. El token queda en `~/.claude.json`, fuera del repositorio.
+- **El plugin pasa a ser opcional**, solo para quien quiera ver el uso de la cuenta en la web: su hook y su statusline son lo único que un archivo de texto no puede hacer. Deja de llevar la skill: quien lo instale hace también el segundo comando. Sigue publicado en el catálogo del repositorio.
+- **El tutorial** («Terminal creado» y `GET /terminales/conectar`) enseña primero estos dos comandos con el token y la dirección puestos, el `/loop /tareas`, y cómo comprobar que conectó. Después, como paso opcional, el plugin para el uso de la cuenta. Los comandos son literales de arriba: no se inventan variantes.
+- **Cambiar el token** tras rotarlo es repetir el primer comando: `claude mcp add` sobre un nombre que ya existe lo sustituye.
 
 ## El plugin de Claude Code
 

@@ -9,6 +9,7 @@ import { crearTerminalConToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { crearProyecto } from "../src/db/proyectos.ts";
+import { crearTareaHumana, moverTareaHumano } from "../src/db/tareas.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 const BASE_URL = BASE_URL_PRUEBA;
@@ -84,6 +85,22 @@ test("GET /salud responde 200 y { ok: true }", async () => {
 		const respuesta = await fetchContraApp(montaje.app)(new URL("/salud", BASE_URL));
 		assert.equal(respuesta.status, 200);
 		assert.deepEqual(await respuesta.json(), { ok: true });
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("GET /skill.md sirve la skill del bucle sin sesión ni token", async () => {
+	const montaje = montar();
+	try {
+		const respuesta = await fetchContraApp(montaje.app)(new URL("/skill.md", BASE_URL));
+		assert.equal(respuesta.status, 200);
+		assert.equal(respuesta.headers.get("content-type"), "text/markdown; charset=utf-8");
+		const cuerpo = await respuesta.text();
+		assert.match(cuerpo, /^name: tareas$/m);
+		assert.match(cuerpo, /\/loop 2m \/tareas/);
+		// La skill se baja con curl y funciona sola: nada que venga del plugin.
+		assert.doesNotMatch(cuerpo, /CLAUDE_PLUGIN|revision\.sh/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -215,25 +232,54 @@ test("registrar_terminal comprueba el repositorio del proyecto y para la sesión
 	}
 });
 
-test("novedades guarda la revisión que conoce el terminal y devuelve la actual", async () => {
+/** La revisión que el servidor recuerda de este terminal. */
+function ultimaRevision(montaje: Montaje): unknown {
+	return montaje.db.prepare("SELECT ultima_revision FROM terminales WHERE id = 1").get()?.ultima_revision;
+}
+
+/** Una tarea lista para que el bucle la vea: en `prepared` y sin terminal. */
+function crearPreparada(montaje: Montaje, titulo: string): void {
+	const tarea = crearTareaHumana(montaje.db, { titulo, descripcion: "Lo que sea.", usuarioId: montaje.usuarioId });
+	moverTareaHumano(montaje.db, { tareaId: tarea.id, usuarioId: montaje.usuarioId, estado: "prepared" });
+}
+
+test("novedades sin revisión sigue por donde iba el terminal", async () => {
 	const montaje = montar();
 	const cliente = await conectar(montaje, montaje.token);
 	try {
-		const resultado = await cliente.callTool({ name: "novedades", arguments: { revision: 0 } });
-		assert.equal(textoDe(resultado.content), "revision: 2");
-		assert.equal(revisionActual(montaje.db), 2);
+		// Primera vuelta de un terminal que nunca ha llamado: parte de 0, no hay
+		// nada todavía, y queda apuntada la revisión que acaba de devolver.
+		const primera = textoDe((await cliente.callTool({ name: "novedades", arguments: {} })).content);
+		assert.equal(primera, "revision: 2");
+		assert.equal(ultimaRevision(montaje), 2);
 
-		const terminal = montaje.db.prepare("SELECT ultima_revision FROM terminales WHERE id = 1").get();
-		assert.equal(terminal?.ultima_revision, 0);
+		// Una tarea nueva entre vuelta y vuelta: la siguiente trae esa y solo esa.
+		crearPreparada(montaje, "Exportar el listado de clientes a CSV");
+		const segunda = textoDe((await cliente.callTool({ name: "novedades", arguments: {} })).content);
+		const alDia = revisionActual(montaje.db);
+		assert.match(segunda, /^- T-0001 · prepared · sin terminal · Exportar el listado de clientes a CSV · /m);
+		assert.equal(segunda.split("\n").filter((linea) => linea.startsWith("- ")).length, 1);
+		assert.equal(ultimaRevision(montaje), alDia);
 
-		// Segunda vuelta del bucle sin escrituras de contenido: misma revisión,
-		// y el terminal recuerda el último valor que pasó.
-		const segunda = await cliente.callTool({ name: "novedades", arguments: { revision: 2 } });
-		assert.equal(textoDe(segunda.content), "revision: 2");
-		assert.equal(revisionActual(montaje.db), 2);
+		// Y la de después, sin escrituras de contenido, solo la revisión: ni se
+		// repite lo anterior ni sube el contador.
+		const tercera = textoDe((await cliente.callTool({ name: "novedades", arguments: {} })).content);
+		assert.equal(tercera, `revision: ${alDia}`);
+		assert.equal(revisionActual(montaje.db), alDia);
 
-		const despues = montaje.db.prepare("SELECT ultima_revision FROM terminales WHERE id = 1").get();
-		assert.equal(despues?.ultima_revision, 2);
+		// Pasar `revision` manda sobre lo apuntado: con 0 vuelve todo.
+		const desdeCero = textoDe((await cliente.callTool({ name: "novedades", arguments: { revision: 0 } })).content);
+		assert.match(desdeCero, /^- T-0001 · prepared · /m);
+		assert.equal(ultimaRevision(montaje), alDia);
+
+		// Una sesión nueva del mismo terminal no pasa nada y no repite nada.
+		const otraSesion = await conectar(montaje, montaje.token);
+		try {
+			const vuelta = textoDe((await otraSesion.callTool({ name: "novedades", arguments: {} })).content);
+			assert.equal(vuelta, `revision: ${alDia}`);
+		} finally {
+			await otraSesion.close();
+		}
 	} finally {
 		await cliente.close();
 		await montaje.cerrar();

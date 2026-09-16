@@ -8,11 +8,13 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 
-# tsc solo emite .js: los .sql de las migraciones se copian a mano para que
-# `import.meta.dirname` los encuentre también desde dist/.
+# tsc solo emite .js: los .sql de las migraciones y la skill que sirve
+# `/skill.md` se copian a mano para que `import.meta.dirname` los encuentre
+# también desde dist/.
 RUN npm run build \
-	&& mkdir -p dist/db/migraciones \
-	&& cp src/db/migraciones/*.sql dist/db/migraciones/
+	&& mkdir -p dist/db/migraciones dist/skill \
+	&& cp src/db/migraciones/*.sql dist/db/migraciones/ \
+	&& cp src/skill/SKILL.md dist/skill/
 
 # --- runtime: solo dependencias de producción ------------------------------
 FROM node:24-slim AS runtime
@@ -21,7 +23,7 @@ WORKDIR /app
 LABEL org.opencontainers.image.title="MCP Tareas" \
 	org.opencontainers.image.description="Servidor MCP de tareas: MCP, API y web en un solo proceso" \
 	org.opencontainers.image.source="https://github.com/xinux87/Mcp_tasks_server" \
-	org.opencontainers.image.version="0.1.2" \
+	org.opencontainers.image.version="0.1.3" \
 	org.opencontainers.image.licenses="MIT"
 
 ENV NODE_ENV=production \

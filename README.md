@@ -9,7 +9,7 @@ las preguntas que le hagan; los agentes las toman solos, las trabajan y devuelve
 | Pieza | Qué es | Dónde |
 |---|---|---|
 | **Servidor** | Un proceso Node en Docker: guarda las tareas y su hilo, expone las herramientas MCP a los agentes y sirve la web. SQLite en un volumen. | [`server/`](server/) |
-| **Plugin** | El plugin de Claude Code que conecta un terminal al servidor, arranca el bucle del agente y reporta el uso de la cuenta. | [`plugin/`](plugin/) ([README](plugin/README.md)) |
+| **Plugin** | Opcional: el plugin de Claude Code que reporta a la web el uso de la cuenta de un terminal. Conectarse no lo necesita. | [`plugin/`](plugin/) ([README](plugin/README.md)) |
 | **Catálogo** | Lo que permite instalar ese plugin desde este mismo repositorio. | [`.claude-plugin/`](.claude-plugin/) |
 
 **Una tarea** pasa por cinco columnas: `backlog` (la escribe el humano), `prepared` (un agente la analiza),
@@ -83,7 +83,7 @@ primer arranque, cámbiala después en **Usuarios**.
 | `DIRECCIONES` | no | Otras URLs por las que se llega al servidor, separadas por comas (`http://192.168.1.10:9917`). Necesaria cuando los terminales están en otra máquina: dentro de Docker el servidor solo ve las direcciones del contenedor. |
 | `DATOS` | no | Carpeta del anfitrión donde vive la base de datos (SQLite, el archivo `tareas.sqlite`) y todo lo de mcp-tareas. `./datos` por defecto, junto al compose. Copiarla con el servidor parado es la copia de seguridad. En Linux la escribe el uid 1000: si la creas con otro usuario, `sudo chown 1000:1000 datos`. |
 | `PORT` | no | Puerto publicado en el anfitrión, `9917` por defecto. Dentro del contenedor el servidor escucha siempre en 3000. |
-| `VERSION` | no | Etiqueta de la imagen, `0.1.2` por defecto. Para actualizar, súbela y vuelve a `docker compose up -d`; las migraciones de la base de datos corren solas al arrancar. |
+| `VERSION` | no | Etiqueta de la imagen, `0.1.3` por defecto. Para actualizar, súbela y vuelve a `docker compose up -d`; las migraciones de la base de datos corren solas al arrancar. |
 | `AVISOS_URL` | no | Si está, cada vez que un agente deja algo esperando por ti (una pregunta, un análisis por aprobar, un resultado) se manda un POST de texto llano a esa URL: la frase y el enlace a la ficha. Es el formato de [ntfy](https://ntfy.sh); cualquier receptor de texto vale. |
 
 ### Desde el clon del repositorio
@@ -101,16 +101,21 @@ docker compose up --build
 ### Conectar un terminal
 
 Crea un terminal en **Terminales**: la página que enseña su token trae el tutorial de conexión con los
-comandos ya montados para esa máquina, y un enlace para abrirlo allí directamente. El plugin se instala
-desde GitHub con dos comandos en la sesión de Claude Code de esa máquina:
+comandos ya montados para esa máquina, y un enlace para abrirlo allí directamente. Son dos, en la
+carpeta del repositorio en la que va a trabajar ese terminal:
 
 ```
-/plugin marketplace add xinux87/Mcp_tasks_server
-/plugin install mcp-tareas@mcp-tareas-marketplace
+claude mcp add --transport http --scope local tareas <url>/mcp --header "Authorization: Bearer <token>"
+curl -fsSL <url>/skill.md --create-dirs -o ~/.claude/skills/tareas/SKILL.md
 ```
 
-El detalle está en [`plugin/README.md`](plugin/README.md). Después, una vez por sesión,
-`/loop /mcp-tareas:tareas` arranca el bucle del agente.
+El primero declara el servidor en esa carpeta —el token se guarda en la configuración de Claude Code,
+nunca en el repositorio— y el segundo baja la skill del bucle, que sirve el propio servidor. Después,
+una vez por sesión, `/loop 2m /tareas` arranca el bucle del agente, una vuelta cada dos minutos.
+
+El [plugin](plugin/README.md) es opcional y sirve solo para que el **uso disponible de la cuenta** salga
+en la web: ese dato únicamente llega a la línea de estado de Claude Code. Se instala desde GitHub con
+`/plugin marketplace add xinux87/Mcp_tasks_server` y `/plugin install mcp-tareas@mcp-tareas-marketplace`.
 
 ### Si el terminal está en otra máquina
 
@@ -152,10 +157,10 @@ no se puede cargar en el Docker local, por eso se construye y se sube en el mism
 cd server
 docker buildx create --name mcp-tareas --driver docker-container --use   # solo la primera vez
 docker login -u xinux87
-docker buildx build --platform linux/amd64,linux/arm64 -t xinux87/mcp-tareas-server:0.1.2 --push .
+docker buildx build --platform linux/amd64,linux/arm64 -t xinux87/mcp-tareas-server:0.1.3 --push .
 ```
 
-Desde el clon, `IMAGEN=xinux87/mcp-tareas-server:0.1.2 docker compose up` la descarga en vez de
+Desde el clon, `IMAGEN=xinux87/mcp-tareas-server:0.1.3 docker compose up` la descarga en vez de
 construirla. El `docker-compose.yml` de la raíz lleva la versión publicada en `VERSION`; al publicar una
 nueva se actualiza ahí también.
 

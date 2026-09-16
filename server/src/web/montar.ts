@@ -110,7 +110,7 @@ export function montarWeb(app: Hono, deps: DependenciasWeb): void {
 	});
 }
 
-/** El MCP y la API no son la web: sus fallos siguen respondiendo en texto plano. */
+/** El MCP, la API y la skill no son la web: sus fallos siguen respondiendo en texto plano. */
 function esDeLaWeb(ruta: string): boolean {
-	return ruta !== "/mcp" && ruta !== "/salud" && !ruta.startsWith("/api/");
+	return ruta !== "/mcp" && ruta !== "/salud" && ruta !== "/skill.md" && !ruta.startsWith("/api/");
 }

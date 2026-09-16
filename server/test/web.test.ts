@@ -835,12 +835,16 @@ test("la página del terminal creado lleva el tutorial con el token y las direcc
 		);
 		// La recomendada para otra máquina es la privada, no localhost.
 		assert.match(cuerpo, /<code>servidor_url<\/code><\/td><td><code>http:\/\/192\.168\.50\.5:3000<\/code>/);
-		// El token, dentro del comando sin plugin y dentro del archivo de la statusline.
+		// El token, dentro del primer comando y dentro del archivo de la statusline.
 		assert.match(
 			cuerpo,
 			new RegExp(
-				`claude mcp add --transport http tareas http://192\\.168\\.50\\.5:3000/mcp --header &quot;Authorization: Bearer ${token}&quot;`,
+				`claude mcp add --transport http --scope local tareas http://192\\.168\\.50\\.5:3000/mcp --header &quot;Authorization: Bearer ${token}&quot;`,
 			),
+		);
+		assert.match(
+			cuerpo,
+			/curl -fsSL http:\/\/192\.168\.50\.5:3000\/skill\.md --create-dirs -o ~\/\.claude\/skills\/tareas\/SKILL\.md/,
 		);
 		// Cada línea del archivo de configuración es ya la suya, con su botón.
 		assert.match(cuerpo, /<code>SERVIDOR_URL=http:\/\/192\.168\.50\.5:3000<\/code>/);
@@ -853,7 +857,7 @@ test("la página del terminal creado lleva el tutorial con el token y las direcc
 		assert.doesNotMatch(cuerpo, /plugins\/marketplaces/);
 		// Rotar el token no obliga a reinstalar.
 		assert.match(cuerpo, /--config token_terminal=/);
-		assert.match(cuerpo, /\/loop \/mcp-tareas:tareas/);
+		assert.match(cuerpo, /\/loop 2m \/tareas/);
 		// La advertencia de Docker, que es la trampa de las direcciones detectadas.
 		assert.match(cuerpo, /Docker[\s\S]*máquina anfitriona/);
 		// Cada bloque de comandos se puede copiar entero.
@@ -866,7 +870,7 @@ test("la página del terminal creado lleva el tutorial con el token y las direcc
 		// del bloque ya lo es.
 		const instalar = bloquesDe(cuerpo).find((bloque) => bloque.includes("marketplace add xinux87")) ?? "";
 		assert.equal(instalar.match(/class="copiar copiar-linea"/g)?.length, 2);
-		const bucle = bloquesDe(cuerpo).find((bloque) => bloque.includes("/loop /mcp-tareas:tareas")) ?? "";
+		const bucle = bloquesDe(cuerpo).find((bloque) => bloque.includes("/loop 2m /tareas")) ?? "";
 		assert.doesNotMatch(bucle, /copiar-linea/);
 	} finally {
 		await montaje.cerrar();
@@ -905,25 +909,36 @@ test("el tutorial sin token está siempre en /terminales/conectar", async () => 
 	}
 });
 
-test("el tutorial explica un terminal por carpeta y da el comando de la segunda", async () => {
+test("el tutorial conecta en dos comandos y deja el plugin como opcional", async () => {
 	const montaje = montar(CONFIG_CON_DIRECCIONES);
 	try {
 		const { valor } = crearTerminalConToken(montaje.db, listarUsuarios(montaje.db)[0]?.id ?? 0, "sobremesa", "x@y.z");
 		const conToken = await pedir(montaje, `/terminales/conectar?token=${valor.token}`);
 		assert.equal(conToken.status, 200);
 		const cuerpo = await conToken.text();
-		// Cada carpeta, su terminal; y la segunda de la misma máquina va con ámbito local.
-		assert.match(cuerpo, /Un terminal por carpeta/);
+		// Los dos comandos, con la dirección y el token puestos y en un solo bloque.
+		assert.match(cuerpo, /Conectar en dos comandos/);
+		const dos = bloquesDe(cuerpo).find((bloque) => bloque.includes("claude mcp add")) ?? "";
 		assert.match(
-			cuerpo,
+			dos,
 			new RegExp(
 				`claude mcp add --transport http --scope local tareas http://192\\.168\\.50\\.5:3000/mcp --header &quot;Authorization: Bearer ${valor.token}&quot;`,
 			),
 		);
+		assert.match(
+			dos,
+			/curl -fsSL http:\/\/192\.168\.50\.5:3000\/skill\.md --create-dirs -o ~\/\.claude\/skills\/tareas\/SKILL\.md/,
+		);
+		// Cada uno se copia por su cuenta.
+		assert.equal(dos.match(/class="copiar copiar-linea"/g)?.length, 2);
+		// El bucle es el de la skill personal, y el plugin queda como opcional.
+		assert.match(cuerpo, /\/loop 2m \/tareas/);
+		assert.doesNotMatch(cuerpo, /mcp-tareas:tareas/);
+		assert.match(cuerpo, /Opcional: ver el uso de la cuenta en la web/);
 		// La comprobación cuenta que la fila enseña la carpeta reportada.
 		assert.match(cuerpo, /carpeta\s+en\s+la\s+que\s+está\s+trabajando/);
 
-		// Sin token, el mismo comando con el marcador y ningún token de verdad.
+		// Sin token, los mismos comandos con el marcador y ningún token de verdad.
 		const cookie = await entrar(montaje);
 		const sinToken = await pedir(montaje, "/terminales/conectar", { cookie });
 		const marcador = await sinToken.text();

@@ -2,8 +2,8 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "mcp-tareas",
   "displayName": "MCP Tareas",
-  "version": "0.1.2",
-  "description": "Conecta el terminal al servidor MCP de tareas y arranca el bucle del agente: registra el terminal, consulta novedades, lanza el analisis y la ejecucion como subagentes y reporta el consumo.",
+  "version": "0.1.3",
+  "description": "Reporta a la web el uso de la cuenta de este terminal desde la linea de estado de Claude Code. Opcional: el servidor MCP de tareas y la skill del bucle se conectan con dos comandos, sin plugin.",
   "author": {
     "name": "xinux87"
   },
@@ -12,9 +12,9 @@
   "keywords": [
     "tareas",
     "mcp",
-    "kanban",
-    "bucle",
-    "agente"
+    "statusline",
+    "uso",
+    "cuenta"
   ],
   "license": "MIT",
   "mcpServers": "./.mcp.json",

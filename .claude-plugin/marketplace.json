@@ -1,6 +1,6 @@
 {
   "name": "mcp-tareas-marketplace",
-  "description": "Plugins de este repositorio. Contiene el plugin del bucle de tareas.",
+  "description": "Plugins de este repositorio. Contiene el plugin del servidor de tareas.",
   "owner": {
     "name": "xinux87"
   },
@@ -8,8 +8,8 @@
     {
       "name": "mcp-tareas",
       "source": "./plugin",
-      "description": "Conecta el terminal al servidor MCP de tareas y arranca el bucle del agente.",
-      "version": "0.1.2",
+      "description": "Reporta a la web el uso de la cuenta de este terminal, desde la linea de estado de Claude Code.",
+      "version": "0.1.3",
       "author": {
         "name": "xinux87"
       },

@@ -16,7 +16,7 @@
 
 services:
   servidor:
-    image: xinux87/mcp-tareas-server:${VERSION:-0.1.2}
+    image: xinux87/mcp-tareas-server:${VERSION:-0.1.3}
     ports:
       - "${PORT:-9917}:3000"
     environment:

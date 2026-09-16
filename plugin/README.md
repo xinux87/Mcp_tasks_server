@@ -1,22 +1,24 @@
 # mcp-tareas
 
-Plugin de Claude Code que conecta un terminal al servidor MCP de tareas. Hace tres cosas:
+Plugin **opcional** de Claude Code. Sirve para una sola cosa: que el **uso disponible de la cuenta** salga en la web del servidor de tareas. Ese dato solo llega a la línea de estado de Claude Code, y una línea de estado no se puede poner desde un archivo de texto: por eso hay un plugin.
 
-- **Declara el servidor MCP** (`.mcp.json`), con la URL y el token que pides al activar el plugin.
-- **Arranca el bucle del agente** (`skills/tareas/SKILL.md`): sincroniza con el servidor, y cuando hay una tarea para este terminal la analiza o la ejecuta con un subagente y reporta su consumo de tokens.
-- **Reenvía el uso disponible de la cuenta** (`scripts/statusline.sh`), que solo existe en la entrada de la statusline de Claude Code.
+- **Reenvía el uso de la cuenta** (`scripts/statusline.sh`), que pinta la línea de estado y de paso manda el JSON a `POST /api/uso`.
+- **Declara el servidor MCP** (`.mcp.json`) con la URL y el token que pides al activarlo, por si prefieres tenerlo puesto para toda la máquina.
 
-## Un terminal por carpeta
+## Conectar un terminal no necesita este plugin
 
-El servidor agrupa las tareas por **proyecto**: un repositorio, con su rama principal y su comando de verificación. Un terminal pertenece a un proyecto y trabaja en una carpeta, así que una máquina con tres repositorios tiene tres terminales, cada uno con su token. Al registrarse, el bucle le dice al servidor en qué carpeta está y cuál es el remote `origin`; si no es el repositorio del proyecto de ese token, la vuelta termina ahí sin tomar nada.
-
-La configuración del plugin es una por máquina: Claude Code guarda los valores de `userConfig` solo en los ajustes del usuario. Para la segunda carpeta de la misma máquina, declara el servidor dentro de esa carpeta con ámbito local, que gana al del plugin y no escribe nada en el repositorio:
+Un terminal se conecta con dos comandos, en la carpeta del repositorio en la que va a trabajar:
 
 ```
 claude mcp add --transport http --scope local tareas <url>/mcp --header "Authorization: Bearer <token>"
+curl -fsSL <url>/skill.md --create-dirs -o ~/.claude/skills/tareas/SKILL.md
 ```
 
-El plugin sigue instalado y aporta la skill y el hook; las herramientas del servidor local llevan el prefijo `mcp__tareas__`, que la skill ya contempla.
+Y en la sesión de Claude Code de esa carpeta, `/loop 2m /tareas`.
+
+El primero declara el servidor en esa carpeta; el token se guarda en la configuración de Claude Code, nunca en el repositorio. El segundo baja la skill del bucle, que la sirve el propio servidor y ya no viene en este plugin: quien instale el plugin hace también ese segundo comando. La página «Terminal creado» de la web trae los dos comandos con la dirección y el token puestos.
+
+El ámbito local es por carpeta, que es justo lo que hace falta: una máquina con tres repositorios tiene tres terminales, cada uno con su token. La configuración de este plugin, en cambio, es una por máquina (Claude Code guarda los valores de `userConfig` solo en los ajustes del usuario), y basta: el uso es de la cuenta, no de la carpeta.
 
 ## 1. Crear el terminal en la web
 
@@ -28,7 +30,7 @@ Esa misma página trae el tutorial de conexión con el token ya puesto y un **en
 
 El token identifica al terminal y a su usuario. El plugin lo guarda en tu configuración local; nunca en el repositorio.
 
-## 2. Instalar el plugin
+## 2. Instalar el plugin (opcional)
 
 ### Desde GitHub
 
@@ -149,16 +151,16 @@ Las variables de entorno `SERVIDOR_URL` y `TOKEN` tienen prioridad sobre el arch
 
 ## 4. Arrancar el bucle
 
-Una vez por terminal, al abrir la sesión:
+Esto no es del plugin: la skill `tareas` la baja el segundo comando de arriba. Una vez por terminal, al abrir la sesión:
 
 ```
-/loop /mcp-tareas:tareas
+/loop 2m /tareas
 ```
 
 Sin intervalo, Claude elige uno entre un minuto y una hora según lo que vea: corto mientras hay trabajo, largo cuando no pasa nada. Para un intervalo fijo:
 
 ```
-/loop 2m /mcp-tareas:tareas
+/loop 2m /tareas
 ```
 
 Cada disparo es **una vuelta**: sincroniza, y si no hay novedades termina sin gastar casi nada. Si hay trabajo, toma **una** tarea, lanza la fase que toque como subagente con el modelo asignado y reporta su consumo.
@@ -177,12 +179,10 @@ La primera vuelta registra el terminal en el servidor y, si ya hay tareas asigna
 plugin/
   .claude-plugin/plugin.json   manifiesto, userConfig (URL y token)
   .mcp.json                    el servidor MCP `tareas`, HTTP con bearer
-  skills/tareas/SKILL.md       una vuelta del bucle del agente
   hooks/hooks.json             SessionStart, para la statusline y su config
   scripts/statusline.sh        pinta la línea y reenvía el uso a /api/uso
   scripts/guardar-config.sh    copia la statusline a ~/.claude/mcp-tareas/ y
                                vuelca ahí la URL y el token
-  scripts/revision.sh          guarda la última revisión vista del servidor
 ```
 
 ## Comprobaciones

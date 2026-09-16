@@ -18,14 +18,11 @@ import type { Html } from "./plantilla.ts";
 const PLUGIN = "mcp-tareas";
 const CATALOGO = "mcp-tareas-marketplace";
 
-/** El servidor MCP se llama así al declararlo a mano, sin plugin. */
+/** El servidor MCP se llama así al declararlo con `claude mcp add`. */
 const NOMBRE_MCP = "tareas";
 
 /** El repositorio del que se instala el plugin. */
 const REPOSITORIO = "xinux87/Mcp_tasks_server";
-
-/** Marcador de la ruta donde el usuario haya clonado el repositorio: el servidor no la sabe. */
-const RUTA_REPOSITORIO = "<ruta-del-repositorio>";
 
 /** Hostnames que no sirven desde otra máquina: son el propio ordenador. */
 const LOCALES: readonly string[] = ["localhost", "127.0.0.1", "[::1]", "::1"];
@@ -125,96 +122,72 @@ function pasoDirecciones(filas: readonly Fila[], recomendacion: string): Html {
 }
 
 /**
- * Paso 2: un terminal por carpeta. El plugin solo guarda un token por máquina
- * (los ámbitos de proyecto y local se ignoran para `pluginConfigs`), así que la
- * segunda carpeta de la misma máquina declara el servidor con ámbito local.
+ * Paso 2: los dos comandos que conectan el terminal. Son los de «Conexión en
+ * dos comandos» de CLAUDE.md, literales, con la dirección y el token puestos.
  */
-function pasoPorCarpeta(recomendacion: string, token: string): Html {
+function pasoDosComandos(recomendacion: string, token: string): Html {
+	const comandos = [
+		`claude mcp add --transport http --scope local ${NOMBRE_MCP} ${recomendacion}/mcp --header "Authorization: Bearer ${token}"`,
+		`curl -fsSL ${recomendacion}/skill.md --create-dirs -o ~/.claude/skills/tareas/SKILL.md`,
+	].join("\n");
 	return html`<li>
-			<h3>Un terminal por carpeta</h3>
+			<h3>Conectar en dos comandos</h3>
 			<p>
-				Cada carpeta de trabajo tiene su propio terminal y su propio token, y el terminal se crea en el
-				proyecto del repositorio que hay en esa carpeta. Una máquina con tres repositorios tiene tres
-				terminales. El bucle avisa al servidor de en qué carpeta está: si no es la del proyecto de este
-				token, la vuelta termina ahí y no toma ninguna tarea.
+				En una terminal, <strong>dentro de la carpeta del repositorio</strong> en la que va a trabajar este
+				terminal:
 			</p>
+			${bloque(comandos)}
 			<p>
-				Para una segunda carpeta en esta misma máquina, no repitas el plugin: declara el servidor dentro
-				de esa carpeta con ámbito local.
+				El primero declara este servidor en esa carpeta con la cabecera del token. El segundo baja la skill
+				del bucle del agente, que es la que sabe qué hacer con las tareas; se instala para tu usuario, así
+				que solo hay que bajarla una vez por máquina y volver a bajarla cuando el servidor se actualice.
 			</p>
-			${bloque(
-				`claude mcp add --transport http --scope local ${NOMBRE_MCP} ${recomendacion}/mcp --header "Authorization: Bearer ${token}"`,
-			)}
 			<p class="pequeno silencio">
-				La configuración del plugin es una por máquina: Claude Code guarda sus valores solo en los ajustes
-				del usuario, así que el plugin no puede llevar dos tokens a la vez. El ámbito local gana al
-				servidor del plugin, se guarda por ruta en la configuración de Claude Code y no escribe nada en el
-				repositorio.
+				El ámbito local es por carpeta: cada carpeta tiene su terminal y su token, y el terminal se crea en
+				el proyecto del repositorio que hay en ella. Una máquina con tres repositorios tiene tres
+				terminales. El token se guarda en la configuración de Claude Code (<code>~/.claude.json</code>),
+				nunca en el repositorio. El bucle avisa al servidor de en qué carpeta está: si no es la del proyecto
+				de este token, la vuelta termina ahí y no toma ninguna tarea.
 			</p>
 		</li>`;
 }
 
-/** Paso 3: instalar el plugin desde el catálogo del repositorio. */
-function pasoInstalar(): Html {
+/** Paso 3: el bucle, que lo pone quien abre la sesión. */
+function pasoBucle(): Html {
 	return html`<li>
-			<h3>Instalar el plugin</h3>
+			<h3>Arrancar el bucle</h3>
+			<p>Una vez por sesión, en la sesión de Claude Code de esa carpeta:</p>
+			${bloque("/loop 2m /tareas")}
+			<p class="pequeno silencio">
+				Cada dos minutos una vuelta: sincroniza y, si hay trabajo para este terminal, toma una tarea. Sin
+				intervalo, Claude Code elige el ritmo entre un minuto y una hora, y en reposo tiende a media hora. El
+				bucle caduca a los siete días y hay que relanzarlo.
+			</p>
+		</li>`;
+}
+
+/** Paso 4: cómo se ve que ha conectado, desde la máquina y desde aquí. */
+function pasoComprobar(): Html {
+	return html`<li>
+			<h3>Comprobar</h3>
+			<p>En esa máquina, el servidor tiene que salir conectado:</p>
+			${bloque("claude mcp list")}
 			<p>
-				Desde una sesión de Claude Code en la máquina del terminal, que necesita acceso git a ese
-				repositorio con sus propias credenciales (si intenta clonar por SSH y no hay clave,
-				<code>CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1</code> fuerza HTTPS):
-			</p>
-			${bloque(`/plugin marketplace add ${REPOSITORIO}\n/plugin install ${PLUGIN}@${CATALOGO}`)}
-			<p>Si lo tienes clonado y quieres esa copia, en su lugar la ruta del clon:</p>
-			${bloque(`/plugin marketplace add ${RUTA_REPOSITORIO}\n/plugin install ${PLUGIN}@${CATALOGO}`)}
-			<p>Y para probarlo sin instalar nada, arranca Claude Code apuntando a la carpeta del plugin:</p>
-			${bloque(`claude --plugin-dir ${RUTA_REPOSITORIO}/plugin`)}
-			<p class="pequeno silencio">
-				Si Claude Code no te pide los dos valores del plugin (con <code>--plugin-dir</code> puede no
-				hacerlo), escríbelos a mano donde toque.
+				Y aquí, en la primera vuelta el terminal se registra y su fila de
+				<a href="/terminales">Terminales</a> pasa a estar conectada, con la fecha y con la carpeta en la
+				que está trabajando, que es la que ha reportado al registrarse. Si no pasa, repasa la dirección
+				(que se llegue a ella desde esa máquina) y el token (que sea el de este terminal y no esté
+				revocado). Y si el bucle dice que la carpeta no es la del proyecto, la sesión está abierta donde
+				no toca: ábrela en la carpeta del repositorio de este terminal.
 			</p>
 		</li>`;
 }
 
-/** Paso 4: los dos valores que el plugin pide al activarse. */
-function pasoValores(recomendacion: string, token: string): Html {
-	return html`<li>
-			<h3>Los dos valores que pide al activarse</h3>
-			<div class="tabla-envuelta">
-				<table>
-					<thead><tr><th>Clave</th><th>Valor</th></tr></thead>
-					<tbody>
-						<tr><td><code>servidor_url</code></td><td><code>${recomendacion}</code></td></tr>
-						<tr><td><code>token_terminal</code></td><td><code>${token}</code></td></tr>
-					</tbody>
-				</table>
-			</div>
-			<p class="pequeno silencio">
-				El token se guarda en la configuración local de Claude Code, nunca en el repositorio. Si lo has
-				rotado, cámbialo en <code>/plugin</code> → Installed → <code>${PLUGIN}</code>, o con
-				<code>${`claude plugin install ${PLUGIN}@${CATALOGO} --config token_terminal=<token nuevo>`}</code>.
-			</p>
-		</li>`;
-}
-
-/** Paso 5: declarar el servidor MCP a mano, sin plugin. */
-function pasoSinPlugin(recomendacion: string, token: string): Html {
-	return html`<li>
-			<h3>Sin plugin: solo el servidor MCP</h3>
-			<p>Declara el servidor por HTTP con la cabecera del token:</p>
-			${bloque(
-				`claude mcp add --transport http ${NOMBRE_MCP} ${recomendacion}/mcp --header "Authorization: Bearer ${token}"`,
-			)}
-			<p class="pequeno silencio">
-				Añade <code>--scope user</code> para tenerlo en todos los proyectos, o <code>--scope project</code>
-				para compartirlo en este. Así solo tienes las herramientas: sin plugin no hay bucle del agente ni
-				línea de estado con el uso disponible. Si has rotado el token, repite el mismo comando con el
-				nuevo.
-			</p>
-		</li>`;
-}
-
-/** Paso 6: la línea de estado, que es de donde sale el uso disponible de la cuenta. */
-function pasoStatusline(recomendacion: string, token: string): Html {
+/**
+ * Paso 5: el plugin, que ya solo sirve para que el uso de la cuenta llegue a la
+ * web. La skill y el servidor MCP ya están puestos con los dos comandos.
+ */
+function pasoPlugin(recomendacion: string, token: string): Html {
 	const ajustes = [
 		"{",
 		'  "statusLine": {',
@@ -233,48 +206,50 @@ function pasoStatusline(recomendacion: string, token: string): Html {
 		"chmod 600 ~/.claude/mcp-tareas/config",
 	].join("\n");
 	return html`<li>
-			<h3>Línea de estado</h3>
+			<h3>Opcional: ver el uso de la cuenta en la web</h3>
 			<p>
-				El uso disponible de la cuenta solo llega a la línea de estado, así que el plugin trae un script
-				que la pinta y de paso lo reenvía aquí. En <code>~/.claude/settings.json</code>:
+				El uso disponible de la cuenta solo llega a la línea de estado de Claude Code, así que hay un
+				plugin que la pinta y de paso lo reenvía aquí. No hace falta para trabajar: el terminal ya está
+				conectado. Desde una sesión de Claude Code en esa máquina, que necesita acceso git al repositorio
+				con sus propias credenciales (si intenta clonar por SSH y no hay clave,
+				<code>CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1</code> fuerza HTTPS):
 			</p>
+			${bloque(`/plugin marketplace add ${REPOSITORIO}\n/plugin install ${PLUGIN}@${CATALOGO}`)}
+			<p>Al activarse pide dos valores:</p>
+			<div class="tabla-envuelta">
+				<table>
+					<thead><tr><th>Clave</th><th>Valor</th></tr></thead>
+					<tbody>
+						<tr><td><code>servidor_url</code></td><td><code>${recomendacion}</code></td></tr>
+						<tr><td><code>token_terminal</code></td><td><code>${token}</code></td></tr>
+					</tbody>
+				</table>
+			</div>
+			<p>Y la línea de estado se declara en <code>~/.claude/settings.json</code>:</p>
 			${bloque(ajustes)}
 			<p class="pequeno silencio">
 				Esa ruta es fija: el plugin copia ahí su script al empezar cada sesión, porque su carpeta de
-				instalación lleva la versión y cambia al actualizarlo.
-			</p>
-			<p>
-				El script lee la dirección y el token de su propio archivo, que el plugin también escribe al
-				empezar la sesión. Si Claude Code no te ha pedido los valores, escríbelo tú:
+				instalación lleva la versión y cambia al actualizarlo. El script lee la dirección y el token de su
+				propio archivo, que el plugin también escribe al empezar la sesión; si Claude Code no te ha pedido
+				los valores, escríbelo tú:
 			</p>
 			${bloque(config)}
-		</li>`;
-}
-
-/** Paso 7: el bucle, que no lo pone el plugin sino quien abre la sesión. */
-function pasoBucle(): Html {
-	return html`<li>
-			<h3>Arrancar el bucle</h3>
-			<p>Una vez por sesión, en la máquina del terminal:</p>
-			${bloque("/loop /mcp-tareas:tareas")}
 			<p class="pequeno silencio">
-				Cada disparo es una vuelta: sincroniza y, si hay trabajo para este terminal, toma una tarea. El
-				bucle caduca a los siete días y hay que relanzarlo.
+				El plugin no trae la skill del bucle: esa se baja con el segundo comando de arriba, la instale
+				quien la instale.
 			</p>
 		</li>`;
 }
 
-/** Paso 8: cómo se ve desde aquí que ha conectado. */
-function pasoComprobar(): Html {
+/** Paso 6: qué hacer cuando el token cambia. */
+function pasoRotar(): Html {
 	return html`<li>
-			<h3>Comprobar</h3>
+			<h3>Si rotas el token</h3>
 			<p>
-				En la primera vuelta el terminal se registra y su fila de
-				<a href="/terminales">Terminales</a> pasa a estar conectada, con la fecha y con la carpeta en la
-				que está trabajando, que es la que ha reportado al registrarse. Si no pasa, repasa la dirección
-				(que se llegue a ella desde esa máquina) y el token (que sea el de este terminal y no esté
-				revocado). Y si el bucle dice que la carpeta no es la del proyecto, la sesión está abierta donde
-				no toca: ábrela en la carpeta del repositorio de este terminal.
+				Repite el primer comando con el token nuevo: <code>claude mcp add</code> sobre un nombre que ya
+				existe lo sustituye. Si además tienes el plugin, cambia su valor en <code>/plugin</code> →
+				Installed → <code>${PLUGIN}</code>, o con
+				<code>${`claude plugin install ${PLUGIN}@${CATALOGO} --config token_terminal=<token nuevo>`}</code>.
 			</p>
 		</li>`;
 }
@@ -290,13 +265,11 @@ export function tutorialConexion({ direcciones, direccionActual, token }: Opcion
 			<h2>Cómo conectar un terminal</h2>
 			<ol class="pasos">
 				${pasoDirecciones(filas, recomendacion)}
-				${pasoPorCarpeta(recomendacion, token)}
-				${pasoInstalar()}
-				${pasoValores(recomendacion, token)}
-				${pasoSinPlugin(recomendacion, token)}
-				${pasoStatusline(recomendacion, token)}
+				${pasoDosComandos(recomendacion, token)}
 				${pasoBucle()}
 				${pasoComprobar()}
+				${pasoPlugin(recomendacion, token)}
+				${pasoRotar()}
 			</ol>
 		</section>`;
 }
