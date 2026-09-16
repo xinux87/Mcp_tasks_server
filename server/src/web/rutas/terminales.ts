@@ -17,6 +17,7 @@ import type { Usuario } from "../../db/consultas.ts";
 import { listarProyectos, PROYECTO_PRINCIPAL, type Proyecto } from "../../db/proyectos.ts";
 import { direccionesDelServidor } from "../../direcciones.ts";
 import {
+	bloqueCodigo,
 	buscadorDeColor,
 	type Color,
 	chipDeAlta,
@@ -347,10 +348,10 @@ function paginaToken(
 				<strong>${datos.terminal.cuenta}</strong>.
 			</p>
 			<p>Este es su token. <strong>No se vuelve a ver:</strong> la base de datos solo guarda su hash.</p>
-			<code class="token">${datos.token}</code>
+			${bloqueCodigo(datos.token, "token")}
 			<p class="pequeno silencio">Cópialo en la configuración del plugin, nunca en el repositorio.</p>
 			<p>O abre este enlace en la máquina del terminal: lleva a este mismo tutorial con el token puesto.</p>
-			<code class="token">${enlace}</code>
+			${bloqueCodigo(enlace, "token")}
 			<p class="pequeno silencio">
 				El enlace es un secreto: quien lo tenga, tiene el terminal. Deja de valer en cuanto revoques o
 				rotes el token, y no se puede volver a componer desde aquí.

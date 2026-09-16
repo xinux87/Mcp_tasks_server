@@ -475,6 +475,31 @@ export function barraProgreso(cerradas: number, total: number, rotulo = "hijas")
 	return html`<progress class="progreso" value="${cerradas}" max="${total}"></progress><span class="progreso-texto">${rotulo} ${cerradas}/${total}</span>`;
 }
 
+/**
+ * El botón que copia una línea suelta. El glifo se cambia por el de `data-hecho`
+ * mientras dura el aviso, así que el cliente no necesita saber cuál era.
+ */
+const BOTON_LINEA = html`<button type="button" class="copiar copiar-linea" aria-label="Copiar línea" title="Copiar línea" data-hecho="✓" data-fallo="✗">⧉</button>`;
+
+/**
+ * Un bloque de código copiable, el único que pinta la web: el tutorial de
+ * conexión, la página del token y los bloques que un agente escribe en el hilo
+ * o en la descripción salen todos de aquí.
+ *
+ * Lleva el botón «Copiar» del bloque entero, porque hay bloques que son una
+ * unidad, y además uno por línea cuando hay más de una, que es lo que evita
+ * recortar a mano un bloque con dos comandos seguidos. Un bloque de una sola
+ * línea no lleva botón de línea: el del bloque ya lo es.
+ *
+ * Dentro del `<pre>` no hay ni un espacio de más: ahí los espacios se ven.
+ */
+export function bloqueCodigo(codigo: string, clase = ""): Html {
+	const lineas = codigo.replace(/\n+$/, "").split("\n");
+	const porLinea = lineas.length > 1;
+	const clases = clase === "" ? "bloque-codigo" : `bloque-codigo ${clase}`;
+	return html`<div class="${clases}"><button type="button" class="boton pequeno copiar">Copiar</button><pre>${lineas.map((linea) => html`<span class="linea"><code>${linea}</code>${porLinea ? BOTON_LINEA : ""}</span>`)}</pre></div>`;
+}
+
 /** Los tres conmutadores de un clic, con el texto que se lee en cada uno. */
 const FILTROS_RAPIDOS: readonly { valor: string; texto: string }[] = [
 	{ valor: "espera", texto: "Espera por ti" },

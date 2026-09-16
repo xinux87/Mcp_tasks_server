@@ -1,5 +1,6 @@
 import { html } from "hono/html";
 import type { Direccion, OrigenDireccion } from "../direcciones.ts";
+import { bloqueCodigo } from "./componentes.ts";
 import type { Html } from "./plantilla.ts";
 
 /**
@@ -91,16 +92,11 @@ export function enlaceDeConexion({ direcciones, direccionActual, token }: Opcion
 }
 
 /**
- * Un bloque de comandos copiable. El botón lo activa `cliente.ts`, que lo
- * esconde si el navegador no tiene portapapeles; el texto se puede seleccionar
- * a mano de todas formas.
+ * Un bloque de comandos copiable, entero o línea a línea. Los botones los
+ * activa `cliente.ts`, que los esconde si el navegador no tiene portapapeles;
+ * el texto se puede seleccionar a mano de todas formas.
  */
-function bloque(codigo: string): Html {
-	return html`<div class="bloque-codigo">
-			<button type="button" class="boton pequeno copiar">Copiar</button>
-			<pre><code>${codigo}</code></pre>
-		</div>`;
-}
+const bloque = bloqueCodigo;
 
 /** Paso 1: por dónde se llega a este servidor. */
 function pasoDirecciones(filas: readonly Fila[], recomendacion: string): Html {

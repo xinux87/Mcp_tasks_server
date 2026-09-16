@@ -13,7 +13,7 @@
  *    revisión porque su telemetría no es contenido.
  * 4. Despliega la barra lateral en móvil, alternando la clase
  *    `lateral-abierta` en el `<body>`.
- * 5. Copia al portapapeles los bloques de comandos del tutorial de conexión.
+ * 5. Copia al portapapeles cualquier bloque de código, entero o línea a línea.
  * 6. Navega al cambiar el selector de proyecto de la barra lateral, y esconde
  *    su botón «Ir», que solo hace falta sin JavaScript.
  * 7. El conmutador de tema: marca el radio que toca al cargar y, al cambiarlo,
@@ -434,43 +434,72 @@ function prepararSelectorProyecto() {
 // --- copiar bloques de comandos ----------------------------------------------
 
 /**
- * El botón «Copiar» de cada bloque del tutorial de conexión. Sin API de
- * portapapeles (una red local por http no es un contexto seguro, y ahí no
- * existe) los botones se esconden: el texto se sigue pudiendo seleccionar a
- * mano, y un botón que no hace nada engaña.
+ * Lo que copia un botón: su línea si está en una, y el bloque entero si es el
+ * del bloque. El texto sale de los <code>, nunca del <pre>, que además lleva
+ * dentro los propios botones.
+ */
+function textoDelBoton(boton) {
+	const linea = boton.closest(".linea");
+	if (linea !== null) {
+		const codigo = linea.querySelector("code");
+		return codigo === null ? "" : codigo.textContent || "";
+	}
+	const bloque = boton.closest(".bloque-codigo");
+	if (bloque === null) {
+		return "";
+	}
+	const codigos = bloque.querySelectorAll("code");
+	return Array.prototype.map
+		.call(codigos, function (codigo) {
+			return codigo.textContent || "";
+		})
+		.join("\\n");
+}
+
+/** El aviso de dos segundos, que deja el botón como estaba. */
+function avisarCopia(boton, texto) {
+	if (boton.dataset.original === undefined) {
+		boton.dataset.original = boton.textContent;
+	}
+	boton.textContent = texto;
+	window.setTimeout(function () {
+		boton.textContent = boton.dataset.original;
+	}, 2000);
+}
+
+/**
+ * Los botones de copiar: uno por bloque de código y otro por cada línea de un
+ * bloque de varias. Un solo listener en el documento, porque los bloques
+ * también llegan dentro del hilo de una tarea y de un tablero recargado.
+ *
+ * Sin API de portapapeles (una red local por http no es un contexto seguro, y
+ * ahí no existe) se esconden todos con una clase en el <html>: el texto se
+ * sigue pudiendo seleccionar a mano, y un botón que no hace nada engaña.
  */
 function prepararCopias() {
-	const botones = document.querySelectorAll(".copiar");
-	if (botones.length === 0) {
-		return;
-	}
 	const portapapeles = window.navigator.clipboard;
 	if (portapapeles === undefined || typeof portapapeles.writeText !== "function") {
-		for (const boton of botones) {
-			boton.hidden = true;
-		}
+		document.documentElement.classList.add("sin-portapapeles");
 		return;
 	}
-	for (const boton of botones) {
-		boton.addEventListener("click", function () {
-			const bloque = boton.closest(".bloque-codigo");
-			const codigo = bloque === null ? null : bloque.querySelector("code");
-			if (codigo === null) {
-				return;
-			}
-			portapapeles.writeText(codigo.textContent || "").then(
-				function () {
-					boton.textContent = "Copiado";
-					window.setTimeout(function () {
-						boton.textContent = "Copiar";
-					}, 2000);
-				},
-				function () {
-					boton.textContent = "No se pudo";
-				},
-			);
-		});
-	}
+	document.addEventListener("click", function (evento) {
+		const destino = evento.target;
+		if (destino === null || typeof destino.closest !== "function") {
+			return;
+		}
+		const boton = destino.closest(".copiar");
+		if (boton === null) {
+			return;
+		}
+		portapapeles.writeText(textoDelBoton(boton)).then(
+			function () {
+				avisarCopia(boton, boton.dataset.hecho || "Copiado");
+			},
+			function () {
+				avisarCopia(boton, boton.dataset.fallo || "No se pudo");
+			},
+		);
+	});
 }
 
 // --- refresco en vivo --------------------------------------------------------

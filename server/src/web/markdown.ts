@@ -1,4 +1,5 @@
 import MarkdownIt, { type StateCore, type Token } from "markdown-it";
+import { bloqueCodigo } from "./componentes.ts";
 
 /**
  * Renderizador único de la web. `html: false` desactiva el HTML crudo dentro
@@ -82,6 +83,19 @@ renderizador.core.ruler.push("ids_de_tarea", (state: StateCore) => {
 		bloque.children = nuevos;
 	}
 });
+
+/**
+ * Un bloque de código del hilo o de la descripción se pinta como el del
+ * tutorial: con su botón de copiar el bloque y otro por línea. El texto llega
+ * aquí sin tocar y lo escapa la plantilla `html`, igual que en el resto de la
+ * web; `html: false` sigue mandando sobre lo demás.
+ */
+function pintarBloque(tokens: Token[], indice: number): string {
+	return `${bloqueCodigo(tokens[indice]?.content ?? "")}\n`;
+}
+
+renderizador.renderer.rules.fence = pintarBloque;
+renderizador.renderer.rules.code_block = pintarBloque;
 
 /**
  * Markdown a HTML seguro. Lo que devuelve es lo único que se pasa por `raw()`

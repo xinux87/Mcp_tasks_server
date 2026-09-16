@@ -903,13 +903,11 @@ button.enlace:hover {
 
 /* --- terminales ---------------------------------------------------------- */
 
-.token {
-	display: block;
-	margin: 0.8rem 0;
-	padding: 0.8rem 1rem;
-	background: var(--fondo-hover);
-	border-radius: var(--radio-tarjeta);
+/* El token y su enlace son una línea larguísima: se parte en vez de
+   desplazarse, para verla entera, y se selecciona de una pasada. */
+.bloque-codigo.token code {
 	font-size: 1.05rem;
+	white-space: pre-wrap;
 	word-break: break-all;
 	user-select: all;
 }
@@ -946,11 +944,12 @@ button.enlace:hover {
 	width: auto;
 }
 
-/* Un bloque copiable: el botón flota sobre la esquina del código, que le deja
-   sitio con su propio relleno. */
+/* Un bloque copiable: el botón del bloque flota sobre la esquina del código,
+   que le deja sitio con su propio relleno, y cada línea lleva el suyo pegado a
+   la derecha. Los bloques salen aquí, en el hilo y en la página del token. */
 .bloque-codigo {
 	position: relative;
-	margin-bottom: 0.9rem;
+	margin: 0.8rem 0;
 }
 
 .bloque-codigo pre {
@@ -958,10 +957,46 @@ button.enlace:hover {
 	padding-right: 5.5rem;
 }
 
-.bloque-codigo .copiar {
+.bloque-codigo > .copiar {
 	position: absolute;
 	top: 0.45rem;
 	right: 0.45rem;
+}
+
+/* Cada línea es una fila: el código estirado a la izquierda, que es lo que
+   empuja el botón al borde derecho. */
+.bloque-codigo .linea {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.6rem;
+}
+
+.bloque-codigo .linea code {
+	flex: 1;
+}
+
+.copiar-linea {
+	flex: none;
+	position: sticky;
+	right: 0;
+	padding: 0 0.2rem;
+	min-width: 1.4rem;
+	border: 0;
+	background: var(--fondo-hover);
+	color: var(--texto-suave);
+	font-size: 0.95em;
+	line-height: inherit;
+	cursor: pointer;
+}
+
+.copiar-linea:hover {
+	color: var(--acento);
+}
+
+/* Sin portapapeles no hay nada que copiar con un botón: se esconden todos, los
+   de ahora y los que lleguen con un fragmento recargado. */
+.sin-portapapeles .copiar {
+	display: none;
 }
 
 /* --- kanban -------------------------------------------------------------- */

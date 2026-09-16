@@ -491,9 +491,7 @@ test("un terminal se crea con su token, se lista y se revoca", async () => {
 		});
 		assert.equal(alta.status, 200);
 		const cuerpoAlta = await alta.text();
-		const encaje = /<code class="token">([A-Za-z0-9_-]+)<\/code>/.exec(cuerpoAlta);
-		const token = encaje?.[1] ?? "";
-		assert.equal(token.length, 43);
+		const token = tokenDe(cuerpoAlta);
 		assert.notEqual(buscarTerminalPorToken(montaje.db, token), undefined);
 		// La página del token no se refresca sola: una recarga se llevaría por
 		// delante lo único que no se vuelve a enseñar.
@@ -535,7 +533,7 @@ test("el uso disponible se pinta por ventana como barra, sin estilos en línea",
 			cookie,
 			formulario: { nombre: "portatil-ana", cuenta: "ana@ejemplo.com" },
 		});
-		const token = /<code class="token">([A-Za-z0-9_-]+)<\/code>/.exec(await alta.text())?.[1] ?? "";
+		const token = tokenDe(await alta.text());
 
 		const reportado = await reportarUso(montaje, token, {
 			rate_limits: {
@@ -738,8 +736,7 @@ test("la página del terminal creado lleva el tutorial con el token y las direcc
 			formulario: { nombre: "portatil-ana", cuenta: "ana@ejemplo.com" },
 		});
 		const cuerpo = await alta.text();
-		const token = /<code class="token">([A-Za-z0-9_-]+)<\/code>/.exec(cuerpo)?.[1] ?? "";
-		assert.equal(token.length, 43);
+		const token = tokenDe(cuerpo);
 
 		// Las direcciones, cada una con su origen. La base es la de las pruebas.
 		assert.match(cuerpo, /<code>http:\/\/localhost:3000<\/code><\/td><td class="pequeno">la configurada como base</);
@@ -756,7 +753,9 @@ test("la página del terminal creado lleva el tutorial con el token y las direcc
 				`claude mcp add --transport http tareas http://192\\.168\\.50\\.5:3000/mcp --header &quot;Authorization: Bearer ${token}&quot;`,
 			),
 		);
-		assert.match(cuerpo, new RegExp(`SERVIDOR_URL=http://192\\.168\\.50\\.5:3000\nTOKEN=${token}`));
+		// Cada línea del archivo de configuración es ya la suya, con su botón.
+		assert.match(cuerpo, /<code>SERVIDOR_URL=http:\/\/192\.168\.50\.5:3000<\/code>/);
+		assert.match(cuerpo, new RegExp(`<code>TOKEN=${token}</code>`));
 		assert.match(cuerpo, /\/plugin install mcp-tareas@mcp-tareas-marketplace/);
 		// Se instala desde GitHub, no solo desde un clon local.
 		assert.match(cuerpo, /marketplace add xinux87\/Mcp_tasks_server/);
@@ -768,11 +767,18 @@ test("la página del terminal creado lleva el tutorial con el token y las direcc
 		assert.match(cuerpo, /\/loop \/mcp-tareas:tareas/);
 		// La advertencia de Docker, que es la trampa de las direcciones detectadas.
 		assert.match(cuerpo, /Docker[\s\S]*máquina anfitriona/);
-		// Cada bloque de comandos se puede copiar.
+		// Cada bloque de comandos se puede copiar entero.
 		assert.match(
 			cuerpo,
-			/<div class="bloque-codigo">\s*<button type="button" class="boton pequeno copiar">Copiar<\/button>/,
+			/<div class="bloque-codigo"><button type="button" class="boton pequeno copiar">Copiar<\/button>/,
 		);
+		// Y línea a línea cuando tiene varias: los dos comandos de la instalación
+		// son dos, no uno. El de una sola línea no lleva botón de línea, que el
+		// del bloque ya lo es.
+		const instalar = bloquesDe(cuerpo).find((bloque) => bloque.includes("marketplace add xinux87")) ?? "";
+		assert.equal(instalar.match(/class="copiar copiar-linea"/g)?.length, 2);
+		const bucle = bloquesDe(cuerpo).find((bloque) => bloque.includes("/loop /mcp-tareas:tareas")) ?? "";
+		assert.doesNotMatch(bucle, /copiar-linea/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -804,7 +810,7 @@ test("el tutorial sin token está siempre en /terminales/conectar", async () => 
 		);
 		// Ningún token de verdad se enseña aquí.
 		assert.ok(!cuerpo.includes(valor.token), "el tutorial sin token enseñó un token real");
-		assert.doesNotMatch(cuerpo, /<code class="token">/);
+		assert.doesNotMatch(cuerpo, /bloque-codigo token/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -842,9 +848,17 @@ test("el tutorial explica un terminal por carpeta y da el comando de la segunda"
 	}
 });
 
+/** Cada bloque de código copiable de una página, sin lo que hay entre ellos. */
+function bloquesDe(cuerpo: string): string[] {
+	return cuerpo
+		.split('<div class="bloque-codigo')
+		.slice(1)
+		.map((trozo) => trozo.split("</div>")[0] ?? "");
+}
+
 /** El token en claro que enseña una vez la página del alta o la de la rotación. */
 function tokenDe(cuerpo: string): string {
-	const token = /<code class="token">([A-Za-z0-9_-]+)<\/code>/.exec(cuerpo)?.[1] ?? "";
+	const token = /<div class="bloque-codigo token">.*?<code>([A-Za-z0-9_-]+)<\/code>/.exec(cuerpo)?.[1] ?? "";
 	assert.equal(token.length, 43, "no se enseñó un token en claro");
 	return token;
 }
@@ -913,10 +927,7 @@ test("la página del terminal creado ofrece el enlace de conexión con el token 
 		const cuerpo = await alta.text();
 		const token = tokenDe(cuerpo);
 		// La dirección recomendada, no localhost: el terminal está en otra máquina.
-		assert.match(
-			cuerpo,
-			new RegExp(`<code class="token">http://192\\.168\\.50\\.5:3000/terminales/conectar\\?token=${token}</code>`),
-		);
+		assert.match(cuerpo, new RegExp(`<code>http://192\\.168\\.50\\.5:3000/terminales/conectar\\?token=${token}</code>`));
 		assert.match(cuerpo, /quien lo tenga, tiene el terminal/);
 	} finally {
 		await montaje.cerrar();
@@ -1227,7 +1238,11 @@ test("un identificador de tarea del hilo enlaza a su ficha, salvo en código o e
 	);
 	// Dentro de código no se toca: ahí el identificador es texto literal.
 	assert.equal(renderMarkdown("El literal `T-0042` no enlaza."), "<p>El literal <code>T-0042</code> no enlaza.</p>\n");
-	assert.equal(renderMarkdown("```\nT-0042\n```"), "<pre><code>T-0042\n</code></pre>\n");
+	assert.equal(
+		renderMarkdown("```\nT-0042\n```"),
+		'<div class="bloque-codigo"><button type="button" class="boton pequeno copiar">Copiar</button>' +
+			'<pre><span class="linea"><code>T-0042</code></span></pre></div>\n',
+	);
 	// Ni dentro de un enlace que ya existe: no se anidan dos <a>.
 	assert.equal(
 		renderMarkdown("Mira [T-0042](https://ejemplo/otro)."),
@@ -1236,6 +1251,16 @@ test("un identificador de tarea del hilo enlaza a su ficha, salvo en código o e
 	// Cinco cifras también, y lo que no tiene cuatro no es un identificador.
 	assert.match(renderMarkdown("T-10042"), /href="\/tareas\/T-10042"/);
 	assert.equal(renderMarkdown("T-42 no lo es."), "<p>T-42 no lo es.</p>\n");
+});
+
+test("un bloque de código del hilo se copia entero y línea a línea, sin abrir HTML crudo", () => {
+	const pintado = renderMarkdown("```\nprimero <b>\nsegundo\n```");
+	// Dos líneas, dos botones de línea, además del del bloque entero.
+	assert.equal(pintado.match(/copiar-linea/g)?.length, 2);
+	assert.match(pintado, /<code>primero &lt;b&gt;<\/code>/);
+	assert.doesNotMatch(pintado, /<b>/);
+	// El otro bloque de código de Markdown, el sangrado, se pinta igual.
+	assert.match(renderMarkdown("    sangrado"), /<span class="linea"><code>sangrado<\/code><\/span>/);
 });
 
 test("los identificadores de la descripción y del hilo enlazan en la ficha", async () => {
