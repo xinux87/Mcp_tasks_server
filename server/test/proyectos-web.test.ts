@@ -104,14 +104,18 @@ test("la vista acotada solo trae las tareas de su proyecto y la cruzada las ense
 		const cookie = await entrar(montaje);
 		conDosProyectos(montaje);
 
-		// La cruzada: las dos, cada una con el chip de su proyecto y el filtro.
+		// La cruzada: las dos, cada una con el chip de su proyecto. El proyecto ya
+		// no se filtra con un desplegable: se elige en la barra o va en la URL.
 		for (const ruta of ["/tareas", "/tareas/kanban"]) {
 			const cuerpo = await (await pedir(montaje, ruta, { cookie })).text();
 			assert.match(cuerpo, /Tarea del principal/, `${ruta} no trae la del principal`);
 			assert.match(cuerpo, /Tarea de la web/, `${ruta} no trae la de la web`);
 			assert.ok(cuerpo.includes(chip("DEFAULT")), `${ruta} no pinta el chip de DEFAULT`);
 			assert.ok(cuerpo.includes(chip("WEB", "verde")), `${ruta} no pinta el chip de WEB`);
-			assert.match(cuerpo, /<select name="proyecto">/, `${ruta} no trae el filtro por proyecto`);
+			assert.ok(!cuerpo.includes('<select name="proyecto">'), `${ruta} no debería llevar desplegable`);
+			// Pero el parámetro escrito a mano sigue acotando.
+			const soloWeb = await (await pedir(montaje, `${ruta}?proyecto=WEB`, { cookie })).text();
+			assert.ok(!soloWeb.includes("Tarea del principal"), `${ruta}?proyecto=WEB trae la de otro`);
 		}
 
 		// Acotada: solo las suyas, y sin filtro de proyecto, que ya está en la URL.

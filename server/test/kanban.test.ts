@@ -133,11 +133,16 @@ test("el kanban pinta las cinco columnas con sus tarjetas", async () => {
 			cuerpo,
 			/<span class="insignia estado-backlog color-gris">Por definir<\/span> <span class="dueno">la defines tú<\/span> <span class="contador">2<\/span>/,
 		);
-		// Los filtros son una fila de desplegables, sin caja alrededor.
+		// La fila de filtros no lleva desplegables: el proyecto lo acota la URL, el
+		// estado es la columna y el resto no se usaba.
 		assert.match(cuerpo, /<form class="filtros" method="get" action="\/tareas\/kanban">/);
+		const fila = cuerpo.slice(cuerpo.indexOf('<div class="fila-filtros">'), cuerpo.indexOf("</form>"));
+		assert.ok(!fila.includes("<select"), "la fila de filtros no lleva desplegables");
+		assert.ok(!fila.includes("Filtrar"), "la búsqueda se envía con Enter, sin botón");
 		assert.doesNotMatch(cuerpo, /Quitar filtros/);
-		const filtrado = await pedir(montaje, "/tareas/kanban?marca=bloqueada", { cookie });
-		assert.match(await filtrado.text(), /<a class="quitar" href="\/tareas\/kanban">Quitar filtros<\/a>/);
+		// Pero un parámetro escrito a mano sigue filtrando.
+		const filtrado = await (await pedir(montaje, "/tareas/kanban?marca=bloqueada", { cookie })).text();
+		assert.ok(!filtrado.includes('data-id="T-0001"'), "ninguna está bloqueada");
 	} finally {
 		await montaje.cerrar();
 	}
@@ -162,8 +167,8 @@ test("el tablero filtrado por funcionalidad solo trae sus partes", async () => {
 		});
 		await crearTarea(montaje, cookie, "Nada que ver con el evolutivo");
 
-		// En el tablero global están las tres, y la funcionalidad lleva su progreso.
-		const todo = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
+		// En el tablero por columnas están las tres, y la funcionalidad lleva su progreso.
+		const todo = await (await pedir(montaje, "/tareas/kanban?agrupar=no", { cookie })).text();
 		assert.match(todo, /data-id="T-0003"/);
 		assert.match(todo, /<span class="insignia tipo-funcionalidad color-azul">Funcionalidad 0\/1<\/span>/);
 		assert.match(todo, /<a class="parte-de" href="\/tareas\/T-0001">Listados para comerciales<\/a>/);
@@ -174,7 +179,8 @@ test("el tablero filtrado por funcionalidad solo trae sus partes", async () => {
 		assert.ok(!partes.includes('data-id="T-0001"'), "la funcionalidad no es parte de sí misma");
 		assert.ok(!partes.includes('data-id="T-0003"'), "una tarea suelta no es parte de la funcionalidad");
 		assert.match(partes, /data-fuente="\/tareas\/kanban\/tablero\?padre=T-0001"/);
-		assert.match(partes, /<a class="quitar" href="\/tareas\/kanban">Quitar filtros<\/a>/);
+		// Acotado a una funcionalidad no se agrupa: ya son sus partes.
+		assert.ok(!partes.includes('class="franja"'), "un tablero acotado no lleva carriles");
 
 		// Y el fragmento suelto se sirve con el mismo filtro.
 		const fragmento = await (await pedir(montaje, "/tareas/kanban/tablero?padre=T-0001", { cookie })).text();
@@ -596,7 +602,57 @@ test("agrupado por funcionalidad, el tablero es una franja por cada una y otra d
 	}
 });
 
-test("el conmutador de carriles conserva los filtros y no sale en la ficha de la funcionalidad", async () => {
+test("la lista sale agrupada por funcionalidad, con la columna Estado y las sueltas al final", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const evolutivo = crearTareaHumana(montaje.db, {
+			titulo: "Listados para comerciales",
+			descripcion: "d",
+			usuarioId: 1,
+			tipo: "funcionalidad",
+		});
+		const nueva = (titulo: string, padreId?: number): number =>
+			crearTareaHumana(montaje.db, { titulo, descripcion: "d", usuarioId: 1, padreId }).id;
+		const primera = nueva("Sacar los datos del listado", evolutivo.id);
+		nueva("Pintar el botón", evolutivo.id);
+		nueva("Migrar el envío de correos");
+		moverTareaHumano(montaje.db, { tareaId: primera, usuarioId: 1, estado: "prepared" });
+
+		// Una franja por funcionalidad, con su cabecera, y «Sueltas» la última.
+		const cuerpo = await (await pedir(montaje, "/tareas", { cookie })).text();
+		assert.deepEqual(franjas(cuerpo), ["T-0001", "sueltas"]);
+		assert.match(cuerpo, /<h2><a href="\/tareas\/T-0001">Listados para comerciales<\/a><\/h2>/);
+		assert.match(cuerpo, /<span class="progreso-texto">partes 0\/2<\/span>/);
+		// La tabla de la franja lleva la columna Estado delante, con su etiqueta.
+		const [, franja = "", sueltas = ""] = cuerpo.split('<section class="franja"');
+		assert.match(franja, /<th>Estado<\/th>\s*<th>Id<\/th>/);
+		assert.match(franja, /<td><span class="insignia estado-prepared color-azul">Preparada<\/span><\/td>/);
+		// Sus partes, en su franja y ordenadas por columna: por definir va antes
+		// que preparada, como en el tablero.
+		assert.ok(franja.indexOf("Pintar el botón") < franja.indexOf("Sacar los datos del listado"));
+		// La funcionalidad es la cabecera, no una fila más.
+		assert.ok(!cuerpo.includes('<td><a class="id-tarea" href="/tareas/T-0001">'), "la funcionalidad no es una fila");
+		// Y lo que no cuelga de ninguna, en «Sueltas» con los grupos de siempre.
+		assert.match(sueltas, /<h2>Sueltas<\/h2>/);
+		assert.match(sueltas, /Migrar el envío de correos/);
+		assert.match(sueltas, /<span class="insignia estado-backlog color-gris">Por definir<\/span>/);
+
+		// Por columnas, la lista de siempre: sin franjas y con la funcionalidad
+		// como una fila más.
+		const columnas = await (await pedir(montaje, "/tareas?agrupar=no", { cookie })).text();
+		assert.ok(!columnas.includes('class="franja"'), "por columnas no hay franjas");
+		assert.ok(!columnas.includes("<th>Estado</th>"), "el grupo ya dice en qué columna está");
+		assert.match(columnas, /<span class="insignia tipo-funcionalidad color-azul">Funcionalidad 0\/2<\/span>/);
+		assert.match(columnas, /<a class="boton-filtro" href="\/tareas">Agrupar por funcionalidad<\/a>/);
+		// El conmutador de vistas se lleva la agrupación de una vista a la otra.
+		assert.match(columnas, /<a href="\/tareas\/kanban\?agrupar=no">Tablero<\/a>/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el tablero sale agrupado de serie y el conmutador lleva a las columnas", async () => {
 	const montaje = montar();
 	try {
 		const cookie = await entrar(montaje);
@@ -613,33 +669,39 @@ test("el conmutador de carriles conserva los filtros y no sale en la ficha de la
 			padreId: evolutivo.id,
 		});
 
-		// Sin agrupar, el conmutador lo pone conservando la búsqueda y el rápido.
-		const suelto = await (await pedir(montaje, "/tareas/kanban?q=listado&rapido=espera", { cookie })).text();
-		assert.match(
-			suelto,
-			/<a class="boton-filtro" href="\/tareas\/kanban\?rapido=espera&amp;q=listado&amp;agrupar=funcionalidad">Agrupar por funcionalidad<\/a>/,
-		);
-		assert.ok(!suelto.includes('class="franja"'), "sin el parámetro no hay franjas");
+		// Sin parámetro, carriles: el conmutador dice a qué se va.
+		const serie = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
+		assert.deepEqual(franjas(serie), ["T-0001", "sueltas"]);
+		assert.match(serie, /<a class="boton-filtro" href="\/tareas\/kanban\?agrupar=no">Por columnas<\/a>/);
 
-		// Puesto, el enlace lo quita y el resto de filtros sigue en él.
-		const agrupado = await (
-			await pedir(montaje, "/tareas/kanban?q=listado&rapido=espera&agrupar=funcionalidad", { cookie })
-		).text();
+		// Y conserva la búsqueda y el conmutador rápido.
+		const filtrado = await (await pedir(montaje, "/tareas/kanban?q=listado&rapido=espera", { cookie })).text();
 		assert.match(
-			agrupado,
-			/<a class="boton-filtro" href="\/tareas\/kanban\?rapido=espera&amp;q=listado" aria-current="true">Sin agrupar<\/a>/,
+			filtrado,
+			/<a class="boton-filtro" href="\/tareas\/kanban\?rapido=espera&amp;q=listado&amp;agrupar=no">Por columnas<\/a>/,
 		);
+
+		// Por columnas, el conmutador vuelve a ofrecer la agrupación sin parámetro.
+		const columnas = await (await pedir(montaje, "/tareas/kanban?q=listado&rapido=espera&agrupar=no", { cookie })).text();
+		assert.match(
+			columnas,
+			/<a class="boton-filtro" href="\/tareas\/kanban\?rapido=espera&amp;q=listado">Agrupar por funcionalidad<\/a>/,
+		);
+		assert.ok(!columnas.includes('class="franja"'), "por columnas no hay franjas");
 		// Y viaja con el formulario y con el refresco en vivo.
-		assert.match(agrupado, /<input type="hidden" name="agrupar" value="funcionalidad">/);
-		assert.match(
-			agrupado,
-			/data-fuente="\/tareas\/kanban\/tablero\?rapido=espera&amp;q=listado&amp;agrupar=funcionalidad"/,
-		);
+		assert.match(columnas, /<input type="hidden" name="agrupar" value="no">/);
+		assert.match(columnas, /data-fuente="\/tareas\/kanban\/tablero\?rapido=espera&amp;q=listado&amp;agrupar=no"/);
 
-		// El fragmento que recarga el cliente conserva las franjas.
-		const fragmento = await (await pedir(montaje, "/tareas/kanban/tablero?agrupar=funcionalidad", { cookie })).text();
+		// `agrupar=funcionalidad` sigue valiendo: es lo mismo que no decir nada.
+		const explicito = await (await pedir(montaje, "/tareas/kanban?agrupar=funcionalidad", { cookie })).text();
+		assert.deepEqual(franjas(explicito), ["T-0001", "sueltas"]);
+
+		// El fragmento que recarga el cliente respeta lo mismo.
+		const fragmento = await (await pedir(montaje, "/tareas/kanban/tablero", { cookie })).text();
 		assert.deepEqual(franjas(fragmento), ["T-0001", "sueltas"]);
 		assert.match(fragmento, /data-id="T-0002"/);
+		const suelto = await (await pedir(montaje, "/tareas/kanban/tablero?agrupar=no", { cookie })).text();
+		assert.ok(!suelto.includes('class="franja"'), "el fragmento por columnas tampoco lleva franjas");
 
 		// El tablero de la ficha de una funcionalidad ya está acotado a sus partes.
 		const ficha = await (await pedir(montaje, "/tareas/T-0001", { cookie })).text();
@@ -662,14 +724,20 @@ test("el kanban de un proyecto agrupa solo sus funcionalidades", async () => {
 		const deLaWeb = nueva("Avisos por correo", { tipo: "funcionalidad", proyectoId: web });
 		nueva("Elegir la plantilla", { padreId: deLaWeb });
 
-		const cuerpo = await (await pedir(montaje, "/p/WEB/tareas/kanban?agrupar=funcionalidad", { cookie })).text();
+		const cuerpo = await (await pedir(montaje, "/p/WEB/tareas/kanban", { cookie })).text();
 		assert.deepEqual(franjas(cuerpo), ["T-0003", "sueltas"]);
 		assert.match(cuerpo, /data-id="T-0004"/);
 		assert.ok(!cuerpo.includes('data-id="T-0002"'), "la parte del otro proyecto no sale");
-		assert.match(cuerpo, /<a class="boton-filtro" href="\/p\/WEB\/tareas\/kanban" aria-current="true">Sin agrupar<\/a>/);
+		assert.match(cuerpo, /<a class="boton-filtro" href="\/p\/WEB\/tareas\/kanban\?agrupar=no">Por columnas<\/a>/);
+
+		// La lista acotada se agrupa igual, con las partes de su funcionalidad.
+		const lista = await (await pedir(montaje, "/p/WEB/tareas", { cookie })).text();
+		assert.deepEqual(franjas(lista), ["T-0003", "sueltas"]);
+		assert.match(lista, /<h2><a href="\/tareas\/T-0003">Avisos por correo<\/a><\/h2>/);
+		assert.ok(!lista.includes("Listados para comerciales"), "la funcionalidad del otro proyecto no sale");
 
 		// En la vista cruzada salen las dos, y cada cabecera lleva su chip.
-		const cruzada = await (await pedir(montaje, "/tareas/kanban?agrupar=funcionalidad", { cookie })).text();
+		const cruzada = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
 		assert.deepEqual(franjas(cruzada), ["T-0001", "T-0003", "sueltas"]);
 		assert.match(
 			cruzada,

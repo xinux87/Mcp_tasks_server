@@ -202,9 +202,13 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		assert.match(cuerpoLista, /<div class="dentro dentro-completo">/);
 		assert.match(cuerpoLista, /<header class="cabecera-pagina">/);
 		assert.match(cuerpoLista, /<a class="boton principal" href="\/p\/DEFAULT\/tareas\/nueva">Nueva tarea<\/a>/);
-		// Sin filtros puestos no hay nada que quitar.
+		// La fila de filtros no lleva desplegables ni enlace de quitarlos.
+		const fila = cuerpoLista.slice(cuerpoLista.indexOf('<div class="fila-filtros">'), cuerpoLista.indexOf("</form>"));
+		assert.ok(!fila.includes("<select"), "la fila de filtros no lleva desplegables");
 		assert.doesNotMatch(cuerpoLista, /Quitar filtros/);
-		assert.match(await (await pedir(montaje, "/tareas?estado=backlog", { cookie })).text(), /Quitar filtros/);
+		// Pero un estado escrito en la dirección sigue filtrando.
+		const soloPreparadas = await (await pedir(montaje, "/tareas?estado=prepared", { cookie })).text();
+		assert.ok(!soloPreparadas.includes("T-0001"), "la tarea está en por definir, no en preparadas");
 
 		const ficha = await pedir(montaje, "/tareas/T-0001", { cookie });
 		assert.equal(ficha.status, 200);
@@ -1747,10 +1751,9 @@ test("nada de lo que se ve enseña un nombre interno: estados, marcas y fases", 
 		assert.match(ficha, /<td>Análisis<\/td>/);
 		assert.match(ficha, /<span class="insignia tipo-analisis color-azul">Análisis<\/span>/);
 
+		// En la lista, el rótulo de cada grupo dice la columna en plural.
 		const lista = await (await pedir(montaje, "/tareas", { cookie })).text();
-		// Los desplegables mandan el valor interno y enseñan el nombre legible.
-		assert.match(lista, /<option value="prepared">Preparada<\/option>/);
-		assert.match(lista, /<option value="bloqueada">Pregunta abierta<\/option>/);
+		assert.match(lista, /<span class="insignia estado-prepared color-azul">Preparadas<\/span>/);
 
 		for (const pagina of [lista, ficha, await (await pedir(montaje, "/tareas/kanban", { cookie })).text()]) {
 			for (const crudo of [">backlog<", ">prepared<", ">doing<", ">done<", ">finished<", ">analisis<", ">ejecucion<"]) {
@@ -1899,7 +1902,7 @@ test("Tareas es una sección con dos vistas, y el conmutador conserva los filtro
 		assert.match(lista, /<a href="\/tareas\/kanban\?estado=doing">Tablero<\/a>/);
 		// La sección se llama Tareas en las dos vistas; «kanban» no se lee.
 		assert.match(lista, /<h1>Tareas<\/h1>/);
-		assert.match(lista, /<p class="proposito">Todas las tareas del proyecto, por columna\.<\/p>/);
+		assert.match(lista, /<p class="proposito">Las tareas del proyecto, agrupadas por funcionalidad\.<\/p>/);
 
 		const tablero = await (await pedir(montaje, "/tareas/kanban?estado=doing", { cookie })).text();
 		assert.match(tablero, /<a href="\/tareas\/kanban\?estado=doing" aria-current="page">Tablero<\/a>/);
@@ -1909,9 +1912,9 @@ test("Tareas es una sección con dos vistas, y el conmutador conserva los filtro
 			assert.ok(!cuerpo.toLowerCase().includes(">kanban<"), "la palabra kanban no se ve");
 		}
 
-		// Agrupar es del tablero: al volver a la lista no viaja.
-		const agrupado = await (await pedir(montaje, "/tareas/kanban?agrupar=funcionalidad", { cookie })).text();
-		assert.match(agrupado, /<a href="\/tareas">Lista<\/a>/);
+		// Las dos vistas se agrupan igual: la agrupación viaja con el conmutador.
+		const porColumnas = await (await pedir(montaje, "/tareas/kanban?agrupar=no", { cookie })).text();
+		assert.match(porColumnas, /<a href="\/tareas\?agrupar=no">Lista<\/a>/);
 	} finally {
 		await montaje.cerrar();
 	}

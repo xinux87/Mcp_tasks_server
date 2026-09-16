@@ -453,17 +453,13 @@ const VISTAS: readonly { clave: "lista" | "tablero"; texto: string; ruta: string
 
 /**
  * El conmutador Lista | Tablero, a la izquierda de la fila de filtros. Los
- * filtros viajan con él, así que cambiar de vista no pierde lo que se estaba
- * mirando; `agrupar` se queda en el tablero, que es de donde es.
+ * filtros viajan con él, la agrupación incluida: las dos vistas se agrupan
+ * igual, así que cambiar de vista no pierde lo que se estaba mirando.
  */
 export function conmutadorVistas(actual: "lista" | "tablero", prefijo: string, consulta: URLSearchParams): Html {
 	return html`<nav class="vistas" aria-label="Cómo ver las tareas">
 			${VISTAS.map((vista) => {
-				const suya = new URLSearchParams(consulta);
-				if (vista.clave === "lista") {
-					suya.delete("agrupar");
-				}
-				const texto = suya.toString();
+				const texto = consulta.toString();
 				const base = `${prefijo}${vista.ruta}`;
 				return html`<a href="${texto === "" ? base : `${base}?${texto}`}"${vista.clave === actual ? raw(' aria-current="page"') : ""}>${vista.texto}</a>`;
 			})}

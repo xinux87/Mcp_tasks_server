@@ -174,10 +174,15 @@ test("una parte creada desde la web hereda la rama y aparece en el tablero de su
 		assert.match(tablero, /data-id="T-0002"/);
 		assert.match(tablero, /<span class="progreso-texto">partes 0\/1<\/span>/);
 
-		// Y en la lista global, la parte lleva el enlace a su funcionalidad.
+		// En la lista agrupada, la funcionalidad es la cabecera de su franja.
 		const lista = await ver(montaje, cookie, "/tareas");
-		assert.match(lista, /<a class="parte-de" href="\/tareas\/T-0001">Listados para comerciales<\/a>/);
-		assert.match(lista, /<span class="insignia tipo-funcionalidad color-azul">Funcionalidad 0\/1<\/span>/);
+		assert.match(lista, /<section class="franja" data-padre="T-0001">/);
+		assert.match(lista, /<h2><a href="\/tareas\/T-0001">Listados para comerciales<\/a><\/h2>/);
+
+		// Y por columnas, la parte lleva el enlace a su funcionalidad.
+		const porColumnas = await ver(montaje, cookie, "/tareas?agrupar=no");
+		assert.match(porColumnas, /<a class="parte-de" href="\/tareas\/T-0001">Listados para comerciales<\/a>/);
+		assert.match(porColumnas, /<span class="insignia tipo-funcionalidad color-azul">Funcionalidad 0\/1<\/span>/);
 	} finally {
 		await montaje.cerrar();
 	}

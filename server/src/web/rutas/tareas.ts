@@ -35,13 +35,10 @@ import {
 	COLOR_ESTADO,
 	chipProyecto,
 	chipUsuario,
-	conmutadorVistas,
 	edadEnColumna,
 	enlaceFuncionalidad,
 	esperaPorTi,
 	etiqueta,
-	filtroSelect,
-	filtrosRapidos,
 	fraseDeAccion,
 	type Miga,
 	muestraEdad,
@@ -91,19 +88,19 @@ import {
 	type RespuestaHtml,
 } from "../plantilla.ts";
 import { type DependenciasWeb, destinoSeguro, usuarioActual } from "../sesion.ts";
-import { NOMBRE_COLUMNA, NOMBRE_ESTADO, NOMBRE_FASE, NOMBRE_MARCA, VOLVER_A_DEFINIR } from "../vocabulario.ts";
+import { NOMBRE_COLUMNA, NOMBRE_ESTADO, NOMBRE_FASE, VOLVER_A_DEFINIR } from "../vocabulario.ts";
 import { paginaBandeja } from "./bandeja.ts";
 import {
-	consultaDe,
-	type Filtros,
+	enCarriles,
+	filaFiltros,
 	filtroDeIndice,
 	filtrosDe,
+	franjasDe,
 	MARCAS,
 	migasDeTareas,
-	opcionesFuncionalidad,
-	opcionesProyecto,
 	PROPOSITO_TAREAS,
 	progresoDe,
+	seccionFranja,
 	tablero,
 } from "./kanban.ts";
 import { navProyectos, prefijo, proyectoActual, proyectoDeLaBarra, proyectoDeTrabajo } from "./proyectos.ts";
@@ -485,6 +482,7 @@ function filaTarea(
 	creadorDe: Creador,
 	deQuien: Funcionalidades,
 	claves: Claves,
+	conEstado: boolean,
 ): Html {
 	const tarea = buscarTarea(db, item.id);
 	const creador =
@@ -494,6 +492,7 @@ function filaTarea(
 	const funcionalidad = item.padreId === null ? undefined : deQuien.get(item.padreId);
 	const proyecto = claves?.get(item.proyectoId);
 	return html`<tr>
+			${conEstado ? html`<td>${insigniaEstado(item.estado)}</td>` : html``}
 			<td>${enlaceTarea(item.id)} ${proyecto === undefined ? html`` : chipProyecto(proyecto)}</td>
 			<td>
 				${esperaPorTi(item.estado, item.marcas)}${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas)}${item.titulo} ${progresoDe(item)}
@@ -514,12 +513,18 @@ function filaTarea(
 /** El proyecto de cada fila, solo en la vista cruzada: acotada sobraría. */
 type Claves = Map<number, Proyecto> | null;
 
+/**
+ * La tabla de la lista. Agrupada por funcionalidad las tareas de una franja
+ * están en columnas distintas, así que la columna Estado va delante; por
+ * columnas la enseña el rótulo del grupo y sobraría en cada fila.
+ */
 function tablaLista(
 	db: DatabaseSync,
 	items: ItemIndice[],
 	creadorDe: Creador,
 	deQuien: Funcionalidades,
 	claves: Claves,
+	conEstado = false,
 ): Html {
 	if (items.length === 0) {
 		return html`<p class="silencio">Ninguna.</p>`;
@@ -528,11 +533,12 @@ function tablaLista(
 			<table>
 				<thead>
 					<tr>
+						${conEstado ? html`<th>Estado</th>` : html``}
 						<th>Id</th><th>Título</th><th>Análisis</th><th>Ejecución</th>
 						<th class="numero">Tokens</th><th>Creada por</th><th>En columna</th>
 					</tr>
 				</thead>
-				<tbody>${items.map((item) => filaTarea(db, item, creadorDe, deQuien, claves))}</tbody>
+				<tbody>${items.map((item) => filaTarea(db, item, creadorDe, deQuien, claves, conEstado))}</tbody>
 			</table>
 		</div>`;
 }
@@ -582,61 +588,6 @@ function funcionalidadesDe(db: DatabaseSync, items: ItemIndice[]): Funcionalidad
 		}
 	}
 	return titulos;
-}
-
-/**
- * La fila de filtros: desplegables compactos y nada más. «Quitar filtros» solo
- * aparece cuando hay algo que quitar; si no, sería un enlace que no hace nada.
- */
-function formularioFiltros(
-	db: DatabaseSync,
-	activos: TerminalListado[],
-	filtros: Filtros,
-	acotado: Proyecto | undefined,
-): Html {
-	const { estado, terminal, marca, padre } = filtros;
-	const base = `${prefijo(acotado)}/tareas`;
-	const hayFiltro =
-		estado !== "" ||
-		terminal !== "" ||
-		marca !== "" ||
-		padre !== "" ||
-		filtros.rapido !== "" ||
-		filtros.q !== "" ||
-		(acotado === undefined && filtros.proyecto !== "");
-	return html`<div class="fila-filtros">
-		${conmutadorVistas("lista", prefijo(acotado), consultaDe(filtros, acotado))}
-		${filtrosRapidos(filtros.rapido, base, consultaDe(filtros, acotado))}
-		<form class="filtros" method="get" action="${base}">
-			${filtros.rapido === "" ? html`` : html`<input type="hidden" name="rapido" value="${filtros.rapido}">`}
-			<input type="search" name="q" value="${filtros.q}" placeholder="Buscar">
-			${acotado !== undefined ? html`` : filtroSelect(opcionesProyecto(db, filtros.proyecto))}
-			${filtroSelect({
-				nombre: "estado",
-				titulo: "Estado",
-				todas: "todos",
-				valores: ESTADOS.map((valor) => ({ valor, texto: NOMBRE_ESTADO[valor] })),
-				seleccionado: estado,
-			})}
-			${filtroSelect({
-				nombre: "terminal",
-				titulo: "Terminal",
-				todas: "todos",
-				valores: activos.map((activo) => ({ valor: String(activo.id), texto: activo.nombre })),
-				seleccionado: terminal,
-			})}
-			${filtroSelect({
-				nombre: "marca",
-				titulo: "Marca",
-				todas: "todas",
-				valores: MARCAS.map((valor) => ({ valor, texto: NOMBRE_MARCA[valor] })),
-				seleccionado: marca,
-			})}
-			${filtroSelect(opcionesFuncionalidad(db, padre))}
-			<button type="submit" class="pequeno">Filtrar</button>
-			${hayFiltro ? html`<a class="quitar" href="${base}">Quitar filtros</a>` : html``}
-		</form>
-	</div>`;
 }
 
 // --- la ficha ----------------------------------------------------------------
@@ -1097,7 +1048,6 @@ function paginaNoEncontrada(c: Context, deps: DependenciasWeb, mensaje: string):
 
 function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	const { db } = deps;
-	const activos = terminalesActivos(db);
 	const acotado = proyectoActual(c);
 	const filtros = filtrosDe(c);
 	const padreId = idONull(filtros.padre);
@@ -1119,20 +1069,39 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	// Un solo buscador para toda la tabla: la lista pinta una fila por tarea y
 	// no puede consultar usuarios y terminales en cada una.
 	const creadorDe = buscadorDeCreador(db);
-	const deQuien = funcionalidadesDe(db, items);
+	// Agrupada, la cabecera de cada franja ya dice de quién son sus partes: las
+	// filas no lo repiten y no hay títulos que buscar.
+	const carriles = enCarriles(filtros);
+	const deQuien: Funcionalidades = carriles ? new Map() : funcionalidadesDe(db, items);
 	// En la vista acotada el proyecto es el de la página: el chip solo repetiría.
 	const claves = acotado === undefined ? new Map(listarProyectos(db).map((cual) => [cual.id, cual])) : null;
-	const cuerpo = html`${formularioFiltros(db, activos, filtros, acotado)}
-		${COLUMNAS.map((estado) =>
+	// Los grupos por columna, que son lo de dentro de «Sueltas» y toda la lista
+	// cuando no se agrupa.
+	const porColumna = (suyos: ItemIndice[]): Html =>
+		html`${COLUMNAS.map((estado) =>
 			grupoColumna(
 				db,
 				estado,
-				items.filter((item) => item.estado === estado),
+				suyos.filter((item) => item.estado === estado),
 				creadorDe,
 				deQuien,
 				claves,
 			),
 		)}`;
+	// Agrupada, cada funcionalidad es una franja con la tabla de sus partes, y
+	// «Sueltas» cierra con los grupos por columna de siempre.
+	const cuerpo = html`${filaFiltros("lista", filtros, acotado)}
+		${
+			carriles
+				? franjasDe(db, items).map(({ cual, items: suyos }) =>
+						seccionFranja(
+							cual,
+							claves,
+							cual === null ? porColumna(suyos) : tablaLista(db, suyos, creadorDe, deQuien, claves, true),
+						),
+					)
+				: porColumna(items)
+		}`;
 	// `vista` y `revision` son lo que el cliente necesita para refrescarse: la
 	// lista se recarga entera cuando sube la revisión.
 	return c.html(

@@ -1133,10 +1133,11 @@ button.enlace:hover {
 	z-index: 30;
 }
 
-/* Carriles del kanban */
+/* Carriles por funcionalidad */
 
-/* Agrupado por funcionalidad, el tablero es una franja por funcionalidad más
-   «Sueltas»: la cabecera de ancho completo y debajo las columnas de siempre. */
+/* Agrupados, el tablero y la lista son una franja por funcionalidad más
+   «Sueltas»: la misma cabecera de ancho completo y, debajo, las columnas de
+   siempre en el tablero y la tabla de sus partes en la lista. */
 .franja + .franja {
 	margin-top: 1.5rem;
 }

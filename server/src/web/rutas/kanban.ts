@@ -1,7 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Context, Hono } from "hono";
-import { html, raw } from "hono/html";
-import { type TerminalListado, terminalesActivos } from "../../db/admin.ts";
+import { html } from "hono/html";
 import { revisionActual } from "../../db/consultas.ts";
 import { dependenciasDeVarias } from "../../db/dependencias.ts";
 import { buscarProyectoPorClave, listarProyectos, type Proyecto } from "../../db/proyectos.ts";
@@ -30,7 +29,6 @@ import {
 	enlaceFuncionalidad,
 	esperaPorElHumano,
 	esperaPorTi,
-	filtroSelect,
 	filtrosRapidos,
 	type Miga,
 	type OpcionesFiltro,
@@ -49,7 +47,6 @@ import {
 	type RespuestaHtml,
 } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
-import { NOMBRE_MARCA } from "../vocabulario.ts";
 import { navProyectos, prefijo, proyectoActual, proyectoDeLaBarra } from "./proyectos.ts";
 
 /** Las marcas por las que se puede filtrar, en el orden en que se muestran. */
@@ -66,7 +63,7 @@ export const MARCAS: readonly Marca[] = [
 const CERRADAS_VISIBLES = 10;
 
 /** Para qué sirve la sección Tareas. La comparten sus dos vistas. */
-export const PROPOSITO_TAREAS = "Todas las tareas del proyecto, por columna.";
+export const PROPOSITO_TAREAS = "Las tareas del proyecto, agrupadas por funcionalidad.";
 
 /** `DEFAULT › Tareas` cuando la vista está acotada; sin proyecto no hay camino que contar. */
 export function migasDeTareas(acotado: Proyecto | undefined): Miga[] | undefined {
@@ -112,18 +109,25 @@ export type Filtros = {
 	/** Lo que se busca en el título y en la descripción. */
 	q: string;
 	/**
-	 * Cómo se agrupa el tablero: `funcionalidad` lo parte en carriles. Es
-	 * opcional porque el tablero de la ficha de una funcionalidad ya está
-	 * acotado a sus partes y nunca se agrupa.
+	 * Cómo se agrupan la lista y el tablero: en carriles por funcionalidad, que
+	 * es lo de serie, o `no` para verlos por columnas.
 	 */
 	agrupar?: string;
 };
 
-/** El único agrupamiento que hay: una franja por funcionalidad más «Sueltas». */
-const POR_FUNCIONALIDAD = "funcionalidad";
+/** Lo que pide el tablero y la lista por columnas, sin carriles: `?agrupar=no`. */
+const SIN_AGRUPAR = "no";
 
-function enCarriles(filtros: Filtros): boolean {
-	return filtros.agrupar === POR_FUNCIONALIDAD;
+/** Las dos vistas de la sección Tareas, por la ruta de cada una. */
+const RUTA_VISTA = { lista: "/tareas", tablero: "/tareas/kanban" } as const;
+
+/**
+ * Agrupar por funcionalidad es lo de serie: una funcionalidad agrupa tareas y
+ * así se ve. Un tablero acotado a una funcionalidad ya son sus partes, así que
+ * ahí no hay nada que agrupar.
+ */
+export function enCarriles(filtros: Filtros): boolean {
+	return filtros.padre === "" && filtros.agrupar !== SIN_AGRUPAR;
 }
 
 /**
@@ -193,11 +197,6 @@ function tareasFiltradas(db: DatabaseSync, filtros: Filtros): ItemIndice[] {
 	});
 }
 
-/** Las funcionalidades vivas, que son por las que tiene sentido filtrar. */
-export function funcionalidadesAbiertas(db: DatabaseSync): ItemIndice[] {
-	return listarTareas(db).filter((item) => item.tipo === "funcionalidad" && item.estado !== "finished");
-}
-
 /**
  * La dirección con la que el cliente vuelve a pedir este mismo fragmento. En
  * una vista acotada el proyecto ya va en la ruta, así que no se repite en la
@@ -212,57 +211,39 @@ function fuenteDe(filtros: Filtros, acotado: Proyecto | undefined): string {
 // --- trozos de página --------------------------------------------------------
 
 /**
- * El conmutador de carriles, al lado de los filtros rápidos y con la misma
- * pinta. Va en la dirección como un filtro más, así que el refresco en vivo y
- * los demás conmutadores lo conservan; puesto, el enlace lo quita.
+ * El conmutador de agrupación, al lado de los filtros rápidos y con la misma
+ * pinta. Dice a qué se va, no dónde se está: agrupado lleva a «Por columnas» y
+ * por columnas, a «Agrupar por funcionalidad». Va en la dirección como un
+ * filtro más, así que el refresco en vivo y los demás conmutadores lo conservan.
  */
-function conmutadorCarriles(filtros: Filtros, acotado: Proyecto | undefined): Html {
-	const puesto = enCarriles(filtros);
-	const consulta = consultaDe({ ...filtros, agrupar: puesto ? "" : POR_FUNCIONALIDAD }, acotado).toString();
-	const base = `${prefijo(acotado)}/tareas/kanban`;
-	return html`<a class="boton-filtro" href="${consulta === "" ? base : `${base}?${consulta}`}"${puesto ? raw(' aria-current="true"') : ""}>${puesto ? "Sin agrupar" : "Agrupar por funcionalidad"}</a>`;
+function conmutadorCarriles(vista: Vista, filtros: Filtros, acotado: Proyecto | undefined): Html {
+	const agrupado = enCarriles(filtros);
+	const consulta = consultaDe({ ...filtros, agrupar: agrupado ? SIN_AGRUPAR : "" }, acotado).toString();
+	const base = `${prefijo(acotado)}${RUTA_VISTA[vista]}`;
+	return html`<a class="boton-filtro" href="${consulta === "" ? base : `${base}?${consulta}`}">${agrupado ? "Por columnas" : "Agrupar por funcionalidad"}</a>`;
 }
 
+/** Cuál de las dos vistas de Tareas se está pintando. */
+export type Vista = keyof typeof RUTA_VISTA;
+
 /**
- * La misma fila de filtros que la lista, sin `estado`: aquí el estado es la
- * columna. «Quitar filtros» solo sale cuando hay algo que quitar.
+ * La fila de filtros, la misma en la lista y en el tablero: cómo ver las
+ * tareas, los tres conmutadores de un clic, la agrupación y la búsqueda. No
+ * hay desplegables: el proyecto lo acota la URL y el estado es la columna.
  */
-function formularioFiltros(
-	db: DatabaseSync,
-	activos: TerminalListado[],
-	filtros: Filtros,
-	acotado: Proyecto | undefined,
-): Html {
-	const hayFiltro =
-		filtros.terminal !== "" || filtros.marca !== "" || filtros.padre !== "" || filtros.rapido !== "" || filtros.q !== "";
-	const base = `${prefijo(acotado)}/tareas/kanban`;
+export function filaFiltros(vista: Vista, filtros: Filtros, acotado: Proyecto | undefined): Html {
+	const base = `${prefijo(acotado)}${RUTA_VISTA[vista]}`;
+	// Lo único que se escribe es la búsqueda; el resto viaja escondido para que
+	// buscar no pierda el conmutador ni el ámbito.
+	const ocultos = consultaDe(filtros, acotado);
+	ocultos.delete("q");
 	return html`<div class="fila-filtros">
-		${conmutadorVistas("tablero", prefijo(acotado), consultaDe(filtros, acotado))}
+		${conmutadorVistas(vista, prefijo(acotado), consultaDe(filtros, acotado))}
 		${filtrosRapidos(filtros.rapido, base, consultaDe(filtros, acotado))}
-		${conmutadorCarriles(filtros, acotado)}
+		${conmutadorCarriles(vista, filtros, acotado)}
 		<form class="filtros" method="get" action="${base}">
-			${filtros.rapido === "" ? html`` : html`<input type="hidden" name="rapido" value="${filtros.rapido}">`}
-			${filtros.estado === "" ? html`` : html`<input type="hidden" name="estado" value="${filtros.estado}">`}
-			${enCarriles(filtros) ? html`<input type="hidden" name="agrupar" value="${POR_FUNCIONALIDAD}">` : html``}
+			${[...ocultos].map(([nombre, valor]) => html`<input type="hidden" name="${nombre}" value="${valor}">`)}
 			<input type="search" name="q" value="${filtros.q}" placeholder="Buscar">
-			${acotado !== undefined ? html`` : filtroSelect(opcionesProyecto(db, filtros.proyecto))}
-			${filtroSelect({
-				nombre: "terminal",
-				titulo: "Terminal",
-				todas: "todos",
-				valores: activos.map((activo) => ({ valor: String(activo.id), texto: activo.nombre })),
-				seleccionado: filtros.terminal,
-			})}
-			${filtroSelect({
-				nombre: "marca",
-				titulo: "Marca",
-				todas: "todas",
-				valores: MARCAS.map((valor) => ({ valor, texto: NOMBRE_MARCA[valor] })),
-				seleccionado: filtros.marca,
-			})}
-			${filtroSelect(opcionesFuncionalidad(db, filtros.padre))}
-			<button type="submit" class="pequeno">Filtrar</button>
-			${hayFiltro || (acotado === undefined && filtros.proyecto !== "") ? html`<a class="quitar" href="${base}">Quitar filtros</a>` : html``}
 		</form>
 	</div>`;
 }
@@ -280,23 +261,6 @@ export function opcionesProyecto(db: DatabaseSync, seleccionado: string): Opcion
 		valores: listarProyectos(db).map((proyecto) => ({
 			valor: proyecto.clave,
 			texto: `${proyecto.clave} — ${abreviar(proyecto.nombre, 24)}`,
-		})),
-		seleccionado,
-	};
-}
-
-/**
- * El desplegable de funcionalidades, compartido por la lista y el kanban: se
- * filtra por la funcionalidad de la que una tarea es parte.
- */
-export function opcionesFuncionalidad(db: DatabaseSync, seleccionado: string): OpcionesFiltro {
-	return {
-		nombre: "padre",
-		titulo: "Funcionalidad",
-		todas: "todas",
-		valores: funcionalidadesAbiertas(db).map((item) => ({
-			valor: formatearId(item.id),
-			texto: abreviar(item.titulo, 32),
 		})),
 		seleccionado,
 	};
@@ -462,8 +426,8 @@ function columnas(db: DatabaseSync, items: ItemIndice[], vecindad: Vecindad, rec
 		</div>`;
 }
 
-/** Un carril del tablero agrupado: su funcionalidad, o `null` en «Sueltas». */
-type Franja = {
+/** Un carril de la lista o del tablero: su funcionalidad, o `null` en «Sueltas». */
+export type Franja = {
 	cual: ItemIndice | null;
 	items: ItemIndice[];
 };
@@ -501,7 +465,7 @@ function funcionalidadDe(item: ItemIndice, todas: Map<number, ItemIndice>): Item
  * poco que quedara suyo cae en «Sueltas», que va siempre la última y siempre
  * se pinta.
  */
-function franjasDe(db: DatabaseSync, items: ItemIndice[]): Franja[] {
+export function franjasDe(db: DatabaseSync, items: ItemIndice[]): Franja[] {
 	const indice = listarTareas(db);
 	const todas = new Map(indice.map((tarea) => [tarea.id, tarea]));
 	const agrupadas = new Map<number, ItemIndice[]>();
@@ -539,14 +503,15 @@ function franjasDe(db: DatabaseSync, items: ItemIndice[]): Franja[] {
 }
 
 /**
- * Una franja: su cabecera de ancho completo y, debajo, las cinco columnas con
- * solo sus tareas. `data-padre` es su ámbito, el mismo que lleva el tablero de
- * la ficha de una funcionalidad: el cliente lo manda al soltar y el servidor
- * coloca la tarjeta entre hermanas. «Sueltas» no lo lleva.
+ * Una franja con lo que sea que se le ponga dentro: las cinco columnas en el
+ * tablero, la tabla de sus partes en la lista. La cabecera es la misma en las
+ * dos, y `data-padre` es su ámbito, el mismo que lleva el tablero de la ficha
+ * de una funcionalidad: el cliente lo manda al soltar y el servidor coloca la
+ * tarjeta entre hermanas. «Sueltas» no lo lleva.
  */
-function franja(db: DatabaseSync, { cual, items }: Franja, vecindad: Vecindad): Html {
+export function seccionFranja(cual: ItemIndice | null, proyectos: Map<number, Proyecto> | null, dentro: Html): Html {
 	const id = cual === null ? "" : formatearId(cual.id);
-	const proyecto = cual === null ? undefined : vecindad.proyectos?.get(cual.proyectoId);
+	const proyecto = cual === null ? undefined : proyectos?.get(cual.proyectoId);
 	const cabecera =
 		cual === null
 			? html`<h2>Sueltas</h2>`
@@ -557,8 +522,13 @@ function franja(db: DatabaseSync, { cual, items }: Franja, vecindad: Vecindad): 
 				${barraProgreso(cual.partesCerradas ?? 0, cual.partes ?? 0, "partes")}`;
 	return html`<section class="franja"${cual === null ? html`` : html` data-padre="${id}"`}>
 			<header class="franja-cabecera">${cabecera}</header>
-			${columnas(db, items, vecindad, cual === null)}
+			${dentro}
 		</section>`;
+}
+
+/** Una franja del tablero: su cabecera y, debajo, las cinco columnas con solo sus tareas. */
+function franja(db: DatabaseSync, { cual, items }: Franja, vecindad: Vecindad): Html {
+	return seccionFranja(cual, vecindad.proyectos, columnas(db, items, vecindad, cual === null));
 }
 
 /**
@@ -588,7 +558,7 @@ function paginaKanban(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	const { db } = deps;
 	const filtros = filtrosDe(c);
 	const acotado = proyectoActual(c);
-	const cuerpo = html`${formularioFiltros(db, terminalesActivos(db), filtros, acotado)}
+	const cuerpo = html`${filaFiltros("tablero", filtros, acotado)}
 		${tablero(db, filtros, acotado)}`;
 	// El tablero ocupa todo el ancho: cinco columnas no caben en 60 rem.
 	return c.html(
