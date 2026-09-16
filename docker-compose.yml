@@ -1,0 +1,32 @@
+# Despliegue de MCP Tareas con la imagen publicada, sin clonar ni construir.
+#
+# Junto a este archivo, un `.env` con al menos:
+#   SESSION_SECRET=$(openssl rand -hex 32)
+#   ADMIN_PASSWORD=cambiala          # solo se usa en el primer arranque
+#   BASE_URL=http://<ip-o-dominio>:9917
+#   DIRECCIONES=http://<ip-del-anfitrion>:9917   # si los terminales están en otra máquina
+#   DATOS=./datos                    # carpeta del anfitrión con la base de datos y todo lo de mcp-tareas
+#
+# La carpeta DATOS la escribe el usuario `node` (uid 1000) del contenedor. En
+# Linux, si la creas con otro usuario: sudo chown 1000:1000 <carpeta>. Copia de
+# seguridad: copiar esa carpeta con el servidor parado.
+#
+# Arranque: docker compose up -d
+# Actualizar: cambia VERSION en el .env (o aquí) y docker compose up -d
+
+services:
+  servidor:
+    image: ghcr.io/xinux87/mcp-tareas-server:${VERSION:-0.1.2}
+    ports:
+      - "${PORT:-9917}:3000"
+    environment:
+      - PORT=3000
+      - DATA_DIR=/data
+      - BASE_URL=${BASE_URL:-http://localhost:9917}
+      - SESSION_SECRET=${SESSION_SECRET:?falta SESSION_SECRET en .env}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?falta ADMIN_PASSWORD en .env, solo se usa en el primer arranque}
+      - DIRECCIONES
+      - AVISOS_URL
+    volumes:
+      - ${DATOS:-./datos}:/data
+    restart: unless-stopped

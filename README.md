@@ -116,7 +116,11 @@ docker build -t <registro>/mcp-tareas-server:0.1.0 .
 docker push <registro>/mcp-tareas-server:0.1.0
 ```
 
-Para usarla sin construir, `IMAGEN=<registro>/mcp-tareas-server:0.1.0 docker compose up` la descarga.
+Para usarla sin construir, `IMAGEN=<registro>/mcp-tareas-server:0.1.0 docker compose up` la descarga. Y para
+desplegarla en una máquina sin el repositorio, basta el [`docker-compose.yml`](docker-compose.yml) de la raíz
+con un `.env` al lado: tira de la imagen publicada en GHCR y no construye nada. La base de datos (SQLite, un
+solo archivo) y todo lo de mcp-tareas van en la carpeta que diga `DATOS` en el `.env` (`./datos` si no se dice);
+copiarla con el servidor parado es la copia de seguridad.
 
 ## Dónde está el detalle
 

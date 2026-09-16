@@ -991,6 +991,7 @@ LICENSE                    # MIT, la que declara el plugin
 | `SESSION_SECRET` | Firma de la cookie de sesión | obligatoria |
 | `ADMIN_PASSWORD` | Contraseña del primer usuario, solo en el primer arranque | obligatoria si no hay usuarios |
 | `DIRECCIONES` | URLs base adicionales por las que se llega al servidor, separadas por comas; se admiten en `Host` y salen en el tutorial | si falta, se detectan las IPs privadas del proceso |
+| `DATOS` | Solo la lee `compose`, no el servidor: carpeta del anfitrión que se monta en `/data`, donde vive `tareas.sqlite`. Con una ruta, la base de datos queda en esa carpeta y se copia con el servidor parado; la escribe el uid 1000 | el volumen `datos` de Docker en `server/compose.yaml`; `./datos` en el `docker-compose.yml` de despliegue |
 | `AVISOS_URL` | URL a la que se envía por POST un aviso de texto cuando un agente deja algo esperando al humano. Ver «Avisos fuera de la web» | sin avisos |
 
 ### Comandos
