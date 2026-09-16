@@ -19,22 +19,28 @@ export function esColorUsuario(valor: string): valor is ColorUsuario {
 	return nombres.includes(valor);
 }
 
-/** Cuántos usuarios lleva cada color ahora mismo. */
-function usosPorColor(db: DatabaseSync): Map<string, number> {
+/**
+ * Las dos tablas que reparten color: los usuarios y los proyectos. La lista y
+ * el reparto son los mismos; lo único que cambia es a quién se le cuenta.
+ */
+export type TablaConColor = "usuarios" | "proyectos";
+
+/** Cuántas filas de la tabla llevan cada color ahora mismo. */
+function usosPorColor(db: DatabaseSync, tabla: TablaConColor): Map<string, number> {
 	const usos = new Map<string, number>();
-	for (const fila of sentencia(db, "SELECT color, COUNT(*) AS total FROM usuarios GROUP BY color").all()) {
+	for (const fila of sentencia(db, `SELECT color, COUNT(*) AS total FROM ${tabla} GROUP BY color`).all()) {
 		usos.set(texto(fila, "color"), entero(fila, "total"));
 	}
 	return usos;
 }
 
 /**
- * El color que se asigna a quien no elige ninguno: el menos usado y, en
- * empate, el primero de la lista. Con menos de ocho usuarios eso reparte un
- * color distinto a cada uno.
+ * El color que se asigna a quien no elige ninguno: el menos usado en su tabla
+ * y, en empate, el primero de la lista. Con menos de ocho filas eso reparte un
+ * color distinto a cada una.
  */
-export function colorMenosUsado(db: DatabaseSync): ColorUsuario {
-	const usos = usosPorColor(db);
+export function colorMenosUsado(db: DatabaseSync, tabla: TablaConColor = "usuarios"): ColorUsuario {
+	const usos = usosPorColor(db, tabla);
 	let elegido: ColorUsuario = COLORES_USUARIO[0];
 	let minimo = usos.get(elegido) ?? 0;
 	for (const color of COLORES_USUARIO) {
@@ -52,9 +58,13 @@ export function colorMenosUsado(db: DatabaseSync): ColorUsuario {
  * El color que se guarda: el que se eligió, si existe, o el menos usado cuando
  * no se eligió ninguno. Es la única puerta por la que entra un color.
  */
-export function colorElegido(conexion: DatabaseSync, color: string | undefined): ColorUsuario {
+export function colorElegido(
+	conexion: DatabaseSync,
+	color: string | undefined,
+	tabla: TablaConColor = "usuarios",
+): ColorUsuario {
 	if (color === undefined) {
-		return colorMenosUsado(conexion);
+		return colorMenosUsado(conexion, tabla);
 	}
 	if (!esColorUsuario(color)) {
 		throw new ErrorDeRegla("color_invalido", `«${color}» no es un color de usuario; son ${COLORES_USUARIO.join(", ")}.`);

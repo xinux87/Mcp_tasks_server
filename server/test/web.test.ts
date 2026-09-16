@@ -213,9 +213,9 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		// La descripción llega renderizada por markdown-it, no en crudo.
 		assert.match(cuerpoFicha, /<strong>negrita<\/strong>/);
 		assert.match(cuerpoFicha, /sin asignar/);
-		// Migas «PRI › Tareas › T-0001», con la última sin enlace.
-		assert.match(cuerpoFicha, /<nav class="migas"[^>]*>\s*<a href="\/p\/PRI\/tareas\/kanban">PRI<\/a>/);
-		assert.match(cuerpoFicha, /<a href="\/p\/PRI\/tareas">Tareas<\/a>/);
+		// Migas «DEFAULT › Tareas › T-0001», con la última sin enlace.
+		assert.match(cuerpoFicha, /<nav class="migas"[^>]*>\s*<a href="\/p\/DEFAULT\/tareas\/kanban">DEFAULT<\/a>/);
+		assert.match(cuerpoFicha, /<a href="\/p\/DEFAULT\/tareas">Tareas<\/a>/);
 		assert.match(cuerpoFicha, /<span>T-0001<\/span>/);
 		// Las propiedades, y solo la transición hacia delante que toca.
 		assert.match(cuerpoFicha, /<dt>Estado<\/dt>/);

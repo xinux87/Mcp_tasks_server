@@ -142,7 +142,7 @@ function cuantas(conexion: DatabaseSync, sql: string, ...parametros: number[]): 
 /**
  * Cambiar una tarea de proyecto solo vale si está sola: una parte vive con su
  * funcionalidad, una madre con sus hijas, y una dependencia no cruza de
- * repositorio. Devuelve el detalle del rastro, `proyecto: PRI → WEB`.
+ * repositorio. Devuelve el detalle del rastro, `proyecto: DEFAULT → WEB`.
  */
 function mudarDeProyecto(conexion: DatabaseSync, tarea: Tarea, proyectoId: number, padreId: number | null): string {
 	const destino = exigirProyectoPorId(conexion, proyectoId);

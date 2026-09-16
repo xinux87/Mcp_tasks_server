@@ -708,14 +708,14 @@ test("los conmutadores y la búsqueda filtran el tablero y se combinan con el pr
 		assert.ok(!enMarcha.includes("data-id="), "ninguna tarea está en marcha");
 
 		// Acotado a un proyecto, los conmutadores conservan su ruta y sus filtros.
-		const delProyecto = await (await pedir(montaje, "/p/PRI/tareas/kanban?q=csv", { cookie })).text();
+		const delProyecto = await (await pedir(montaje, "/p/DEFAULT/tareas/kanban?q=csv", { cookie })).text();
 		assert.match(delProyecto, /data-id="T-0001"/);
 		assert.ok(!delProyecto.includes('data-id="T-0002"'));
 		assert.match(
 			delProyecto,
-			/<a class="boton-filtro" href="\/p\/PRI\/tareas\/kanban\?q=csv&amp;rapido=espera">Espera por ti<\/a>/,
+			/<a class="boton-filtro" href="\/p\/DEFAULT\/tareas\/kanban\?q=csv&amp;rapido=espera">Espera por ti<\/a>/,
 		);
-		assert.match(delProyecto, /data-fuente="\/p\/PRI\/tareas\/kanban\/tablero\?q=csv"/);
+		assert.match(delProyecto, /data-fuente="\/p\/DEFAULT\/tareas\/kanban\/tablero\?q=csv"/);
 	} finally {
 		await montaje.cerrar();
 	}

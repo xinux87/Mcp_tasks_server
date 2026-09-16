@@ -28,13 +28,13 @@ const AYUDA = `Uso: node src/cli.ts <comando>
       Crea un usuario. Si no se pasa la contraseña se lee de ADMIN_PASSWORD.
 
   crear-proyecto <clave> <nombre>
-      Crea un proyecto. La clave son de dos a seis caracteres, mayúsculas y
+      Crea un proyecto. La clave son de dos a ocho caracteres, mayúsculas y
       cifras, empezando por letra; se fija al crearlo y no se cambia.
 
   crear-terminal <usuario> <nombre> <cuenta> [clave]
       Crea un terminal del usuario y escribe su token. El token se imprime
       una sola vez: la base de datos solo guarda su hash. La clave es la del
-      proyecto para el que trabaja; sin ella, PRI.
+      proyecto para el que trabaja; sin ella, DEFAULT.
 
   crear-tarea <usuario> <titulo> <descripcion>
               [--analisis <modelo>[@<terminal>]] [--ejecucion <modelo>[@<terminal>]]
@@ -261,7 +261,7 @@ function comandoCrearTerminal(argumentos: string[]): void {
 		const { valor, revision } = crearTerminalConToken(db, dueno.id, nombre, cuenta, ACTOR_CLI, undefined, proyecto?.id);
 		console.log(`terminal creado: ${valor.terminal.nombre} (id ${valor.terminal.id})`);
 		console.log(`cuenta: ${valor.terminal.cuenta}`);
-		console.log(`proyecto: ${proyecto?.clave ?? "PRI"}`);
+		console.log(`proyecto: ${proyecto?.clave ?? "DEFAULT"}`);
 		console.log(`revision: ${revision}`);
 		console.log("");
 		console.log("token (no se vuelve a mostrar):");

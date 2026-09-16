@@ -297,7 +297,7 @@ test("una tarea entera de principio a fin solo con las herramientas del MCP", as
 
 test("un terminal solo ve, toma y crea tareas de su proyecto", async () => {
 	const montaje = montar();
-	// Una tarea de PRI sin terminal: «sin terminal» significa «cualquier
+	// Una tarea de DEFAULT sin terminal: «sin terminal» significa «cualquier
 	// terminal de este proyecto», no cualquier terminal del servidor.
 	const suelta = crearTareaHumana(montaje.db, {
 		titulo: "Avisar cuando falle el export",
@@ -337,7 +337,7 @@ test("un terminal solo ve, toma y crea tareas de su proyecto", async () => {
 
 		// `leer_tarea` no se acota: una dependencia puede citar otro proyecto.
 		assert.match((await llamar(cliente, "leer_tarea", { id: "T-0003" })).texto, /^id: T-0003\nproyecto: WEB$/m);
-		assert.match((await llamar(cliente, "leer_tarea", { id: "T-0001" })).texto, /^id: T-0001\nproyecto: PRI$/m);
+		assert.match((await llamar(cliente, "leer_tarea", { id: "T-0001" })).texto, /^id: T-0001\nproyecto: DEFAULT$/m);
 	} finally {
 		await cliente.close();
 		await montaje.cerrar();

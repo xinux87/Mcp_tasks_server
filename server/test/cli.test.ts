@@ -102,7 +102,7 @@ test("el CLI crea proyectos y pone cada terminal en el suyo", () => {
 		assert.match(bien(dataDir, "crear-proyecto", "WEB", "La web"), /^proyecto creado: WEB · La web \(id 2\)$/m);
 
 		// Sin clave, el principal.
-		assert.match(bien(dataDir, "crear-terminal", "ana", "portatil-a", "ana@ejemplo.com"), /^proyecto: PRI$/m);
+		assert.match(bien(dataDir, "crear-terminal", "ana", "portatil-a", "ana@ejemplo.com"), /^proyecto: DEFAULT$/m);
 		assert.match(bien(dataDir, "crear-terminal", "ana", "portatil-web", "ana@ejemplo.com", "WEB"), /^proyecto: WEB$/m);
 
 		// Una clave que no existe se dice con su código, como cualquier regla.

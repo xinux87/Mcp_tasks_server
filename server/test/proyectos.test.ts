@@ -66,11 +66,11 @@ test("una base recién abierta trae el proyecto principal y solo ese", () => {
 		const proyectos = listarProyectos(db);
 		assert.equal(proyectos.length, 1);
 		assert.equal(proyectos[0]?.id, PROYECTO_PRINCIPAL);
-		assert.equal(proyectos[0]?.clave, "PRI");
-		assert.equal(proyectos[0]?.nombre, "Principal");
+		assert.equal(proyectos[0]?.clave, "DEFAULT");
+		assert.equal(proyectos[0]?.nombre, "Default");
 		assert.equal(proyectos[0]?.ramaPrincipal, "main");
 		// Lo crea la migración: el arranque no lo duplica ni escribe otro.
-		assert.equal(buscarProyectoPorClave(db, "PRI")?.id, PROYECTO_PRINCIPAL);
+		assert.equal(buscarProyectoPorClave(db, "DEFAULT")?.id, PROYECTO_PRINCIPAL);
 	} finally {
 		db.close();
 	}
@@ -93,11 +93,11 @@ test("las tareas y los terminales nacen en el proyecto principal si no se dice o
 
 // --- clave y repositorio ------------------------------------------------------
 
-test("la clave son de dos a seis caracteres en mayúsculas empezando por letra", () => {
-	for (const buena of ["PR", "PRI", "WEB", "API2", "A1B2C3"]) {
+test("la clave son de dos a ocho caracteres en mayúsculas empezando por letra", () => {
+	for (const buena of ["PR", "PRI", "WEB", "API2", "A1B2C3", "DEFAULT", "A1B2C3D4"]) {
 		assert.ok(esClaveDeProyecto(buena), `${buena} debería valer`);
 	}
-	for (const mala of ["", "P", "1PR", "pri", "PRI-2", "DEMASIADO", "PR I"]) {
+	for (const mala of ["", "P", "1PR", "pri", "PRI-2", "DEMASIADO", "A1B2C3D45", "PR I"]) {
 		assert.ok(!esClaveDeProyecto(mala), `${mala} no debería valer`);
 	}
 });
@@ -188,6 +188,38 @@ test("crear, editar y borrar un proyecto dejan rastro y no suben la revisión", 
 	}
 });
 
+test("el color del proyecto se reparte como el de los usuarios y se puede cambiar", () => {
+	const banco = montar();
+	try {
+		// El proyecto por defecto ya lleva el primero de la lista: el que se
+		// crea ahora se queda con el siguiente menos usado.
+		assert.equal(buscarProyectoPorClave(banco.db, "DEFAULT")?.color, "azul");
+		assert.equal(crearProyecto(banco.db, { clave: "WEB", nombre: "La web" }).color, "verde");
+		// El elegido se respeta aunque no sea el menos usado.
+		assert.equal(crearProyecto(banco.db, { clave: "API", nombre: "La api", color: "rojo" }).color, "rojo");
+		assert.equal(
+			codigoDe(() => crearProyecto(banco.db, { clave: "OTRO", nombre: "Otro", color: "gris" })),
+			"color_invalido",
+		);
+
+		const revision = revisionActual(banco.db);
+		const web = exigirProyectoPorClave(banco.db, "WEB");
+		assert.equal(
+			editarProyecto(banco.db, { proyectoId: web.id, nombre: web.nombre, color: "azul", actor: ACTOR }).color,
+			"azul",
+		);
+		assert.equal(actividadDe(banco.db, "proyecto", web.id).at(-1)?.detalle, "color: verde → azul");
+		// El color es de la web: ningún agente lo ve.
+		assert.equal(revisionActual(banco.db), revision);
+		assert.equal(
+			codigoDe(() => editarProyecto(banco.db, { proyectoId: web.id, nombre: web.nombre, color: "fucsia" })),
+			"color_invalido",
+		);
+	} finally {
+		banco.cerrar();
+	}
+});
+
 test("sin actor un proyecto no escribe actividad, y la clave no se edita", () => {
 	const banco = montar();
 	try {
@@ -236,7 +268,7 @@ test("registrar un terminal guarda su carpeta y devuelve su proyecto", () => {
 	const banco = montar();
 	try {
 		const registrado = registrarTerminal(banco.db, banco.portatil, { ruta: "/home/ana/repo" });
-		assert.equal(registrado.proyecto.clave, "PRI");
+		assert.equal(registrado.proyecto.clave, "DEFAULT");
 		assert.equal(registrado.terminal.ruta, "/home/ana/repo");
 		assert.notEqual(registrado.terminal.conectadoEn, null);
 		// Es telemetría: no sube la revisión.
@@ -281,7 +313,7 @@ test("un terminal en otro repositorio no se registra: el proyecto no coincide", 
 		const bien = registrarTerminal(banco.db, terminalId, { repositorio: "https://host/x/y/" });
 		assert.equal(bien.proyecto.clave, "WEB");
 		// Y sin repositorio reportado no se comprueba nada.
-		assert.equal(registrarTerminal(banco.db, banco.portatil, {}).proyecto.clave, "PRI");
+		assert.equal(registrarTerminal(banco.db, banco.portatil, {}).proyecto.clave, "DEFAULT");
 	} finally {
 		banco.cerrar();
 	}
@@ -303,7 +335,7 @@ test("el alta de un terminal elige proyecto y la lista lo enseña con su ruta", 
 		assert.equal(fila?.proyectoId, web.id);
 		assert.equal(fila?.ruta, "/srv/web");
 		// Los de siempre siguen en el principal.
-		assert.equal(listarTerminales(banco.db).find((otro) => otro.id === banco.portatil)?.proyecto, "PRI");
+		assert.equal(listarTerminales(banco.db).find((otro) => otro.id === banco.portatil)?.proyecto, "DEFAULT");
 	} finally {
 		banco.cerrar();
 	}
@@ -547,7 +579,7 @@ test("una tarea suelta cambia de proyecto en backlog y pierde sus terminales", (
 		assert.equal(mudada.analisisModelo, "sonnet");
 		const rastro = actividadDe(banco.db, "tarea", tarea.id).at(-1);
 		assert.equal(rastro?.accion, "editar_tarea");
-		assert.match(String(rastro?.detalle), /proyecto: PRI → WEB/);
+		assert.match(String(rastro?.detalle), /proyecto: DEFAULT → WEB/);
 	} finally {
 		banco.cerrar();
 	}

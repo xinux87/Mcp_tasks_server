@@ -94,7 +94,7 @@ test("la vista acotada solo trae las tareas de su proyecto y la cruzada las ense
 			const cuerpo = await (await pedir(montaje, ruta, { cookie })).text();
 			assert.match(cuerpo, /Tarea del principal/, `${ruta} no trae la del principal`);
 			assert.match(cuerpo, /Tarea de la web/, `${ruta} no trae la de la web`);
-			assert.ok(cuerpo.includes(chip("PRI")), `${ruta} no pinta el chip de PRI`);
+			assert.ok(cuerpo.includes(chip("DEFAULT")), `${ruta} no pinta el chip de DEFAULT`);
 			assert.ok(cuerpo.includes(chip("WEB")), `${ruta} no pinta el chip de WEB`);
 			assert.match(cuerpo, /<select name="proyecto">/, `${ruta} no trae el filtro por proyecto`);
 		}
@@ -143,9 +143,9 @@ test("una clave de proyecto que no existe es un 404", async () => {
 		}
 
 		// Y sin sesión, la vista acotada pide entrar como el resto de la web.
-		const sinSesion = await pedir(montaje, "/p/PRI/tareas");
+		const sinSesion = await pedir(montaje, "/p/DEFAULT/tareas");
 		assert.equal(sinSesion.status, 302);
-		assert.equal(sinSesion.headers.get("location"), "/login?volver=%2Fp%2FPRI%2Ftareas");
+		assert.equal(sinSesion.headers.get("location"), "/login?volver=%2Fp%2FDEFAULT%2Ftareas");
 	} finally {
 		await montaje.cerrar();
 	}
@@ -212,7 +212,7 @@ test("la página de proyectos crea, edita y borra, con sus tres errores de borra
 
 		// La tabla, con sus cuentas y quién lo creó.
 		const lista = await (await pedir(montaje, "/proyectos", { cookie })).text();
-		assert.ok(lista.includes(chip("PRI")) && lista.includes(chip("WEB")));
+		assert.ok(lista.includes(chip("DEFAULT")) && lista.includes(chip("WEB")));
 		assert.match(lista, /<th>Rama principal<\/th>/);
 		assert.match(lista, /<th class="numero">Tareas abiertas<\/th>/);
 		assert.match(lista, /<span class="chip color-azul"><span class="inicial">A<\/span>ana<\/span>/);
@@ -280,7 +280,7 @@ test("el terminal se da de alta en un proyecto y la lista lo enseña", async () 
 
 		// El alta pide el proyecto, con el principal preseleccionado.
 		const formulario = await (await pedir(montaje, "/terminales", { cookie })).text();
-		assert.match(formulario, /<option value="1" selected>PRI — Principal<\/option>/);
+		assert.match(formulario, /<option value="1" selected>DEFAULT — Default<\/option>/);
 		assert.match(formulario, /<option value="2">WEB — La web nueva<\/option>/);
 
 		const alta = await pedir(montaje, "/terminales", {
@@ -324,7 +324,7 @@ test("la ficha enseña el proyecto y el alta acotada crea la tarea en él", asyn
 
 		// Desde la vista cruzada se elige, con el principal puesto.
 		const cruzada = await (await pedir(montaje, "/tareas/nueva", { cookie })).text();
-		assert.match(cruzada, /<option value="1" selected>PRI — Principal<\/option>/);
+		assert.match(cruzada, /<option value="1" selected>DEFAULT — Default<\/option>/);
 		const enLaWeb = await pedir(montaje, "/tareas", {
 			cookie,
 			formulario: {
@@ -362,7 +362,7 @@ test("arrastrar en el tablero de un proyecto coloca entre las suyas y no mueve l
 	try {
 		const cookie = await entrar(montaje);
 		const web = crearProyecto(montaje.db, { clave: "WEB", nombre: "La web nueva" }).id;
-		// La columna backlog queda: T-0001 (PRI), T-0002 (WEB), T-0003 (WEB).
+		// La columna backlog queda: T-0001 (DEFAULT), T-0002 (WEB), T-0003 (WEB).
 		crearTareaHumana(montaje.db, { titulo: "Del principal", descripcion: "d", usuarioId: 1 });
 		crearTareaHumana(montaje.db, { titulo: "Web una", descripcion: "d", usuarioId: 1, proyectoId: web });
 		crearTareaHumana(montaje.db, { titulo: "Web dos", descripcion: "d", usuarioId: 1, proyectoId: web });

@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
 import { type Actor, registrarActividad } from "./actividad.ts";
 import { ahora, enTransaccion, entero, idInsertado, sentencia, texto, textoOpcional } from "./base.ts";
+import { type ColorUsuario, colorElegido, esColorUsuario } from "./colores.ts";
 
 /**
  * Proyectos: un repositorio que se trabaja desde una o varias carpetas
@@ -17,7 +18,7 @@ export const PROYECTO_PRINCIPAL = 1;
 
 export type Proyecto = {
 	id: number;
-	/** `PRI`, `WEB`, `API2`. Se fija al crear y no se cambia. */
+	/** `DEFAULT`, `WEB`, `API2`. Se fija al crear y no se cambia. */
 	clave: string;
 	nombre: string;
 	descripcion: string;
@@ -27,10 +28,12 @@ export type Proyecto = {
 	ramaPrincipal: string;
 	/** Comando que tiene que pasar la parte que integra la rama. Opcional. */
 	verificacion: string | null;
+	/** El color de las siglas del proyecto en su chip. */
+	color: ColorUsuario;
 	creado: string;
 };
 
-const COLUMNAS = "id, clave, nombre, descripcion, repositorio, rama_principal, verificacion, creado";
+const COLUMNAS = "id, clave, nombre, descripcion, repositorio, rama_principal, verificacion, color, creado";
 
 function comoProyecto(fila: Record<string, unknown>): Proyecto {
 	return {
@@ -41,13 +44,23 @@ function comoProyecto(fila: Record<string, unknown>): Proyecto {
 		repositorio: textoOpcional(fila, "repositorio"),
 		ramaPrincipal: texto(fila, "rama_principal"),
 		verificacion: textoOpcional(fila, "verificacion"),
+		color: color(fila),
 		creado: texto(fila, "creado"),
 	};
 }
 
-/** De dos a seis caracteres, mayúsculas y cifras, empezando por letra. */
+/** El color de la fila, que la columna guarda con `CHECK`: nunca es otra cosa. */
+function color(fila: Record<string, unknown>): ColorUsuario {
+	const valor = texto(fila, "color");
+	if (!esColorUsuario(valor)) {
+		throw new Error(`el proyecto tiene un color que no existe: ${valor}`);
+	}
+	return valor;
+}
+
+/** De dos a ocho caracteres, mayúsculas y cifras, empezando por letra. */
 export function esClaveDeProyecto(valor: string): boolean {
-	return /^[A-Z][A-Z0-9]{1,5}$/.test(valor);
+	return /^[A-Z][A-Z0-9]{1,7}$/.test(valor);
 }
 
 /**
@@ -126,6 +139,8 @@ export type NuevoProyecto = {
 	repositorio?: string | null;
 	ramaPrincipal?: string | null;
 	verificacion?: string | null;
+	/** Sin elegirlo, el menos usado entre los proyectos. */
+	color?: string;
 	/** Sin actor no se escribe actividad, como en el resto de altas. */
 	actor?: Actor;
 };
@@ -140,7 +155,7 @@ export function crearProyecto(db: DatabaseSync, datos: NuevoProyecto): Proyecto 
 	if (!esClaveDeProyecto(clave)) {
 		throw new ErrorDeRegla(
 			"clave_invalida",
-			"La clave del proyecto son de dos a seis caracteres, mayúsculas y cifras, empezando por letra.",
+			"La clave del proyecto son de dos a ocho caracteres, mayúsculas y cifras, empezando por letra.",
 		);
 	}
 	if (nombre === "") {
@@ -152,8 +167,8 @@ export function crearProyecto(db: DatabaseSync, datos: NuevoProyecto): Proyecto 
 		}
 		const cambios = sentencia(
 			conexion,
-			`INSERT INTO proyectos (clave, nombre, descripcion, repositorio, rama_principal, verificacion, creado)
-				VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO proyectos (clave, nombre, descripcion, repositorio, rama_principal, verificacion, color, creado)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		).run(
 			clave,
 			nombre,
@@ -161,6 +176,7 @@ export function crearProyecto(db: DatabaseSync, datos: NuevoProyecto): Proyecto 
 			normalizarRepositorio(datos.repositorio),
 			opcional(datos.ramaPrincipal) ?? "main",
 			opcional(datos.verificacion),
+			colorElegido(conexion, datos.color, "proyectos"),
 			ahora(),
 		);
 		const creado = buscarProyectoPorId(conexion, idInsertado(cambios.lastInsertRowid));
@@ -188,6 +204,7 @@ export type EdicionProyecto = {
 	repositorio?: string | null;
 	ramaPrincipal?: string | null;
 	verificacion?: string | null;
+	color?: string;
 	actor?: Actor;
 };
 
@@ -217,11 +234,12 @@ export function editarProyecto(db: DatabaseSync, datos: EdicionProyecto): Proyec
 			repositorio: datos.repositorio === undefined ? antes.repositorio : normalizarRepositorio(datos.repositorio),
 			ramaPrincipal: datos.ramaPrincipal === undefined ? antes.ramaPrincipal : (opcional(datos.ramaPrincipal) ?? "main"),
 			verificacion: datos.verificacion === undefined ? antes.verificacion : opcional(datos.verificacion),
+			color: datos.color === undefined ? antes.color : colorElegido(conexion, datos.color, "proyectos"),
 		};
 		sentencia(
 			conexion,
 			`UPDATE proyectos
-				SET nombre = ?, descripcion = ?, repositorio = ?, rama_principal = ?, verificacion = ?
+				SET nombre = ?, descripcion = ?, repositorio = ?, rama_principal = ?, verificacion = ?, color = ?
 				WHERE id = ?`,
 		).run(
 			despues.nombre,
@@ -229,6 +247,7 @@ export function editarProyecto(db: DatabaseSync, datos: EdicionProyecto): Proyec
 			despues.repositorio,
 			despues.ramaPrincipal,
 			despues.verificacion,
+			despues.color,
 			antes.id,
 		);
 		const cambios = [
@@ -238,6 +257,7 @@ export function editarProyecto(db: DatabaseSync, datos: EdicionProyecto): Proyec
 			cambioDeTexto("repositorio", antes.repositorio, despues.repositorio),
 			cambioDeTexto("rama principal", antes.ramaPrincipal, despues.ramaPrincipal),
 			cambioDeTexto("verificación", antes.verificacion, despues.verificacion),
+			cambioDeTexto("color", antes.color, despues.color),
 		].filter((cambio) => cambio !== null);
 		// Guardar sin tocar nada no es una acción: no deja rastro.
 		if (datos.actor !== undefined && cambios.length > 0) {

@@ -68,7 +68,7 @@ const CERRADAS_VISIBLES = 10;
 /** Para qué sirve la sección Tareas. La comparten sus dos vistas. */
 export const PROPOSITO_TAREAS = "Todas las tareas del proyecto, por columna.";
 
-/** `PRI › Tareas` cuando la vista está acotada; sin proyecto no hay camino que contar. */
+/** `DEFAULT › Tareas` cuando la vista está acotada; sin proyecto no hay camino que contar. */
 export function migasDeTareas(acotado: Proyecto | undefined): Miga[] | undefined {
 	return acotado === undefined
 		? undefined

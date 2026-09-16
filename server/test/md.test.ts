@@ -140,7 +140,7 @@ function ejemplo(banco: Banco): { padre: number; hija: number } {
 
 const DOCUMENTO_ESPERADO = `---
 id: T-0001
-proyecto: PRI
+proyecto: DEFAULT
 titulo: "Exportar el listado de clientes a CSV"
 tipo: tarea
 estado: done
@@ -258,7 +258,7 @@ test("el documento de una hija lleva su padre y el de una tarea nueva va vacío"
 			documentoNueva,
 			`---
 id: T-0004
-proyecto: PRI
+proyecto: DEFAULT
 titulo: "Una nueva"
 tipo: tarea
 estado: backlog
@@ -311,7 +311,7 @@ test("el proyecto va en el frontmatter justo debajo del id, y no en la línea de
 		const principal = crearTareaHumana(banco.db, { titulo: "Otra", descripcion: "d", usuarioId: banco.ana });
 		assert.match(
 			sinFechas(documentoTarea(leerTarea(banco.db, principal.id) ?? assert.fail("sin tarea"))),
-			/^id: T-0002\nproyecto: PRI\n/m,
+			/^id: T-0002\nproyecto: DEFAULT\n/m,
 		);
 
 		// El índice no lo lleva: el agente solo ve tareas de su proyecto.
@@ -498,7 +498,7 @@ test("una funcionalidad enseña su rama, su progreso y sus partes; una parte, su
 			sinFechas(documentoTarea(leerTarea(banco.db, evolutivo.id) ?? assert.fail("sin funcionalidad"))),
 			`---
 id: T-0001
-proyecto: PRI
+proyecto: DEFAULT
 titulo: "Que los comerciales se bajen sus listados"
 tipo: funcionalidad
 estado: doing

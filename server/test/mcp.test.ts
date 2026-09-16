@@ -170,7 +170,7 @@ test("registrar_terminal devuelve nombre, cuenta, proyecto y revisión, y marca 
 				`cuenta: ${montaje.cuenta}`,
 				// Cuántos subagentes puede lanzar a la vez su bucle. Sin tocarlo, uno.
 				"agentes: 1",
-				"proyecto: PRI · Principal",
+				"proyecto: DEFAULT · Default",
 				"rama principal: main",
 				"revision: 2",
 			].join("\n"),

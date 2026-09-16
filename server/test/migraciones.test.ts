@@ -384,6 +384,52 @@ test("la migración de proyectos cuelga del principal todo lo que ya había", ()
 	}
 });
 
+test("la migración del proyecto por defecto lo renombra y reparte los colores", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-default-color.sql"));
+		assert.ok(cual > 0, "no está la migración del proyecto por defecto");
+
+		// Una base de antes: el proyecto 1 se llamaba `PRI` «Principal».
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		assert.equal(db.prepare("SELECT clave FROM proyectos WHERE id = 1").get()?.clave, "PRI");
+		db.prepare("INSERT INTO proyectos (id, clave, nombre, creado) VALUES (2, 'WEB', 'La web', ?)").run(FECHA);
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		const filas = db.prepare("SELECT id, clave, nombre, color FROM proyectos ORDER BY id").all();
+		assert.equal(filas[0]?.clave, "DEFAULT");
+		assert.equal(filas[0]?.nombre, "Default");
+		// Los colores se reparten por id, como la 004 con los usuarios.
+		assert.equal(filas[0]?.color, "azul");
+		assert.equal(filas[1]?.clave, "WEB");
+		assert.equal(filas[1]?.color, "verde");
+		// La columna no admite un color de fuera de los ocho.
+		assert.throws(() => {
+			db.prepare("UPDATE proyectos SET color = 'gris' WHERE id = 1").run();
+		});
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});
+
+test("una base nueva trae el proyecto por defecto ya renombrado y con color", () => {
+	const db = abrirBaseDeDatos(":memory:");
+	try {
+		const fila = db.prepare("SELECT clave, nombre, color FROM proyectos WHERE id = 1").get();
+		assert.equal(fila?.clave, "DEFAULT");
+		assert.equal(fila?.nombre, "Default");
+		assert.equal(fila?.color, "azul");
+	} finally {
+		db.close();
+	}
+});
+
 test("la migración de los agentes deja a 1 los terminales de antes y no admite menos", () => {
 	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
 	const db = new DatabaseSync(":memory:");
