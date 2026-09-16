@@ -57,9 +57,8 @@ export const COLOR_TIPO: Record<TipoComentario, Color> = {
 	analisis: "azul",
 	pregunta: "rojo",
 	respuesta: "verde",
-	avance: "amarillo",
 	resultado: "morado",
-	nota: "gris",
+	comentario: "gris",
 };
 
 /**
@@ -74,7 +73,7 @@ export const COLOR_TIPO_TAREA: Record<TipoTarea, Color> = {
 
 /**
  * Una etiqueta de color: estado, marca o tipo. La `clase` es el gancho que
- * buscan los tests (`estado-prepared`, `marca-bloqueada`, `tipo-nota`) y no
+ * buscan los tests (`estado-prepared`, `marca-bloqueada`, `tipo-comentario`) y no
  * lleva color; el color va siempre en la última clase.
  */
 export function etiqueta(texto: string, color: Color, clase?: string): Html {
@@ -295,7 +294,7 @@ const FRASE_ACCION: Record<string, string | undefined> = {
 	mover_tarea: "movió la tarea",
 	aprobar_ejecucion: "aprobó la ejecución",
 	responder_pregunta: "respondió",
-	nota: "dejó una nota",
+	comentario: "comentó en la tarea",
 	alta_usuario: "dio de alta al usuario",
 	baja_usuario: "dio de baja al usuario",
 	cambiar_password: "cambió su contraseña",

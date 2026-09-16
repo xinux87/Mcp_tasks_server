@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { registrarConsumo } from "../src/db/consumo.ts";
 import { crearParte } from "../src/db/funcionalidades.ts";
-import { comentarAnalisis, comentarAvance, comentarResultado, preguntar, responder } from "../src/db/hilo.ts";
+import { comentarAnalisis, comentarioDeAgente, comentarResultado, preguntar, responder } from "../src/db/hilo.ts";
 import { crearProyecto } from "../src/db/proyectos.ts";
 import {
 	aprobarEjecucion,
@@ -32,7 +32,7 @@ type Banco = ReturnType<typeof montar>;
 /**
  * Reproduce con las funciones de la base de datos la tarea del ejemplo de
  * «Formato Markdown» del CLAUDE.md: análisis, pregunta P1, respuesta, dos
- * hijas, avance, resultado y consumo.
+ * hijas, comentario, resultado y consumo.
  */
 function ejemplo(banco: Banco): { padre: number; hija: number } {
 	const terminal = banco.portatil;
@@ -96,7 +96,7 @@ function ejemplo(banco: Banco): { padre: number; hija: number } {
 		texto: "Qué se construyó: los tests.\n\nCommit: bbbbbbb",
 	});
 
-	comentarAvance(banco.db, {
+	comentarioDeAgente(banco.db, {
 		tareaId: padre.id,
 		terminalId: terminal,
 		texto: "Botón añadido y fichero generándose. Faltan los tests.",
@@ -207,7 +207,7 @@ Opción: **Punto y coma**
 
 Nota: si algún día lo usa otro equipo, ya lo cambiaremos.
 
-### avance · opus@portatil-ana · <fecha>
+### comentario · opus@portatil-ana · <fecha>
 
 Botón añadido y fichero generándose. Faltan los tests.
 

@@ -174,7 +174,7 @@ function mudarDeProyecto(conexion: DatabaseSync, tarea: Tarea, proyectoId: numbe
 /**
  * Editar una tarea entera. Solo en `backlog`: al salir de esa columna la
  * descripción y las asignaciones se congelan y cualquier cambio posterior va
- * como comentario `nota` al hilo, para que no se pierda qué se pidió al
+ * como `comentario` al hilo, para que no se pierda qué se pidió al
  * principio.
  */
 export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea {
@@ -186,7 +186,7 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 		if (tarea.estado !== "backlog") {
 			throw new ErrorDeRegla(
 				"solo_en_backlog",
-				`La tarea está en ${tarea.estado}: al salir de backlog la descripción y las asignaciones se congelan. Deja una nota en el hilo.`,
+				`La tarea está en ${tarea.estado}: al salir de backlog la descripción y las asignaciones se congelan. Deja un comentario en el hilo.`,
 			);
 		}
 		const padreId = datos.padreId === undefined ? tarea.padreId : datos.padreId;

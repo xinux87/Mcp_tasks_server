@@ -215,7 +215,11 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 		const revisar = bloque(cuerpo, "Revisa");
 		assert.match(revisar, /Hecho\. Commit: a1b2c3d/);
 		assert.match(revisar, /Finalizar/);
-		assert.match(revisar, /Devolver desde la ficha/);
+		// El cuadro de comentar, con su vuelta a la bandeja: otra iteración se
+		// pide desde aquí, sin abrir la ficha.
+		assert.match(revisar, /<form class="comentar" method="post" action="\/tareas\/T-0006\/comentar">/);
+		assert.match(revisar, /<input type="hidden" name="volver" value="\/">/);
+		assert.match(revisar, /name="iterar" value="1">Comentar y pedir otra iteración/);
 
 		const backlog = bloque(cuerpo, "Define");
 		assert.match(backlog, /Repensar el cobro/);
@@ -285,6 +289,27 @@ test("se contesta y se finaliza desde la bandeja, sin abrir la ficha", async () 
 		const cuerpo = await ver(montaje, cookie, "/");
 		assert.equal(contador(cuerpo, "Contesta"), "0");
 		assert.equal(contador(cuerpo, "Revisa"), "0");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("se pide otra iteración desde la bandeja y la tarea vuelve a En curso", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const tareas = bandejaDePrueba(montaje.db);
+
+		const otra = await pedir(montaje, `/tareas/${formatearId(tareas.hecha.id)}/comentar`, {
+			cookie,
+			formulario: { texto: "Falta el pie del informe.", iterar: "1", volver: "/" },
+		});
+		assert.equal(otra.status, 302);
+		assert.equal(otra.headers.get("location"), "/");
+		assert.equal(exigirTarea(montaje.db, tareas.hecha.id).estado, "doing");
+
+		// Ya no espera por el humano: lo que espera ahora es el agente.
+		assert.equal(contador(await ver(montaje, cookie, "/"), "Revisa"), "0");
 	} finally {
 		await montaje.cerrar();
 	}

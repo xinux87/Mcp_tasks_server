@@ -7,7 +7,7 @@ import { buscarTerminalPorId, revisionActual } from "../../db/consultas.ts";
 import type { ConsumoDeTarea } from "../../db/consumo.ts";
 import { dependenciasPendientes, dependientesDe } from "../../db/dependencias.ts";
 import { editarTareaBacklog, exigirTitulo } from "../../db/edicion.ts";
-import { type Comentario, notaHumana, responder, type TipoComentario } from "../../db/hilo.ts";
+import { type Comentario, comentarioHumano, iteracionesDe, responder, type TipoComentario } from "../../db/hilo.ts";
 import { buscarProyectoPorId, listarProyectos, PROYECTO_PRINCIPAL, type Proyecto } from "../../db/proyectos.ts";
 import {
 	aprobarEjecucion,
@@ -70,7 +70,13 @@ import {
 	marcado,
 	mensajeDeRegla,
 } from "../formulario.ts";
-import { type ColorDe, tarjetaComentario, tarjetaPreguntaAbierta } from "../hilo.ts";
+import {
+	type ColorDe,
+	cuadroDeComentar,
+	separadorIteracion,
+	tarjetaComentario,
+	tarjetaPreguntaAbierta,
+} from "../hilo.ts";
 import { renderMarkdown } from "../markdown.ts";
 import {
 	COLUMNAS,
@@ -85,14 +91,7 @@ import {
 	type RespuestaHtml,
 } from "../plantilla.ts";
 import { type DependenciasWeb, destinoSeguro, usuarioActual } from "../sesion.ts";
-import {
-	NOMBRE_COLUMNA,
-	NOMBRE_ESTADO,
-	NOMBRE_FASE,
-	NOMBRE_MARCA,
-	RECHAZAR_RESULTADO,
-	VOLVER_A_DEFINIR,
-} from "../vocabulario.ts";
+import { NOMBRE_COLUMNA, NOMBRE_ESTADO, NOMBRE_FASE, NOMBRE_MARCA, VOLVER_A_DEFINIR } from "../vocabulario.ts";
 import { paginaBandeja } from "./bandeja.ts";
 import {
 	consultaDe,
@@ -156,9 +155,9 @@ const TAREA_VACIA: ValoresTarea = {
 	dependeDe: [],
 	autoejecucion: true,
 	presupuesto: null,
-	analisisModelo: null,
+	analisisModelo: "fable",
 	analisisTerminalId: null,
-	ejecucionModelo: null,
+	ejecucionModelo: "opus",
 	ejecucionTerminalId: null,
 };
 
@@ -330,7 +329,7 @@ function valorPresupuesto(presupuesto: number | null): string {
 
 /** Una casilla con su explicación debajo, en texto suave. */
 function casilla(nombre: string, marcada: boolean, texto: string, explicacion: string): Html {
-	return html`<label class="casilla">
+	return html`<label class="casilla" data-casilla="${nombre}">
 			<input type="checkbox" name="${nombre}"${marcada ? raw(" checked") : ""}>
 			<span class="que">${texto}</span>
 			<span class="detalle">${explicacion}</span>
@@ -345,7 +344,7 @@ function fase(
 	terminalId: number | null,
 	activos: TerminalListado[],
 ): Html {
-	return html`<fieldset>
+	return html`<fieldset data-fase="${prefijo}">
 			<legend>${titulo}</legend>
 			<label>
 				<span>Modelo</span>
@@ -679,11 +678,14 @@ function proyectoLegible(db: DatabaseSync, proyectoId: number): Html {
  * pregunta abierta más antigua cuando la tarea está bloqueada, que es lo que
  * hace la lista y el kanban: aquí se compone con lo que ya trae la ficha.
  */
-function estadoLegible(completa: TareaCompleta): Html {
+function estadoLegible(completa: TareaCompleta, iteraciones: number): Html {
 	const { tarea } = completa;
+	// Iteración 1 es la primera ejecución: decirlo no aporta nada. Se dice desde
+	// la segunda, que es cuando la tarea ha dado alguna vuelta.
+	const vuelta = iteraciones > 1 ? html` <span class="silencio">Iteración ${iteraciones}</span>` : html``;
 	const insignia = insigniaEstado(tarea.estado);
 	if (!muestraEdad(tarea.estado)) {
-		return insignia;
+		return html`${insignia}${vuelta}`;
 	}
 	const abiertas = completa.preguntas.filter((pregunta) => pregunta.respuestaOpcion === null);
 	const edad = edadEnColumna({
@@ -692,7 +694,7 @@ function estadoLegible(completa: TareaCompleta): Html {
 		estadoDesde: tarea.estadoDesde,
 		bloqueadaDesde: abiertas.map((pregunta) => pregunta.creada).sort()[0] ?? null,
 	});
-	return html`${insignia} <span class="silencio">desde hace ${edad}</span>`;
+	return html`${insignia} <span class="silencio">desde hace ${edad}</span>${vuelta}`;
 }
 
 /** El tope de tokens de la tarea, o que no tiene ninguno. */
@@ -750,13 +752,13 @@ function dependenciasLegibles(db: DatabaseSync, tareaId: number, dependeDe: read
  * enseña ejecución ni autoejecución: enseñarlas haría creer que después del
  * análisis viene otra fase.
  */
-function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe: Creador): Html {
+function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe: Creador, iteraciones: number): Html {
 	const { tarea } = completa;
 	if (tarea.tipo === "funcionalidad") {
 		return propiedadesDeFuncionalidad(db, completa, creadorDe);
 	}
 	const filas: Propiedad[] = [
-		{ nombre: "Estado", valor: estadoLegible(completa) },
+		{ nombre: "Estado", valor: estadoLegible(completa, iteraciones) },
 		{ nombre: "Proyecto", valor: proyectoLegible(db, tarea.proyectoId) },
 	];
 	if (tarea.tipo === "pregunta") {
@@ -784,7 +786,8 @@ function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe
 function propiedadesDeFuncionalidad(db: DatabaseSync, completa: TareaCompleta, creadorDe: Creador): Html {
 	const { tarea } = completa;
 	const filas: Propiedad[] = [
-		{ nombre: "Estado", valor: estadoLegible(completa) },
+		// Una funcionalidad no se ejecuta: no tiene iteraciones que contar.
+		{ nombre: "Estado", valor: estadoLegible(completa, 1) },
 		{ nombre: "Proyecto", valor: proyectoLegible(db, tarea.proyectoId) },
 		{ nombre: "Tipo", valor: insigniaTipoTarea(tarea.tipo) },
 		{ nombre: "Rama", valor: ramaLegible(tarea.rama) },
@@ -878,7 +881,7 @@ function comentarioDeLaFicha(completa: TareaCompleta, comentario: Comentario, co
 const FILTROS_HILO: readonly { valor: string; texto: string; tipos: readonly TipoComentario[] }[] = [
 	{ valor: "", texto: "Todo", tipos: [] },
 	{ valor: "preguntas", texto: "Preguntas y respuestas", tipos: ["pregunta", "respuesta"] },
-	{ valor: "avances", texto: "Avances y resultados", tipos: ["avance", "resultado"] },
+	{ valor: "comentarios", texto: "Comentarios y resultados", tipos: ["comentario", "resultado"] },
 ];
 
 /**
@@ -895,16 +898,41 @@ function filtroHilo(id: string, elegido: string): Html {
 		</nav>`;
 }
 
-function hilo(completa: TareaCompleta, colorDe: ColorDe, elegido: string): Html {
+/**
+ * Dónde entra el separador de cada iteración: justo delante del comentario que
+ * pidió la vuelta, que es el último escrito antes de la transición porque los
+ * dos van en la misma transacción. Si la vuelta es anterior a todo lo que se
+ * ve, abre el hilo; si no hay comentario que la siga, lo cierra.
+ */
+function puntosDeIteracion(comentarios: Comentario[], iteraciones: string[]): Map<number, number[]> {
+	const puntos = new Map<number, number[]>();
+	for (const [indice, creado] of iteraciones.entries()) {
+		const anterior = comentarios.findLastIndex((comentario) => comentario.creado <= creado);
+		const donde = anterior < 0 ? 0 : anterior;
+		puntos.set(donde, [...(puntos.get(donde) ?? []), indice]);
+	}
+	return puntos;
+}
+
+/**
+ * El hilo, de arriba abajo como un chat, con el corte de cada iteración entre
+ * los mensajes. `iteraciones` son las fechas de las vueltas: la primera empieza
+ * la iteración 2.
+ */
+function hilo(completa: TareaCompleta, colorDe: ColorDe, elegido: string, iteraciones: string[]): Html {
 	const filtro = FILTROS_HILO.find((candidato) => candidato.valor === elegido);
 	const tipos = filtro === undefined ? [] : filtro.tipos;
 	const comentarios =
 		tipos.length === 0 ? completa.comentarios : completa.comentarios.filter((cual) => tipos.includes(cual.tipo));
-	if (comentarios.length === 0) {
+	if (comentarios.length === 0 && iteraciones.length === 0) {
 		return html`<p class="silencio">Ninguno.</p>`;
 	}
+	const puntos = puntosDeIteracion(comentarios, iteraciones);
+	const corte = (indice: number): Html =>
+		html`${(puntos.get(indice) ?? []).map((vuelta) => separadorIteracion(vuelta + 2, iteraciones[vuelta] ?? ""))}`;
 	return html`<div class="hilo">
-			${comentarios.map((comentario) => comentarioDeLaFicha(completa, comentario, colorDe))}
+			${comentarios.map((comentario, indice) => html`${corte(indice)}${comentarioDeLaFicha(completa, comentario, colorDe)}`)}
+			${corte(comentarios.length)}
 		</div>`;
 }
 
@@ -975,14 +1003,18 @@ function accionesFicha(completa: TareaCompleta): Html | undefined {
 	return undefined;
 }
 
-/** Una vuelta atrás: plegada, porque es excepcional, y siempre con su nota. */
-function vueltaAtras(id: string, estado: Estado, texto: string, queNota: string): Html {
+/**
+ * Una vuelta atrás: plegada, porque es excepcional, y siempre con su comentario
+ * explicando por qué. La otra, pedir otra iteración sobre una tarea hecha, no
+ * es excepcional y va en el cuadro de comentar.
+ */
+function vueltaAtras(id: string, estado: Estado, texto: string, quePasa: string): Html {
 	return html`<details class="caja">
 			<summary><strong>${texto}</strong></summary>
 			<form method="post" action="/tareas/${id}/mover">
 				<input type="hidden" name="estado" value="${estado}">
 				<label>
-					<span>Nota: ${queNota}</span>
+					<span>Comentario: ${quePasa}</span>
 					<textarea name="nota" rows="3" required></textarea>
 				</label>
 				<button type="submit">${texto}</button>
@@ -991,14 +1023,10 @@ function vueltaAtras(id: string, estado: Estado, texto: string, queNota: string)
 }
 
 function vueltasAtras(completa: TareaCompleta): Html {
-	const id = formatearId(completa.tarea.id);
-	if (completa.tarea.estado === "prepared") {
-		return vueltaAtras(id, "backlog", VOLVER_A_DEFINIR, "por qué vuelve a por definir");
+	if (completa.tarea.estado !== "prepared") {
+		return html``;
 	}
-	if (completa.tarea.estado === "done") {
-		return vueltaAtras(id, "doing", RECHAZAR_RESULTADO, "qué falta");
-	}
-	return html``;
+	return vueltaAtras(formatearId(completa.tarea.id), "backlog", VOLVER_A_DEFINIR, "por qué vuelve a por definir");
 }
 
 /**
@@ -1198,21 +1226,14 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 	// El color de un autor se busca al pintar, y el hilo tiene muchos: una sola
 	// lectura de la tabla de usuarios para toda la página.
 	const colorDe = buscadorDeColor(deps.db);
+	// Una funcionalidad no se ejecuta: no da vueltas y su hilo no lleva cortes.
+	const iteraciones = tarea.tipo === "funcionalidad" ? [] : iteracionesDe(deps.db, tarea.id);
 
+	// El cuadro de escribir cierra el hilo, pegado al último mensaje: es un chat.
 	const comun = html`<h2>Hilo</h2>
 		${filtroHilo(id, c.req.query("hilo") ?? "")}
-		${hilo(completa, colorDe, c.req.query("hilo") ?? "")}
-
-		<h2>Nota</h2>
-		<form method="post" action="/tareas/${id}/nota">
-			<label>
-				<span>Indicación para el agente (Markdown)</span>
-				<textarea name="texto" rows="4" required></textarea>
-			</label>
-			<div class="acciones">
-				<button type="submit">Añadir nota</button>
-			</div>
-		</form>`;
+		${hilo(completa, colorDe, c.req.query("hilo") ?? "", iteraciones)}
+		${cuadroDeComentar(tarea.id, tarea.estado)}`;
 
 	const descripcion = html`<h2>Descripción</h2>
 		<div class="cuerpo">${raw(renderMarkdown(tarea.descripcion))}</div>`;
@@ -1254,7 +1275,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 	// scroll; por debajo cae encima de la descripción. Lleva lo que se consulta
 	// (propiedades y consumo) y lo excepcional, que va plegado.
 	const panel = html`<aside class="panel">
-		${propiedadesDeTarea(deps.db, completa, buscadorDeCreador(deps.db))}
+		${propiedadesDeTarea(deps.db, completa, buscadorDeCreador(deps.db), iteraciones.length + 1)}
 		${
 			tarea.tipo === "funcionalidad"
 				? html``
@@ -1283,7 +1304,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 
 	return c.html(
 		// La ficha no se recarga sola: tiene formularios y el humano puede estar
-		// escribiendo una nota. El cliente solo avisa; en una funcionalidad,
+		// escribiendo un comentario. El cliente solo avisa; en una funcionalidad,
 		// además, repinta el tablero de sus partes, que no tiene nada que perder.
 		pagina({
 			...navProyectos(c, deps.db),
@@ -1524,17 +1545,24 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 		}
 	});
 
-	app.post("/tareas/:id/nota", async (c) => {
+	app.post("/tareas/:id/comentar", async (c) => {
 		const tareaId = idDeRuta(c);
 		if (tareaId === null) {
 			return paginaNoEncontrada(c, deps, "Eso no es un identificador de tarea; tiene la forma T-0042.");
 		}
 		const formulario = await leerFormulario(c);
 		try {
-			notaHumana(deps.db, { tareaId, usuarioId: usuarioActual(c).id, texto: campo(formulario, "texto") });
-			return c.redirect(`/tareas/${formatearId(tareaId)}`, 302);
+			comentarioHumano(deps.db, {
+				tareaId,
+				usuarioId: usuarioActual(c).id,
+				texto: campo(formulario, "texto"),
+				// El botón de pedir otra iteración es el que manda este campo.
+				iterar: campo(formulario, "iterar") === "1",
+			});
+			// Quien comenta desde la bandeja se queda en la bandeja.
+			return c.redirect(vuelta(formulario, tareaId), 302);
 		} catch (error) {
-			return paginaFicha(c, deps, tareaId, mensajeDeRegla(error));
+			return paginaDeVuelta(c, deps, formulario, tareaId, error);
 		}
 	});
 

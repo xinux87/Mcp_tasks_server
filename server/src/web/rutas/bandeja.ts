@@ -10,7 +10,7 @@ import { formatearId } from "../../md/ids.ts";
 import { buscadorDeColor, chipProyecto, edadEnColumna } from "../componentes.ts";
 import { edad } from "../formatos.ts";
 import { ESTADO_AVISO } from "../formulario.ts";
-import { type ColorDe, tarjetaComentario, tarjetaPreguntaAbierta } from "../hilo.ts";
+import { type ColorDe, cuadroDeComentar, tarjetaComentario, tarjetaPreguntaAbierta } from "../hilo.ts";
 import { type Html, insigniaEstado, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
 import { navProyectos } from "./proyectos.ts";
@@ -115,8 +115,8 @@ function porAprobar(item: ItemIndice, entorno: Entorno): Html {
 }
 
 /**
- * Una tarea en `done`: su resultado y el botón de finalizar. Devolverla a
- * `doing` exige una nota y se hace desde la ficha, que va enlazada.
+ * Una tarea en `done`: su resultado, el botón de finalizar y el cuadro de
+ * comentar, que es por donde se pide otra iteración sin abrir la ficha.
  */
 function porRevisar(item: ItemIndice, entorno: Entorno): Html {
 	const resultado = ultimo(entorno.db, item.id, "resultado");
@@ -127,13 +127,14 @@ function porRevisar(item: ItemIndice, entorno: Entorno): Html {
 				? html`<p class="silencio">Sin resultado en el hilo.</p>`
 				: tarjetaComentario(resultado, entorno.colorDe)
 		}
+		${cuadroDeComentar(item.id, "done", "/")}
 		<div class="acciones">
 			<form method="post" action="/tareas/${id}/mover">
 				<input type="hidden" name="estado" value="finished">
 				<input type="hidden" name="volver" value="/">
 				<button type="submit" class="principal">Finalizar</button>
 			</form>
-			<a href="/tareas/${id}">Devolver desde la ficha</a>
+			<a href="/tareas/${id}">Abrir la ficha</a>
 		</div>`;
 }
 

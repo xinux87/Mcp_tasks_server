@@ -9,7 +9,7 @@
       "name": "mcp-tareas",
       "source": "./plugin",
       "description": "Conecta el terminal al servidor MCP de tareas y arranca el bucle del agente.",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "author": {
         "name": "xinux87"
       },

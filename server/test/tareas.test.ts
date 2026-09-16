@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { revisionActual } from "../src/db/consultas.ts";
 import { registrarConsumo } from "../src/db/consumo.ts";
 import { crearParte } from "../src/db/funcionalidades.ts";
-import { comentarAnalisis, comentarAvance, comentarResultado, preguntar } from "../src/db/hilo.ts";
+import { comentarAnalisis, comentarioDeAgente, comentarResultado, preguntar } from "../src/db/hilo.ts";
 import {
 	aprobarEjecucion,
 	borrarTarea,
@@ -136,7 +136,7 @@ test("las vueltas atrás exigen nota y la dejan en el hilo firmada por el humano
 		const completa = leerTarea(banco.db, tarea.id);
 		assert.ok(completa);
 		assert.equal(completa.comentarios.length, 1);
-		assert.equal(completa.comentarios[0]?.tipo, "nota");
+		assert.equal(completa.comentarios[0]?.tipo, "comentario");
 		assert.equal(completa.comentarios[0]?.autor, "humano:ana");
 		assert.equal(completa.comentarios[0]?.texto, "falta decidir el alcance");
 	} finally {
@@ -173,7 +173,7 @@ test("volver a backlog caduca el análisis y la aprobación, pero deja el coment
 		assert.ok(completa);
 		assert.deepEqual(
 			completa.comentarios.map((comentario) => comentario.tipo),
-			["analisis", "nota"],
+			["analisis", "comentario"],
 		);
 	} finally {
 		banco.cerrar();
@@ -768,7 +768,7 @@ test("una tarea nace con estado_desde puesto, y es su misma fecha de creación",
 	}
 });
 
-test("todo camino que cambia el estado refresca estado_desde, y un avance no lo toca", () => {
+test("todo camino que cambia el estado refresca estado_desde, y un comentario no lo toca", () => {
 	const banco = montar();
 	try {
 		// Mover desde la web.
@@ -790,9 +790,9 @@ test("todo camino que cambia el estado refresca estado_desde, y un avance no lo 
 		tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil });
 		exigirRefrescada(banco, tarea.id, "tomar la ejecución");
 
-		// Un avance no cambia de columna: la edad en columna sigue siendo la misma.
+		// Un comentario no cambia de columna: la edad en columna sigue siendo la misma.
 		envejecerEstado(banco, tarea.id);
-		comentarAvance(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "a medias" });
+		comentarioDeAgente(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "a medias" });
 		assert.equal(exigirTarea(banco.db, tarea.id).estadoDesde, ANTIGUA);
 
 		// El comentario que cierra la ejecución sí.

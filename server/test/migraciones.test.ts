@@ -507,3 +507,63 @@ test("la migración del presupuesto deja sin tope las tareas de antes y no admit
 		rmSync(carpeta, { recursive: true, force: true });
 	}
 });
+
+test("la migración del comentario funde nota y avance, y renombra la acción del rastro", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		db.exec("PRAGMA foreign_keys = ON");
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-comentario.sql"));
+		assert.ok(cual > 0, "no está la migración del comentario");
+
+		// El esquema anterior con un hilo de los seis tipos viejos: es lo que hay
+		// en una base en marcha cuando los dos libres se funden en uno.
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		db.prepare("INSERT INTO usuarios (nombre, hash_password, color, creado) VALUES ('ana', 'h', 'azul', ?)").run(FECHA);
+		db
+			.prepare(
+				`INSERT INTO tareas (id, titulo, descripcion, tipo, estado, orden, creada, actualizada, estado_desde, revision)
+				VALUES (7, 'De antes', 'd', 'tarea', 'doing', 1, ?, ?, ?, 3)`,
+			)
+			.run(FECHA, FECHA, FECHA);
+		for (const { tipo, autor } of [
+			{ tipo: "analisis", autor: "sonnet@portatil-a" },
+			{ tipo: "avance", autor: "opus@portatil-a" },
+			{ tipo: "nota", autor: "humano:ana" },
+		]) {
+			db
+				.prepare("INSERT INTO comentarios (tarea_id, tipo, autor, texto, creado, revision) VALUES (7, ?, ?, 'texto', ?, 3)")
+				.run(tipo, autor, FECHA);
+		}
+		db
+			.prepare(
+				`INSERT INTO actividad (usuario_id, usuario_nombre, accion, objeto, objeto_id, objeto_nombre, detalle, creado)
+				VALUES (1, 'ana', 'nota', 'tarea', 7, 'De antes', 'lo de siempre', ?)`,
+			)
+			.run(FECHA);
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		// Los dos tipos libres son ahora uno, y lo demás no se toca.
+		assert.deepEqual(
+			db
+				.prepare("SELECT tipo, autor FROM comentarios WHERE tarea_id = 7 ORDER BY id")
+				.all()
+				.map((fila) => `${String(fila.tipo)} · ${String(fila.autor)}`),
+			["analisis · sonnet@portatil-a", "comentario · opus@portatil-a", "comentario · humano:ana"],
+		);
+		assert.equal(db.prepare("SELECT accion FROM actividad WHERE objeto_id = 7").get()?.accion, "comentario");
+
+		// El CHECK nuevo ya no deja escribir los viejos, y nada quedó colgando.
+		assert.throws(() => {
+			db.prepare("UPDATE comentarios SET tipo = 'avance' WHERE id = 1").run();
+		});
+		assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});

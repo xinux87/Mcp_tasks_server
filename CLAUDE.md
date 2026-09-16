@@ -83,7 +83,7 @@ Son las columnas del kanban, en este orden. Cada columna tiene un dueño: quien 
 | `backlog` | humano | El humano termina de decidir la tarea: título, descripción, prioridad, modelos y terminales de cada fase. **El agente no la ve.** | El humano la pasa a `prepared` cuando la da por definida. |
 | `prepared` | agente de análisis | La tarea está lista para trabajar. El terminal de análisis la toma, el modelo de análisis escribe el comentario `analisis` y hace las preguntas que necesite. | Con `autoejecucion` activada, pasa sola a `doing` cuando el análisis está hecho y no quedan preguntas abiertas. Desactivada, se queda en `prepared` hasta que el humano apruebe el análisis. |
 | `doing` | agente de ejecución | El terminal de ejecución la ejecuta con el modelo de ejecución. Los subagentes crean tareas hijas. Puede hacer preguntas; mientras estén abiertas no se construye lo que gobiernan. | El agente escribe el comentario `resultado` con lo construido y el commit, y la tarea pasa a `done`. |
-| `done` | humano | Ejecución terminada. El humano revisa el resultado. | A `finished` si lo acepta. A `doing` con una `nota` de qué falta si lo rechaza. |
+| `done` | humano | Ejecución terminada. El humano revisa el resultado. | A `finished` si lo acepta. A `doing` con un `comentario` que dice qué falta si pide otra iteración. |
 | `finished` | nadie | Aceptada. Archivada y de solo lectura. | No sale. Se archiva, no se borra. |
 
 ### Marcas sobre la tarea
@@ -101,35 +101,45 @@ La fase que toca en una tarea es «análisis» mientras está en `prepared` sin 
 
 ### Vueltas atrás
 
-Solo las hace el humano y siempre dejan un comentario `nota` explicando por qué:
+Solo las hace el humano y siempre dejan un `comentario` explicando por qué:
 
 - De `prepared` a `backlog`, para repensarla. El comentario de análisis se conserva en el hilo, pero la tarea vuelve a necesitar análisis y aprobación al salir de nuevo de `backlog`: se repite porque la descripción puede haber cambiado.
-- De `done` a `doing`, cuando el resultado no vale.
+- De `done` a `doing`, cuando el resultado no vale: es pedir otra iteración, y se hace desde el cuadro de comentar de la ficha. Ver «El hilo como chat».
 
 El agente nunca mueve una tarea hacia atrás. Si no puede seguir, pregunta o la deja bloqueada.
 
 ### Qué se puede editar en cada estado
 
 - En `backlog` se edita todo.
-- Al salir de `backlog` la descripción y las asignaciones se congelan. Cualquier cambio posterior va como comentario `nota` al hilo, para que el agente lo lea en contexto y no se pierda qué se pidió al principio.
+- Al salir de `backlog` la descripción y las asignaciones se congelan. Cualquier cambio posterior va como `comentario` al hilo, para que el agente lo lea en contexto y no se pierda qué se pidió al principio.
 - El orden dentro de una columna se puede cambiar siempre. Es la prioridad: el agente toma primero la tarea más alta de `prepared` que esté asignada a su terminal.
 
 ### Hilo de comentarios
 
-Cada tarea tiene un único hilo, abierto hasta que llega a `finished`. Cada iteración sobre la tarea es un comentario en ese hilo:
+Cada tarea tiene un único hilo, abierto hasta que llega a `finished`. Es una conversación entre el humano y los agentes: cada mensaje es un comentario en ese hilo.
 
 | Tipo | Quién lo escribe | Contenido |
 |---|---|---|
 | `analisis` | modelo de análisis | qué hay que hacer, plan, riesgos |
 | `pregunta` | agente o subagente | pregunta con opciones, consecuencias y recomendación |
 | `respuesta` | humano | la opción elegida y una nota libre |
-| `avance` | agente o subagente | en qué punto va la ejecución |
 | `resultado` | modelo de ejecución | qué se construyó y el commit |
-| `nota` | humano | cualquier indicación durante la tarea, incluidas las vueltas atrás |
+| `comentario` | cualquiera | el mensaje libre: el humano pide, aclara o corrige; el agente cuenta por dónde va o contesta a lo que no es una decisión |
 
 Los comentarios se añaden, nunca se editan ni se borran. El hilo es lo que se ve en la web y lo que el agente lee con `leer_tarea`.
 
 El autor lo compone el servidor, nunca el que escribe: para un agente es el modelo asignado a la fase que toca y el nombre del terminal autenticado (`opus@portatil-ana`); para una persona, su nombre de usuario en la web (`humano:ana`).
+
+### El hilo como chat
+
+Una tarea rara vez sale bien a la primera: el humano ve el resultado, encuentra cosas y las pide. Decidido el 16 de septiembre de 2026: el hilo funciona como un chat y cada vuelta es una **iteración**. Antes había dos tipos, `nota` del humano y `avance` del agente, y una nota no disparaba nada: el agente solo reaccionaba a las respuestas a sus preguntas. Los dos se funden en `comentario`, y un comentario del humano es un turno que el agente atiende.
+
+- **Un `comentario` del humano en una tarea `doing` es trabajo pendiente para su terminal de ejecución.** La regla se deriva del hilo, sin campo nuevo: si el último comentario del humano es posterior al último mensaje del agente (de cualquier tipo), el agente retoma la ejecución con ese comentario en contexto, igual que retoma tras una `respuesta`. La tarea aparece por `novedades` porque escribir un comentario sube la revisión; es el bucle quien aplica la regla al clasificar.
+- **El agente puede contestar sin trabajar.** A un «¿por qué elegiste X?» responde con un `comentario` y la tarea sigue en `doing`, esperando el siguiente mensaje del humano. Solo el terminal que tiene la fase en marcha escribe comentarios de agente; para el humano no hay restricción de estado salvo `finished`, que es de solo lectura.
+- **En `done`, el humano elige.** El cuadro de comentar ofrece «Comentar», que solo escribe (para dejar constancia sin reabrir), y «Comentar y pedir otra iteración», que escribe el comentario y devuelve la tarea a `doing` en la misma transacción. Es la vuelta atrás de antes, dicha en el chat: el servidor sigue sin mover nada hacia atrás por su cuenta.
+- **Las iteraciones se cuentan, no se guardan.** Iteración 1 es la primera ejecución; cada transición `done → doing` empieza una más. La ficha dice «Iteración 3» junto al estado, y el hilo pinta un separador «Iteración 2», «Iteración 3»… en el punto de cada vuelta, con la fecha de la transición. Sale de la tabla `transiciones`, así que las tareas anteriores a esa tabla cuentan solo desde que existe.
+- **Límite conocido.** Un comentario escrito mientras el subagente está trabajando no lo ve ese subagente; cuando escriba su `resultado` la tarea pasa a `done`, el humano ve que falta lo suyo y lo pide con otra iteración. Es una vuelta de más, no un mensaje perdido.
+- **Migración.** Los comentarios guardados con tipo `nota` o `avance` pasan a `comentario`, y las filas de actividad con acción `nota` pasan a `comentario`. El Markdown del MCP escribe `### comentario · humano:ana`. `comentar_tarea` acepta `comentario` y deja de aceptar `avance` y `nota`.
 
 ### Tareas hijas
 
@@ -165,7 +175,7 @@ Una funcionalidad es lo que pide el humano en lenguaje de negocio: qué quiere c
 - **El análisis exige al menos una parte** (`sin_partes`). Si el agente concluye que no es viable, lo pregunta con `preguntar` en vez de descomponer.
 - **Rama.** Si tiene `rama`, las partes la heredan y los agentes de ejecución trabajan en ella: la crean desde la principal si no existe y hacen ahí sus commits. Al aprobar la descomposición, el servidor crea una última parte «Integrar la rama `<rama>` en la principal» que depende de todas las demás; su ejecución fusiona sin fast-forward, pasa la verificación del repositorio y cita el commit de fusión.
 - **Partes añadidas después.** En `doing`, el humano puede crear más partes desde la web con la funcionalidad como padre; nacen en `backlog` y él las pasa a `prepared`. Las hijas de trabajo que creen los agentes de una parte cuelgan de la parte, no de la funcionalidad, y no cuentan para cerrarla.
-- **Vueltas atrás.** De `prepared` a `backlog` repite el análisis y deja las partes en `backlog` para que el humano las borre o las conserve. De `done` a `doing` con nota, cuando lo entregado no vale: el humano crea las partes que falten.
+- **Vueltas atrás.** De `prepared` a `backlog` repite el análisis y deja las partes en `backlog` para que el humano las borre o las conserve. De `done` a `doing` con un comentario, cuando lo entregado no vale: el humano crea las partes que falten.
 - **En el índice y en el frontmatter** se ve como `tipo: funcionalidad`, y la línea de índice lleva `funcionalidad 3/7` justo después del estado: partes cerradas sobre partes totales. No lleva segmento `ejecucion:`. El frontmatter añade `rama` si la tiene y `partes: 7` y `partesCerradas: 3`.
 - **Borrar.** Una tarea se puede borrar desde la web y el CLI esté en la columna que esté, con confirmación. Es lo que permite podar una descomposición antes de aprobarla y también la salida de una tarea que ya no va a ninguna parte. Se lleva por delante su hilo entero, su consumo y sus dependencias en los dos sentidos; se quedan el rastro de actividad, con el título escrito como texto, y el número, que no se vuelve a repartir. **Una tarea con hijas no se borra** (`con_hijas`): primero se borran ellas, que ahora se puede hacer de abajo arriba. **Una tarea que un terminal tiene en marcha también se borra**, en `doing` o donde esté: el humano manda. Se probó frenarla con un error `en_marcha` y se descartó el mismo día: una fase que se queda en marcha porque el subagente murió dejaba la tarea imposible de borrar. El agente se entera al intentar escribir en ella (`tarea_inexistente`) y `novedades` no avisa de borrados: el bucle espera a sus subagentes y no podría actuar antes. La confirmación dice qué se pierde: cuántos comentarios tiene el hilo, qué terminal la está trabajando si la tiene en marcha, y qué tareas dejan de esperarla. Si era la última parte pendiente de una funcionalidad, borrarla la cierra.
 - **Una funcionalidad no admite hijas de trabajo** (`funcionalidad_sin_ejecucion`): sin ese corte, una hija colgada por error contaría como parte y la funcionalidad no podría cerrarse. `partesCerradas` cuenta solo las partes `finished`. Aprobar con preguntas abiertas falla con `tarea_bloqueada`.
@@ -325,7 +335,7 @@ Opción: **Punto y coma**
 
 Nota: si algún día lo usa otro equipo, ya lo cambiaremos.
 
-### avance · opus@portatil-ana · 2026-09-04T12:20:00Z
+### comentario · opus@portatil-ana · 2026-09-04T12:20:00Z
 
 Botón añadido y fichero generándose. Faltan los tests.
 
@@ -405,7 +415,7 @@ Cuatro bloques, siempre los cuatro y en este orden, cada uno con su contador en 
 
 1. **Preguntas sin contestar.** Cada tarea con la marca `bloqueada`, y por cada pregunta abierta la misma tarjeta que en el hilo de la ficha: la pregunta en negrita, por qué importa, las opciones como tarjetas seleccionables con la recomendada marcada, la nota y el botón de responder. Se contesta desde aquí sin abrir la ficha. Una funcionalidad bloqueada sale igual.
 2. **Por aprobar.** Las tareas con la marca `análisis listo`. Cada una con el comentario `analisis` renderizado y el botón «Aprobar ejecución» o, en una funcionalidad, «Aprobar descomposición» con la lista de sus partes debajo.
-3. **Resultados por revisar.** Todo lo que está en `done`, funcionalidades incluidas. Cada una con su último comentario `resultado` renderizado y el botón «Finalizar»; devolverla a `doing` exige una nota y se hace desde la ficha, que va enlazada.
+3. **Resultados por revisar.** Todo lo que está en `done`, funcionalidades incluidas. Cada una con su último comentario `resultado` renderizado y el botón «Finalizar»; pedir otra iteración exige un comentario y se hace desde la ficha, que va enlazada.
 4. **Backlog sin definir.** Las tareas que llevan más de siete días en `backlog`. Solo el enlace, la edad y el proyecto: es lo que el humano se debe a sí mismo.
 
 - **Cada línea lleva el chip de proyecto** y el enlace a la ficha. Dentro de cada bloque, el orden es de más antigua a más nueva en su estado (`estado_desde`): lo que más tiempo lleva esperando va primero.
@@ -426,8 +436,9 @@ Jira enseña cuántos días lleva una incidencia en su columna; aquí es lo que 
 ### La ficha como vista de incidencia
 
 - **Las preguntas abiertas van arriba**, justo debajo de la cabecera y antes de las propiedades, cada una con su formulario de respuesta. El hilo las sigue enseñando en su posición, sin formulario, con un enlace «Responder arriba». El humano llega a la ficha a contestar y no tiene que bajar hasta el final.
-- **A partir de 64 rem la ficha tiene dos columnas**: la principal con descripción, hijas, hilo, nota y actividad, y a la derecha un panel de 18 rem, fijo al hacer scroll, con las propiedades, el consumo y las acciones excepcionales (`<details>` de vueltas atrás, editar y borrar). Para eso la ficha pasa a `ancho: "completo"` como el kanban. En estrecho, el panel va encima de la descripción, como hasta ahora.
-- **El hilo se filtra** con tres enlaces encima: «Todo», «Preguntas y respuestas» y «Avances y resultados». Es un parámetro `?hilo=preguntas|avances` en la misma URL, sin JavaScript. El filtro no afecta a la nota ni a la actividad.
+- **A partir de 64 rem la ficha tiene dos columnas**: la principal con descripción, hijas, hilo con su cuadro de comentar y actividad, y a la derecha un panel de 18 rem, fijo al hacer scroll, con las propiedades, el consumo y las acciones excepcionales (`<details>` de «Devolver a por definir», editar y borrar). Para eso la ficha pasa a `ancho: "completo"` como el kanban. En estrecho, el panel va encima de la descripción, como hasta ahora.
+- **El hilo se filtra** con tres enlaces encima: «Todo», «Preguntas y respuestas» y «Comentarios y resultados». Es un parámetro `?hilo=preguntas|comentarios` en la misma URL, sin JavaScript. El filtro no afecta al cuadro de comentar ni a la actividad.
+- **El cuadro de comentar** cierra el hilo, pegado al último mensaje, como en un chat: un `textarea` y el botón «Comentar». En `done` lleva además «Comentar y pedir otra iteración». En `finished` no hay cuadro. Ver «El hilo como chat».
 - **Los ids enlazan.** Una regla de markdown-it convierte cualquier `T-0042` del hilo, la descripción y las notas en un enlace a su ficha. Es el «relates to» de Jira sin tabla nueva.
 
 ### Un tablero que se lee de un vistazo
@@ -531,15 +542,15 @@ El contador de la pestaña cubre el caso de tener la web abierta. Para el resto,
 | `GET /tareas` | Vista lista: tareas agrupadas por estado en el orden de las columnas, con filtros por estado, terminal y marca. Ocupa todo el ancho, como el kanban (`ancho: "completo"`): una tabla de seis columnas no cabe bien en 60 rem |
 | `GET /tareas/kanban` | Vista kanban con las cinco columnas y arrastre entre columnas y dentro de ellas |
 | `GET /tareas/nueva`, `POST /tareas` | Crear una tarea en `backlog` |
-| `GET /tareas/T-0042` | Ficha: campos, descripción, hijas, hilo, preguntas abiertas con formulario de respuesta, nota, acciones según estado, consumo |
+| `GET /tareas/T-0042` | Ficha: campos, descripción, hijas, hilo con el cuadro de comentar, preguntas abiertas con formulario de respuesta, acciones según estado, consumo |
 | `POST /tareas/T-0042/editar` | Solo en `backlog`: título, descripción, asignaciones, `autoejecucion` |
-| `POST /tareas/T-0042/mover` | Las transiciones del humano, con nota cuando es vuelta atrás |
+| `POST /tareas/T-0042/mover` | Las transiciones del humano, con comentario cuando es vuelta atrás (es lo que usa el arrastre del tablero) |
 | `POST /tareas/T-0042/aprobar` | Aprueba la ejecución cuando `autoejecucion` está desactivada; en una funcionalidad, aprueba la descomposición: pasa a `doing` y sus partes en `backlog` a `prepared` |
 | `POST /tareas/T-0042/borrar` | Borra la tarea en cualquier estado, con confirmación en página aparte |
 | `GET /funcionalidades` | Las funcionalidades como filas: estado, progreso en partes cerradas sobre total, bloqueadas y esperando, consumo acumulado, rama y quién la creó |
 | `GET /tareas/T-0050` de una funcionalidad | Su ficha es su propio tablero: encima la descripción, el hilo de decisiones y el botón de aprobar la descomposición; debajo el kanban solo con sus partes, cada una con sus dependencias |
 | `POST /tareas/T-0042/responder/P1` | Guarda la opción elegida por su texto y la nota |
-| `POST /tareas/T-0042/nota` | Nota del humano en el hilo |
+| `POST /tareas/T-0042/comentar` | Comentario del humano en el hilo. Con el campo `iterar` y la tarea en `done`, además la devuelve a `doing` en la misma transacción |
 | `POST /tareas/T-0042/orden` | Reordena dentro de la columna, o cambia de columna cuando la transición es del humano |
 | `GET /terminales`, `POST /terminales`, `POST /terminales/:id/revocar`, `POST /terminales/:id/rotar`, `POST /terminales/:id/borrar` | Terminales: lista con uso disponible y conexión; alta que enseña el token una sola vez junto con su enlace de conexión y el tutorial; revocación; rotación del token; borrado |
 | `GET /p/:clave/tareas`, `GET /p/:clave/tareas/kanban`, `GET /p/:clave/tareas/nueva`, `GET /p/:clave/funcionalidades` | Las mismas vistas acotadas a un proyecto. Ver «Proyectos › En la web» |
@@ -597,10 +608,10 @@ La web es el puesto de mando de una persona que dirige agentes: lo que le import
 | marca `sobre presupuesto` | Sobre presupuesto |
 | tipo de tarea `pregunta` | Pregunta |
 | tipo de tarea `funcionalidad` | Funcionalidad 3/7 |
-| comentario `analisis` / `pregunta` / `respuesta` / `avance` / `resultado` / `nota` | Análisis / Pregunta / Respuesta / Avance / Resultado / Nota |
+| comentario `analisis` / `pregunta` / `respuesta` / `resultado` / `comentario` | Análisis / Pregunta / Respuesta / Resultado / Comentario |
 | fase `analisis` / `ejecucion` | Análisis / Ejecución |
 | dueño de columna | tú / el agente / nadie |
-| `done → doing` | Rechazar el resultado |
+| `done → doing` | Comentar y pedir otra iteración |
 | `prepared → backlog` | Devolver a por definir |
 
 Los filtros, los `<option value>`, las URLs (`?estado=prepared`), las clases CSS (`estado-prepared`, `marca-bloqueada`, `tipo-analisis`) y el Markdown del MCP no cambian: solo el texto que ve la persona.
@@ -655,7 +666,7 @@ Tipografía `"Avenir Next", "Segoe UI Variable", "Segoe UI", system-ui, sans-ser
 
 - Estados: `backlog` gris, `prepared` azul, `doing` amarillo, `done` verde, `finished` marrón.
 - Marcas: `bloqueada` rojo, `sin terminal` naranja, `en marcha` morado, `análisis listo` rosa, `esperando` naranja, `sobre presupuesto` naranja.
-- Tipos de comentario: `analisis` azul, `pregunta` rojo, `respuesta` verde, `avance` amarillo, `resultado` morado, `nota` gris.
+- Tipos de comentario: `analisis` azul, `pregunta` rojo, `respuesta` verde, `resultado` morado, `comentario` gris.
 - Tipo de tarea `pregunta`: rosa.
 - Los usuarios eligen entre los ocho que no son gris. El gris es de quien no tiene color: agentes y usuarios borrados.
 - **«Espera por ti»** no es una marca guardada: es la etiqueta que la tarjeta, la fila y la ficha pintan en `--turno` sobre `--turno-fondo` (`insignia turno`) cuando la tarea está `done` o lleva `bloqueada` o `análisis listo`: exactamente lo que cuenta el contador de pendientes y lo que filtra el conmutador rápido, que se llama igual, «Espera por ti». `backlog` no la lleva: la columna entera es del humano y marcarla una a una sería ruido. Es lo único que va en ese color además del contador de la bandeja y el paso actual del ciclo.
@@ -673,7 +684,7 @@ Tipografía `"Avenir Next", "Segoe UI Variable", "Segoe UI", system-ui, sans-ser
 - **Tareas** es una sección con dos vistas de lo mismo, la lista (`/tareas`) y el tablero (`/tareas/kanban`), y se presenta como tal: título «Tareas», frase de propósito («Todas las tareas del proyecto, por columna.»), y en la fila de filtros, a la izquierda del todo, un conmutador de dos enlaces «Lista | Tablero» (`nav.vistas`, el activo con `aria-current="page"`) que cambia de vista conservando los parámetros de filtro. La entrada de navegación es una sola, «Tareas». La palabra «kanban» no aparece en pantalla; la ruta no cambia.
 - **Lista**: grupos por columna, cada uno con el rótulo de la columna: la etiqueta de estado con el nombre de la columna en plural («Preparadas»), el dueño en texto suave («la defines tú», «la trabaja el agente», «la revisas tú»; Cerradas no lleva dueño) y el contador. El nombre no se repite fuera de la etiqueta. Tabla sin borde exterior, cabecera en `--texto-suave` sin mayúsculas, filas con borde inferior y fondo `--fondo-hover` al pasar. Columnas: Id, Título (con «Espera por ti» y las marcas como etiquetas, y el progreso de hijas), Análisis, Ejecución, Tokens, Creada por (chip) y En columna. Los filtros son una fila encima, sin caja: el conmutador de vista, los tres conmutadores rápidos, la búsqueda y los desplegables compactos, con sus opciones ya en el vocabulario.
 - **Tablero**: columnas sin fondo; la cabecera de cada columna es el mismo rótulo que en la lista. Tarjetas con borde `--borde`, fondo `--fondo`, sombra suave al pasar y al arrastrar; una tarea que espera por el humano lleva un filete de 3 px en `--turno` en el borde izquierdo. Cada tarjeta: id, etiquetas y edad en una línea, título, la barra de progreso cuando hay hijas, y una última línea en texto suave con las fases a la izquierda («análisis sonnet@portatil, ejecución opus@portatil») y los tokens a la derecha. Agrupado por funcionalidad, cada franja lleva su cabecera de ancho completo sobre `--fondo-lateral` y las columnas debajo; ver «Un tablero que se lee de un vistazo».
-- **Ficha**: migas `PRI › Tareas › T-0042`, título, y las acciones hacia delante a la derecha (Pasar a preparadas, Aprobar ejecución, Finalizar). Debajo de la cabecera, **el ciclo** (`pasosDelCiclo`) a todo lo ancho. Debajo, las preguntas abiertas con su formulario. Después el bloque de **propiedades**: filas de dos columnas con el nombre en `--texto-suave` y el valor al lado: Estado (nombre legible y la edad), Proyecto, Tipo, Análisis, Ejecución, Autoejecución, Padre, Orden, Creada (chip de quien la creó, o el terminal si fue una propuesta, y la fecha), Revisión. Después Descripción, Hijas (cada una con su etiqueta de estado), Consumo (fases con nombre legible), Hilo, Nota, Actividad. Las **vueltas atrás** («Devolver a por definir», «Rechazar el resultado»), **Editar** y **Borrar** van al final como `<details>`, porque son excepcionales. En ancho, propiedades, consumo y `<details>` forman el panel de la derecha; ver «La ficha como vista de incidencia».
+- **Ficha**: migas `PRI › Tareas › T-0042`, título, y las acciones hacia delante a la derecha (Pasar a preparadas, Aprobar ejecución, Finalizar). Debajo de la cabecera, **el ciclo** (`pasosDelCiclo`) a todo lo ancho. Debajo, las preguntas abiertas con su formulario. Después el bloque de **propiedades**: filas de dos columnas con el nombre en `--texto-suave` y el valor al lado: Estado (nombre legible y la edad), Proyecto, Tipo, Análisis, Ejecución, Autoejecución, Padre, Orden, Creada (chip de quien la creó, o el terminal si fue una propuesta, y la fecha), Revisión. Después Descripción, Hijas (cada una con su etiqueta de estado), Consumo (fases con nombre legible), Hilo con el cuadro de comentar al final, Actividad. La fila Estado añade «Iteración 2» cuando hay más de una. «Devolver a por definir», **Editar** y **Borrar** van al final como `<details>`, porque son excepcionales; pedir otra iteración no lo es y va en el cuadro de comentar. En ancho, propiedades, consumo y `<details>` forman el panel de la derecha; ver «La ficha como vista de incidencia».
 - **Bandeja**: título «Bandeja», frase «Lo que espera por ti, de todos los proyectos.» y cuatro bloques con un verbo como título y el contador al lado: «Contesta» (preguntas sin contestar), «Aprueba» (análisis y descomposiciones por aprobar), «Revisa» (resultados en Hechas) y «Define» (más de siete días por definir). Debajo de cada verbo, una línea que dice qué es el bloque. En cada uno, líneas con chip de proyecto, id, título y edad, y debajo la tarjeta que toca (pregunta con formulario, análisis con botón de aprobar, resultado con botón de finalizar). Un bloque vacío dice «Nada pendiente.». Mismos componentes que la ficha: nada se pinta dos veces con dos plantillas.
 - **Hilo**: cada comentario es una tarjeta con cabecera de chip del autor, etiqueta del tipo, `P<n>` cuando toca y la fecha; debajo el cuerpo renderizado; el formulario de respuesta dentro de la tarjeta de la pregunta abierta, con las opciones como tarjetas seleccionables y la recomendada marcada.
 - **Nueva tarea** y **Editar**: una columna, etiquetas encima de los campos; Análisis y Ejecución como dos tarjetas lado a lado a partir de 48 rem.
@@ -721,7 +732,7 @@ CREATE INDEX actividad_por_objeto ON actividad (objeto, objeto_id, id);
 | `mover_tarea` | tarea | `prepared → backlog` |
 | `aprobar_ejecucion` | tarea | vacío |
 | `responder_pregunta` | tarea | `P1: Punto y coma` |
-| `nota` | tarea | los primeros 80 caracteres de la nota |
+| `comentario` | tarea | los primeros 80 caracteres del comentario; si pidió otra iteración, precedidos de `otra iteración: ` |
 | `alta_usuario` | usuario | `color azul` |
 | `baja_usuario` | usuario | vacío |
 | `cambiar_password` | usuario | vacío |
@@ -874,6 +885,8 @@ La respuesta del humano llega por `novedades` y queda como comentario `respuesta
 ### Tareas
 
 - **El humano asigna modelo y terminal para cada fase.** Si una fase no tiene terminal asignado, cualquier terminal puede tomarla con `tomar_tarea`.
+- **Modelos por defecto: `fable` analiza y `opus` ejecuta.** Es lo que el alta de la web trae puesto y lo que el bucle usa de reserva cuando una fase llega sin modelo o con uno que no reconoce. Decidido el 16 de septiembre de 2026.
+- **Una tarea de tipo `pregunta` solo pide modelo de análisis.** El formulario esconde la ejecución y la autoejecución en cuanto se elige ese tipo (una regla CSS con `:has`, sin JavaScript; la funcionalidad esconde solo la autoejecución), y el servidor las ignora al guardar aunque lleguen.
 - **`tomar_tarea` falla si esa fase ya tiene otro terminal** responsable. No hay robo silencioso de tareas.
 - **El modelo con el que se trabaja una fase queda fijado al tomarla.** El bucle pasa en `tomar_tarea` el modelo que va a usar, sea el asignado o el de reserva; así el autor de los comentarios y el consumo cuentan lo mismo y la ficha nunca muestra una fase trabajada sin modelo.
 - **Pasar a `doing` exige análisis y cero preguntas abiertas.** Si el análisis deja preguntas, la tarea se queda en `prepared` y bloqueada hasta que se contesten.

@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
 import type { Avisador } from "../avisos.ts";
-import { type ComentarioDeAgente, comentarAnalisis, comentarAvance, comentarResultado } from "../db/hilo.ts";
+import { type ComentarioDeAgente, comentarAnalisis, comentarioDeAgente, comentarResultado } from "../db/hilo.ts";
 import { buscarTarea, type ItemIndice, itemIndiceDe, type Tarea } from "../db/tareas.ts";
 import { ErrorDeRegla } from "../errores.ts";
 import { parsearId } from "../md/ids.ts";
@@ -11,12 +11,12 @@ import { conErroresDeRegla } from "./errores.ts";
 
 export const NOMBRE = "comentar_tarea";
 
-/** Los tres tipos de comentario que escribe un agente. Los otros tres son del humano. */
-type TipoDeAgente = "analisis" | "avance" | "resultado";
+/** Los tres tipos de comentario que escribe un agente. `respuesta` es del humano. */
+type TipoDeAgente = "analisis" | "comentario" | "resultado";
 
 const ESCRITORES: Record<TipoDeAgente, (db: DatabaseSync, datos: ComentarioDeAgente) => unknown> = {
 	analisis: comentarAnalisis,
-	avance: comentarAvance,
+	comentario: comentarioDeAgente,
 	resultado: comentarResultado,
 };
 
@@ -74,10 +74,10 @@ export function registrarHerramientaComentarTarea(
 		{
 			title: "Comentar tarea",
 			description:
-				"Añade un comentario al hilo de la tarea: «analisis» cierra el análisis, «avance» cuenta por dónde va la ejecución y «resultado» dice qué se construyó y con qué commit, y pasa la tarea a done. Devuelve la línea de índice de la tarea tal como queda.",
+				"Añade un comentario al hilo de la tarea: «analisis» cierra el análisis, «comentario» para contar por dónde vas o contestar al humano, y «resultado» dice qué se construyó y con qué commit, y pasa la tarea a done. Devuelve la línea de índice de la tarea tal como queda.",
 			inputSchema: z.object({
 				id: z.string().describe("Identificador de la tarea, con la forma T-0042."),
-				tipo: z.enum(["analisis", "avance", "resultado"]).describe("Qué clase de comentario se escribe."),
+				tipo: z.enum(["analisis", "comentario", "resultado"]).describe("Qué clase de comentario se escribe."),
 				texto: z
 					.string()
 					.min(1, { error: "el texto del comentario no puede ir vacío" })

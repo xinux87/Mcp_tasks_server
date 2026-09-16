@@ -19,7 +19,7 @@ import {
 import { COLORES_USUARIO } from "../src/db/colores.ts";
 import { buscarUsuarioPorNombre, crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { editarTareaBacklog } from "../src/db/edicion.ts";
-import { comentarAnalisis, notaHumana, preguntar, responder } from "../src/db/hilo.ts";
+import { comentarAnalisis, comentarioHumano, preguntar, responder } from "../src/db/hilo.ts";
 import { aprobarEjecucion, crearTareaHumana, moverTareaHumano, reordenar, tomarTarea } from "../src/db/tareas.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA, codigoDe, montar } from "./comun.ts";
 
@@ -162,8 +162,8 @@ test("cada acción humana sobre una tarea deja su fila, y reordenar no", () => {
 		assert.equal(detalleDe(banco.db, "tarea", tarea.id, "aprobar_ejecucion"), "");
 
 		const larga = "n".repeat(100);
-		notaHumana(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: larga });
-		assert.equal(detalleDe(banco.db, "tarea", tarea.id, "nota"), "n".repeat(80));
+		comentarioHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: larga });
+		assert.equal(detalleDe(banco.db, "tarea", tarea.id, "comentario"), "n".repeat(80));
 
 		// El orden es prioridad, no configuración: arrastrar no deja rastro.
 		const antesDeReordenar = actividadDe(banco.db, "tarea", tarea.id).length;
@@ -179,7 +179,7 @@ test("cada acción humana sobre una tarea deja su fila, y reordenar no", () => {
 			"mover_tarea",
 			"responder_pregunta",
 			"aprobar_ejecucion",
-			"nota",
+			"comentario",
 		]);
 		assert.equal(altaPor(banco.db, "tarea", tarea.id), "ana");
 		const rastro = actividadDe(banco.db, "tarea", tarea.id);
@@ -195,7 +195,7 @@ test("cada acción humana sobre una tarea deja su fila, y reordenar no", () => {
 		// `actividadReciente` va al revés: lo último, primero.
 		assert.deepEqual(
 			actividadReciente(banco.db, 2).map((fila) => fila.accion),
-			["nota", "aprobar_ejecucion"],
+			["comentario", "aprobar_ejecucion"],
 		);
 	} finally {
 		banco.cerrar();

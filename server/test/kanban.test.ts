@@ -362,7 +362,7 @@ test("la vuelta atrás de prepared a backlog exige nota, y la deja en el hilo", 
 		assert.equal(conNota.status, 204);
 		assert.equal(buscarTarea(montaje.db, 1)?.estado, "backlog");
 		const hilo = leerTarea(montaje.db, 1)?.comentarios ?? [];
-		const nota = hilo.find((comentario) => comentario.tipo === "nota");
+		const nota = hilo.find((comentario) => comentario.tipo === "comentario");
 		assert.equal(nota?.texto, "Falta decidir el formato.");
 		assert.equal(nota?.autor, "humano:ana");
 	} finally {

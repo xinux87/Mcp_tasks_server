@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { actividadDe } from "../src/db/actividad.ts";
 import { revisionActual } from "../src/db/consultas.ts";
 import {
 	comentarAnalisis,
-	comentarAvance,
+	comentarioDeAgente,
+	comentarioHumano,
 	comentarResultado,
-	notaHumana,
 	preguntar,
 	preguntasAbiertas,
 	responder,
@@ -96,16 +97,16 @@ test("sin modelo asignado a la fase el autor del agente es agente@terminal", () 
 	}
 });
 
-test("avance no mueve la tarea y resultado la pasa a done soltando la marca", () => {
+test("un comentario del agente no mueve la tarea y resultado la pasa a done soltando la marca", () => {
 	const banco = montar();
 	try {
 		const tarea = enEjecucion(banco);
 		assert.equal(
-			codigoDe(() => comentarAvance(banco.db, { tareaId: tarea.id, terminalId: banco.sobremesa, texto: "x" })),
+			codigoDe(() => comentarioDeAgente(banco.db, { tareaId: tarea.id, terminalId: banco.sobremesa, texto: "x" })),
 			"fase_no_tomada",
 		);
 
-		const avance = comentarAvance(banco.db, {
+		const avance = comentarioDeAgente(banco.db, {
 			tareaId: tarea.id,
 			terminalId: banco.portatil,
 			texto: "Botón añadido. Faltan los tests.",
@@ -124,8 +125,8 @@ test("avance no mueve la tarea y resultado la pasa a done soltando la marca", ()
 
 		// En done ya no escribe la ejecución.
 		assert.equal(
-			codigoDe(() => comentarAvance(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "x" })),
-			"estado_no_permite_avance",
+			codigoDe(() => comentarioDeAgente(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "x" })),
+			"estado_no_permite_comentario",
 		);
 	} finally {
 		banco.cerrar();
@@ -270,18 +271,63 @@ test("la respuesta guarda el texto de la opción, y no admite otra ni una segund
 	}
 });
 
-test("el humano deja notas en cualquier estado menos finished", () => {
+test("el humano comenta en cualquier estado menos finished", () => {
 	const banco = montar();
 	try {
 		const tarea = crearTareaHumana(banco.db, { titulo: "Una", descripcion: "d", usuarioId: banco.ana });
-		const nota = notaHumana(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "y además esto" });
+		const nota = comentarioHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "y además esto" });
 		assert.equal(nota.autor, "humano:ana");
 		assert.equal(exigirTarea(banco.db, tarea.id).revision, revisionActual(banco.db));
 
 		banco.db.prepare("UPDATE tareas SET estado = 'finished' WHERE id = ?").run(tarea.id);
 		assert.equal(
-			codigoDe(() => notaHumana(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "tarde" })),
+			codigoDe(() => comentarioHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "tarde" })),
 			"tarea_archivada",
+		);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("comentar con iterar devuelve la tarea hecha a doing, con transición y rastro", () => {
+	const banco = montar();
+	try {
+		const tarea = enEjecucion(banco);
+		comentarResultado(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "Commit: a1b2c3d" });
+		assert.equal(exigirTarea(banco.db, tarea.id).estado, "done");
+
+		// Sin `iterar` solo deja constancia: la tarea sigue hecha.
+		comentarioHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "queda bien" });
+		assert.equal(exigirTarea(banco.db, tarea.id).estado, "done");
+
+		const comentario = comentarioHumano(banco.db, {
+			tareaId: tarea.id,
+			usuarioId: banco.ana,
+			texto: "falta el separador",
+			iterar: true,
+		});
+		assert.equal(comentario.tipo, "comentario");
+		assert.equal(comentario.autor, "humano:ana");
+		const vuelta = exigirTarea(banco.db, tarea.id);
+		assert.equal(vuelta.estado, "doing");
+		assert.equal(vuelta.enMarchaTerminalId, null);
+
+		const transiciones = banco.db
+			.prepare("SELECT de, a FROM transiciones WHERE tarea_id = ? ORDER BY id")
+			.all(tarea.id)
+			.map((fila) => `${String(fila.de)} → ${String(fila.a)}`);
+		assert.equal(transiciones.at(-1), "done → doing");
+		assert.deepEqual(
+			actividadDe(banco.db, "tarea", tarea.id)
+				.filter((fila) => fila.accion === "comentario")
+				.map((fila) => fila.detalle),
+			["queda bien", "otra iteración: falta el separador"],
+		);
+
+		// Fuera de `done` no hay iteración que pedir.
+		assert.equal(
+			codigoDe(() => comentarioHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "otra", iterar: true })),
+			"solo_en_done",
 		);
 	} finally {
 		banco.cerrar();

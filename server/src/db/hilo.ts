@@ -16,10 +16,14 @@ import { buscarTerminalPorId, buscarUsuarioPorId } from "./consultas.ts";
 import { exigirPartes } from "./funcionalidades.ts";
 import { cambiarEstado, contarPreguntasAbiertas, exigirTarea, faseQueToca, type Tarea, tocarTarea } from "./tareas.ts";
 
-/** Los seis tipos de comentario del hilo. Se añaden, nunca se editan ni se borran. */
-export type TipoComentario = "analisis" | "pregunta" | "respuesta" | "avance" | "resultado" | "nota";
+/**
+ * Los cinco tipos de comentario del hilo. Se añaden, nunca se editan ni se
+ * borran. `comentario` es el mensaje libre de cualquiera: el humano pide,
+ * aclara o corrige; el agente cuenta por dónde va o contesta.
+ */
+export type TipoComentario = "analisis" | "pregunta" | "respuesta" | "resultado" | "comentario";
 
-const TIPOS: readonly TipoComentario[] = ["analisis", "pregunta", "respuesta", "avance", "resultado", "nota"];
+const TIPOS: readonly TipoComentario[] = ["analisis", "pregunta", "respuesta", "resultado", "comentario"];
 
 export type Comentario = {
 	id: number;
@@ -170,6 +174,18 @@ export function preguntasAbiertas(db: DatabaseSync, tareaId: number): number {
 	return contarPreguntasAbiertas(db, tareaId);
 }
 
+/**
+ * Las vueltas de una tarea: la fecha de cada `done → doing`, en orden. Las
+ * iteraciones se cuentan, no se guardan: la primera ejecución es la iteración 1
+ * y cada vuelta empieza una más, así que la actual es `1 + longitud`. Sale de
+ * `transiciones`, que empezó vacía: lo anterior a esa tabla no se cuenta.
+ */
+export function iteracionesDe(db: DatabaseSync, tareaId: number): string[] {
+	return sentencia(db, "SELECT creado FROM transiciones WHERE tarea_id = ? AND de = 'done' AND a = 'doing' ORDER BY id")
+		.all(tareaId)
+		.map((fila) => texto(fila, "creado"));
+}
+
 // --- escritura ---------------------------------------------------------------
 
 export type NuevoComentario = {
@@ -274,13 +290,16 @@ function exigirEjecucionEnMarcha(conexion: DatabaseSync, tareaId: number, termin
 	return tarea;
 }
 
-/** Comentario `avance`: en qué punto va la ejecución. No mueve la tarea. */
-export function comentarAvance(db: DatabaseSync, datos: ComentarioDeAgente): Comentario {
+/**
+ * Comentario del agente: por dónde va la ejecución, o la contestación a lo que
+ * el humano le ha dicho en el hilo. No mueve la tarea.
+ */
+export function comentarioDeAgente(db: DatabaseSync, datos: ComentarioDeAgente): Comentario {
 	return escribirContenido(db, (conexion, revision) => {
-		const tarea = exigirEjecucionEnMarcha(conexion, datos.tareaId, datos.terminalId, "estado_no_permite_avance");
+		const tarea = exigirEjecucionEnMarcha(conexion, datos.tareaId, datos.terminalId, "estado_no_permite_comentario");
 		return insertarComentario(conexion, revision, {
 			tareaId: tarea.id,
-			tipo: "avance",
+			tipo: "comentario",
 			autor: autorAgente(conexion, tarea, datos.terminalId),
 			texto: datos.texto,
 			preguntaId: null,
@@ -460,38 +479,56 @@ export function responder(db: DatabaseSync, datos: Respuesta): Pregunta {
 	});
 }
 
-export type NotaHumana = {
+export type ComentarioHumano = {
 	tareaId: number;
 	usuarioId: number;
 	texto: string;
+	/** En `done`: además de escribir, devuelve la tarea a `doing`. */
+	iterar?: boolean;
 };
 
 /**
- * Comentario `nota`: cualquier indicación del humano durante la tarea. Es por
- * donde entra todo cambio posterior a salir de `backlog`, para que el agente
- * lo lea en contexto sin que se pierda qué se pidió al principio.
+ * Comentario del humano: pide, aclara o corrige. Es por donde entra todo
+ * cambio posterior a salir de `backlog`, para que el agente lo lea en contexto
+ * sin que se pierda qué se pidió al principio.
+ *
+ * Con `iterar` y la tarea en `done`, el mismo mensaje pide otra iteración: la
+ * tarea vuelve a `doing` en esta misma transacción. Es la vuelta atrás de
+ * antes, dicha en el chat.
  */
-export function notaHumana(db: DatabaseSync, datos: NotaHumana): Comentario {
+export function comentarioHumano(db: DatabaseSync, datos: ComentarioHumano): Comentario {
 	return escribirContenido(db, (conexion, revision) => {
 		const tarea = exigirTarea(conexion, datos.tareaId);
 		if (tarea.estado === "finished") {
 			throw new ErrorDeRegla("tarea_archivada", "Una tarea finished está archivada y es de solo lectura.");
 		}
+		const iterar = datos.iterar === true;
+		if (iterar && tarea.estado !== "done") {
+			throw new ErrorDeRegla(
+				"solo_en_done",
+				`La tarea está en ${tarea.estado}: solo se pide otra iteración sobre una tarea hecha.`,
+			);
+		}
 		const comentario = insertarComentario(conexion, revision, {
 			tareaId: tarea.id,
-			tipo: "nota",
+			tipo: "comentario",
 			autor: autorHumano(conexion, datos.usuarioId),
 			texto: datos.texto,
 			preguntaId: null,
 		});
+		// Al volver a `doing` nadie la tiene tomada todavía: la marca «en
+		// marcha» la vuelve a poner el agente con `tomar_tarea`.
+		if (iterar) {
+			cambiarEstado(conexion, revision, tarea.id, "doing", ", en_marcha_terminal_id = NULL");
+		}
 		registrarActividad(conexion, {
 			actor: { usuarioId: datos.usuarioId },
-			accion: "nota",
+			accion: "comentario",
 			objeto: "tarea",
 			objetoId: tarea.id,
 			objetoNombre: tarea.titulo,
-			// El texto entero ya está en el hilo: aquí basta con reconocerla.
-			detalle: datos.texto.slice(0, 80),
+			// El texto entero ya está en el hilo: aquí basta con reconocerlo.
+			detalle: `${iterar ? "otra iteración: " : ""}${datos.texto.slice(0, 80)}`,
 		});
 		return comentario;
 	});

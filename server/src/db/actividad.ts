@@ -26,7 +26,7 @@ export type AccionActividad =
 	| "mover_tarea"
 	| "aprobar_ejecucion"
 	| "responder_pregunta"
-	| "nota"
+	| "comentario"
 	| "alta_usuario"
 	| "baja_usuario"
 	| "cambiar_password"

@@ -41,7 +41,7 @@ export const NOMBRE_PROYECTO = "MCP Tareas";
 export const COLUMNAS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
 
 /** Sugerencias de modelo del formulario de tarea. No es una lista cerrada. */
-export const MODELOS_SUGERIDOS: readonly string[] = ["opus", "sonnet", "haiku", "fable"];
+export const MODELOS_SUGERIDOS: readonly string[] = ["fable", "opus", "sonnet", "haiku"];
 
 /**
  * Clase CSS de cada marca. Las marcas llevan espacios y tildes, así que no se

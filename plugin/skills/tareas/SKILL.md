@@ -158,6 +158,10 @@ es la vuelta que más veces se ejecuta y tiene que costar lo mínimo.
 Si hay una sección `## Preguntas contestadas`, esas tareas sí cuentan como
 trabajo: van al paso 3 aunque no aparezcan en `## Tareas nuevas o cambiadas`.
 
+Y una tarea en `doing` que llega en `## Tareas nuevas o cambiadas` hay que
+leerla: puede traer un comentario nuevo del humano, que es un turno que te toca
+atender.
+
 ## Paso 3. Leer y clasificar
 
 Para cada tarea que traiga `novedades`, llama a `leer_tarea` con su id y lee el
@@ -176,9 +180,13 @@ en `prepared` y **no** tiene ningún comentario `analisis` en el hilo; es
 | `prepared`, `tipo: funcionalidad`, sin comentario `analisis`, y `analisis.terminal` está vacío o es este terminal | Candidata a **descomposición**. |
 | `prepared`, con comentario `analisis`, sin marca `bloqueada` ni `análisis listo`, y `ejecucion.terminal` está vacío o es este terminal | Candidata a **ejecución**. |
 | `prepared` con marca `análisis listo` | **Nada.** `autoejecucion` está desactivada y el humano todavía no ha aprobado el análisis. |
-| `doing`, `ejecucion.terminal` es este terminal, y en el hilo hay un comentario `respuesta` posterior a la última `pregunta` | Candidata a **ejecución (retomar)**, con la respuesta en contexto. |
+| `doing`, `ejecucion.terminal` es este terminal, sin marca `bloqueada`, y el último mensaje del hilo escrito por un humano (`respuesta` o `comentario`, autor `humano:…`) es posterior al último mensaje escrito por un agente (autor `modelo@terminal`, de cualquier tipo) | Candidata a **ejecución (retomar)**, con esos mensajes del humano en contexto. |
 | Marca `esperando` | **Nada.** Delante hay otra tarea que todavía no está hecha. Cuando se cierre, esta llegará sola por `novedades`. |
-| `doing` sin respuesta nueva, o `done`, o `finished` | **Nada.** |
+| `doing` sin mensaje nuevo del humano, o `done`, o `finished` | **Nada.** |
+
+El hilo es un chat: esa regla de «lo último lo ha dicho el humano» es la que hace
+que se retome igual tras una respuesta a una pregunta que tras un comentario
+suelto del humano.
 
 Una **funcionalidad en `doing`** no es trabajo de ningún agente: lo que se
 ejecuta son sus partes, que llegan solas por `novedades` como tareas normales.
@@ -200,7 +208,7 @@ prioridad que ha puesto el humano. Las demás esperan a la vuelta siguiente.
 1. Para **cada** candidata, llama a `tomar_tarea` con el id, la fase (`analisis`
    o `ejecucion`) y `modelo`: el modelo con el que vas a lanzar su subagente en
    el punto 2, que es el del frontmatter de esa fase o, si viene vacío o no lo
-   reconoces, el de reserva (`sonnet` para análisis, `opus` para ejecución). Si
+   reconoces, el de reserva (`fable` para análisis, `opus` para ejecución). Si
    la fase no tenía modelo asignado, el que mandes queda fijado ahí, y así firma
    los comentarios y cuadra con el consumo.
    - Si devuelve el error `fase_tomada`, esa fase ya tiene otro terminal
@@ -216,7 +224,7 @@ prioridad que ha puesto el humano. Las demás esperan a la vuelta siguiente.
    - `subagent_type`: `general-purpose`.
    - `model`: el del frontmatter de la fase que toca. El mapeo es directo:
      `opus` → `opus`, `sonnet` → `sonnet`, `haiku` → `haiku`, `fable` → `fable`.
-     Si el campo viene vacío o con un valor que no reconoces, usa `sonnet` para
+     Si el campo viene vacío o con un valor que no reconoces, usa `fable` para
      análisis y `opus` para ejecución, y dilo en tu línea de cierre.
    - `prompt`: la plantilla que corresponda, de las tres de más abajo, con los
      huecos rellenos con los de **esa** tarea.
@@ -390,9 +398,9 @@ preguntaste.
 
 ## Plantilla del prompt de ejecución
 
-Copia esto, rellena los huecos entre `<< >>` y bórralos. El bloque «Respuesta
-del humano» solo va cuando estás retomando una tarea tras una pregunta
-contestada; si no, bórralo entero. `<< RAMA PRINCIPAL >>` y `<< VERIFICACION >>`
+Copia esto, rellena los huecos entre `<< >>` y bórralos. El bloque «Lo que te ha
+dicho el humano desde tu último mensaje» solo va cuando estás retomando una
+tarea; si no, bórralo entero. `<< RAMA PRINCIPAL >>` y `<< VERIFICACION >>`
 son las líneas que apuntaste al registrar el terminal, no algo que tengas que
 averiguar en el repositorio.
 
@@ -408,13 +416,23 @@ Documento completo tal como lo devolvió leer_tarea, hilo y análisis incluidos:
 
 << PEGA AQUÍ LA SALIDA ENTERA DE leer_tarea >>
 
-## Respuesta del humano  << SOLO AL RETOMAR; SI NO, BORRA ESTE BLOQUE >>
+## Lo que te ha dicho el humano desde tu último mensaje  << SOLO AL RETOMAR; SI NO, BORRA ESTE BLOQUE >>
 
-Pregunta << Pn >>: << TEXTO DE LA PREGUNTA >>
-Opción elegida: << TEXTO DE LA OPCIÓN, NO SU POSICIÓN >>
-Nota del humano: << NOTA, O «ninguna» >>
+<< COPIA AQUÍ, EN ORDEN Y CON SU FECHA, CADA MENSAJE DEL HUMANO POSTERIOR AL
+   ÚLTIMO MENSAJE DEL AGENTE:
+   - por cada `respuesta`: la pregunta << Pn >>, la opción elegida por su texto
+     (nunca por su posición) y la nota del humano, o «ninguna»;
+   - por cada `comentario`: el texto tal cual. >>
 
-Esa decisión ya está tomada. Constrúyela así y no vuelvas a preguntar por ella.
+Las decisiones que ahí se toman ya están tomadas: constrúyelas así y no vuelvas
+a preguntar por ellas.
+
+Si lo que te dice el humano es una pregunta o una duda que no exige cambiar
+código, contéstale: llama a `mcp__plugin_mcp-tareas_tareas__comentar_tarea` con
+id = << ID >>, tipo = `comentario` y tu respuesta, y termina el turno sin
+escribir `resultado`. La tarea sigue en `doing` esperando su siguiente mensaje.
+Si exige trabajo, hazlo y ciérralo con `resultado` como siempre: cada iteración
+cierra con el suyo.
 
 ## Si la tarea tiene `rama`  << SOLO SI EL FRONTMATTER TRAE `rama`; SI NO, BORRA ESTE BLOQUE >>
 
@@ -433,10 +451,11 @@ el commit de la fusión en el `resultado`. La verificación que tiene que pasar 
 ## Qué tienes que hacer
 
 1. Trabaja en el repositorio en << RUTA DEL REPOSITORIO >>. Sigue el plan del
-   análisis. Si el análisis se equivoca en algo, arréglalo y dilo en un `avance`.
+   análisis. Si el análisis se equivoca en algo, arréglalo y dilo en un
+   `comentario`.
 2. Cuenta lo que vas haciendo cuando haya algo que contar: llama a
-   `mcp__plugin_mcp-tareas_tareas__comentar_tarea` con tipo = `avance` y dos o
-   tres líneas. No comentes cada archivo que tocas.
+   `mcp__plugin_mcp-tareas_tareas__comentar_tarea` con tipo = `comentario` y dos
+   o tres líneas. No comentes cada archivo que tocas.
 3. Si repartes el trabajo en partes que merecen verse por separado, crea cada
    una con `mcp__plugin_mcp-tareas_tareas__crear_tarea`, clase = `hija`,
    padre = << ID >>. Nacen en doing con las mismas asignaciones y cada una cierra

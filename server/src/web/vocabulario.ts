@@ -67,9 +67,8 @@ export const NOMBRE_TIPO_COMENTARIO: Record<TipoComentario, string> = {
 	analisis: "Análisis",
 	pregunta: "Pregunta",
 	respuesta: "Respuesta",
-	avance: "Avance",
 	resultado: "Resultado",
-	nota: "Nota",
+	comentario: "Comentario",
 };
 
 /** Las dos fases de una tarea: en el consumo y en los informes. */
@@ -86,8 +85,8 @@ export const NOMBRE_TIPO_TAREA: Record<TipoTarea, string> = {
 };
 
 /**
- * Las dos vueltas atrás del humano, dichas por lo que significan y no por la
- * columna a la que van. Las usan la ficha, el prompt del tablero y la ayuda.
+ * La vuelta atrás del humano que sigue siendo excepcional, dicha por lo que
+ * significa y no por la columna a la que va. La otra, pedir otra iteración
+ * sobre una tarea hecha, va en el cuadro de comentar y no tiene `<details>`.
  */
 export const VOLVER_A_DEFINIR = "Devolver a por definir";
-export const RECHAZAR_RESULTADO = "Rechazar el resultado";

@@ -2042,4 +2042,61 @@ details.caja[open] > summary {
 	margin-top: 2rem;
 	font-size: 0.85rem;
 }
+
+/* --- el tipo manda en el formulario de tarea ------------------------------- */
+
+/* Una pregunta solo tiene fase de análisis y una funcionalidad no tiene
+   autoejecución. El servidor ya lo ignora al guardar; esto lo esconde en el
+   momento en que se elige el tipo, sin JavaScript. */
+form:has(select[name="tipo"] option[value="pregunta"]:checked) fieldset[data-fase="ejecucion"],
+form:has(select[name="tipo"] option[value="pregunta"]:checked) label[data-casilla="autoejecucion"],
+form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label[data-casilla="autoejecucion"] {
+	display: none;
+}
+
+/* --- hilo como chat ------------------------------------------------------ */
+
+/* El corte de cada vuelta: una línea fina con «Iteración n» en medio. No es un
+   mensaje, así que no lleva caja ni chip. */
+.iteracion {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	color: var(--texto-suave);
+	font-size: 0.8rem;
+}
+
+.iteracion::before, .iteracion::after {
+	content: "";
+	flex: 1;
+	border-top: 1px solid var(--borde);
+}
+
+/* El humano y el agente escriben en la misma columna: esto es un hilo de
+   trabajo, no una conversación con burbujas a cada lado. Lo que los distingue
+   es el chip de quien firma —el del agente lleva su terminal detrás— y un
+   fondo más suave en lo que escribe la persona. */
+.comentario:not(:has(.chip .terminal)) {
+	background: var(--fondo-lateral);
+}
+
+/* El cuadro de escribir cierra el hilo, pegado al último mensaje. */
+.hilo:has(+ .comentar) {
+	margin-bottom: 0.8rem;
+}
+
+.comentar {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+	margin: 0 0 1.6rem;
+}
+
+.comentar textarea {
+	width: 100%;
+}
+
+.comentar .acciones {
+	justify-content: flex-end;
+}
 `;

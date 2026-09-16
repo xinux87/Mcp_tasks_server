@@ -242,7 +242,7 @@ test("preguntar avisa con la pregunta y el enlace de la ficha", async () => {
 	}
 });
 
-test("un resultado avisa de la tarea hecha; un avance no avisa de nada", async () => {
+test("un resultado avisa de la tarea hecha; un comentario no avisa de nada", async () => {
 	const montaje = await montar();
 	try {
 		const tarea = tareaEnPrepared(montaje, "Exportar el listado de clientes a CSV");
@@ -251,7 +251,7 @@ test("un resultado avisa de la tarea hecha; un avance no avisa de nada", async (
 		// Con autoejecución, el análisis no espera a nadie: no hay aviso.
 		await llamar(montaje, "comentar_tarea", { id, tipo: "analisis", texto: "Plan: un botón y un fichero." });
 		await llamar(montaje, "tomar_tarea", { id, fase: "ejecucion" });
-		await llamar(montaje, "comentar_tarea", { id, tipo: "avance", texto: "Botón puesto, faltan los tests." });
+		await llamar(montaje, "comentar_tarea", { id, tipo: "comentario", texto: "Botón puesto, faltan los tests." });
 		assert.deepEqual(await montaje.recoger(), []);
 
 		await llamar(montaje, "comentar_tarea", { id, tipo: "resultado", texto: "Hecho.\n\nCommit: a1b2c3d" });

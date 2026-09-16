@@ -959,7 +959,7 @@ export type MovimientoHumano = {
 
 /**
  * Mover una tarea de columna desde la web. Las vueltas atrás son del humano y
- * siempre dejan una nota en el hilo explicando por qué. El agente nunca pasa
+ * siempre dejan un comentario en el hilo explicando por qué. El agente nunca pasa
  * por aquí: él solo mueve hacia delante escribiendo su comentario de cierre.
  */
 export function moverTareaHumano(db: DatabaseSync, datos: MovimientoHumano): Tarea {
@@ -978,7 +978,7 @@ export function moverTareaHumano(db: DatabaseSync, datos: MovimientoHumano): Tar
 		if (transicion.notaObligatoria && nota.trim() === "") {
 			throw new ErrorDeRegla(
 				"nota_obligatoria",
-				`Pasar de ${tarea.estado} a ${datos.estado} es una vuelta atrás: hace falta una nota que explique qué falta.`,
+				`Pasar de ${tarea.estado} a ${datos.estado} es una vuelta atrás: hace falta un comentario que explique qué falta.`,
 			);
 		}
 		// Al volver a `doing` nadie la tiene tomada todavía: la marca «en
@@ -993,7 +993,7 @@ export function moverTareaHumano(db: DatabaseSync, datos: MovimientoHumano): Tar
 		if (nota !== "") {
 			insertarComentario(conexion, revision, {
 				tareaId: tarea.id,
-				tipo: "nota",
+				tipo: "comentario",
 				autor: autorHumano(conexion, datos.usuarioId),
 				texto: nota,
 				preguntaId: null,

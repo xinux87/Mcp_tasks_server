@@ -174,13 +174,13 @@ function cargarSortable() {
 	return cargaSortable;
 }
 
-/** Las vueltas atrás del humano exigen una nota que explique por qué. */
-function notaObligatoria(origen, destino) {
+/** Las vueltas atrás del humano exigen un comentario que explique por qué. */
+function comentarioObligatorio(origen, destino) {
 	if (origen === "prepared" && destino === "backlog") {
-		return "Devolver a por definir es repensar la tarea. Nota: por qué vuelve.";
+		return "Devolver a por definir es repensar la tarea. Comentario: por qué vuelve.";
 	}
 	if (origen === "done" && destino === "doing") {
-		return "Rechazar el resultado. Nota: qué falta.";
+		return "Pedir otra iteración. Comentario: qué falta.";
 	}
 	return null;
 }
@@ -267,7 +267,7 @@ async function alSoltar(evento) {
 		return;
 	}
 	let nota = "";
-	const pregunta = notaObligatoria(origen, destino);
+	const pregunta = comentarioObligatorio(origen, destino);
 	if (pregunta !== null) {
 		const escrita = window.prompt(pregunta);
 		// Cancelar no mueve nada: el tablero vuelve a como está en el servidor.

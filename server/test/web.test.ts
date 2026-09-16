@@ -12,7 +12,7 @@ import { listarTerminales, listarUsuarios } from "../src/db/admin.ts";
 import { COLORES_USUARIO } from "../src/db/colores.ts";
 import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { registrarConsumo } from "../src/db/consumo.ts";
-import { comentarAnalisis, comentarAvance, comentarResultado, preguntar } from "../src/db/hilo.ts";
+import { comentarAnalisis, comentarioDeAgente, comentarResultado, preguntar } from "../src/db/hilo.ts";
 import {
 	crearHija,
 	crearPropuesta,
@@ -290,7 +290,7 @@ test("mover una tarea: a prepared y de vuelta a backlog, que exige nota", async 
 
 		const sinNota = await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "backlog", nota: "" } });
 		assert.equal(sinNota.status, 422);
-		assert.match(await sinNota.text(), /es una vuelta atrás: hace falta una nota/);
+		assert.match(await sinNota.text(), /es una vuelta atrás: hace falta un comentario/);
 
 		const conNota = await pedir(montaje, `/tareas/${id}/mover`, {
 			cookie,
@@ -301,7 +301,7 @@ test("mover una tarea: a prepared y de vuelta a backlog, que exige nota", async 
 		const cuerpo = await vuelta.text();
 		assert.match(cuerpo, /<span class="insignia estado-backlog color-gris">Por definir<\/span>/);
 		assert.match(cuerpo, /Falta decidir el formato\./);
-		assert.match(cuerpo, /class="insignia tipo-nota color-gris"/);
+		assert.match(cuerpo, /class="insignia tipo-comentario color-gris"/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -368,7 +368,7 @@ test("la ficha pone la pregunta abierta arriba, el hilo la manda a ella y se fil
 		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId });
 		comentarAnalisis(montaje.db, { tareaId: 1, terminalId, texto: "Hay que añadir un botón al listado." });
 		tomarTarea(montaje.db, { tareaId: 1, fase: "ejecucion", terminalId });
-		comentarAvance(montaje.db, { tareaId: 1, terminalId, texto: "El botón ya baja el fichero." });
+		comentarioDeAgente(montaje.db, { tareaId: 1, terminalId, texto: "El botón ya baja el fichero." });
 		preguntar(montaje.db, {
 			tareaId: 1,
 			terminalId,
@@ -397,7 +397,7 @@ test("la ficha pone la pregunta abierta arriba, el hilo la manda a ella y se fil
 		assert.doesNotMatch(preguntas, /El botón ya baja el fichero\./);
 		assert.match(preguntas, /aria-current="page">Preguntas y respuestas/);
 
-		const avances = await (await pedir(montaje, `/tareas/${id}?hilo=avances`, { cookie })).text();
+		const avances = await (await pedir(montaje, `/tareas/${id}?hilo=comentarios`, { cookie })).text();
 		assert.match(avances, /El botón ya baja el fichero\./);
 		assert.doesNotMatch(avances, /Hay que añadir un botón al listado\./);
 
@@ -405,6 +405,95 @@ test("la ficha pone la pregunta abierta arriba, el hilo la manda a ella y se fil
 		const todo = await (await pedir(montaje, `/tareas/${id}?hilo=loquesea`, { cookie })).text();
 		assert.match(todo, /Hay que añadir un botón al listado\./);
 		assert.match(todo, /El botón ya baja el fichero\./);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("comentar una tarea hecha pidiendo otra iteración la devuelve a En curso", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const id = await crearTarea(montaje, cookie, "Exportar clientes", "Hace falta un CSV.");
+		await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "prepared" } });
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
+		const terminalId = valor.terminal.id;
+		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId });
+		comentarAnalisis(montaje.db, { tareaId: 1, terminalId, texto: "plan" });
+		tomarTarea(montaje.db, { tareaId: 1, fase: "ejecucion", terminalId });
+		comentarResultado(montaje.db, { tareaId: 1, terminalId, texto: "Commit: a1b2c3d" });
+
+		// En `done` el cuadro ofrece las dos cosas: dejar constancia y pedir otra
+		// iteración. Todavía va por la primera: ni separador ni cuenta.
+		const hecha = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		assert.match(hecha, /<form class="comentar" method="post" action="\/tareas\/T-0001\/comentar">/);
+		assert.match(hecha, /name="iterar" value="1">Comentar y pedir otra iteración/);
+		assert.doesNotMatch(hecha, /class="iteracion"/);
+		assert.doesNotMatch(hecha, /Iteración 2/);
+
+		const otra = await pedir(montaje, `/tareas/${id}/comentar`, {
+			cookie,
+			formulario: { texto: "Falta el separador.", iterar: "1" },
+		});
+		assert.equal(otra.status, 302);
+		const cuerpo = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		assert.match(cuerpo, /<span class="insignia estado-doing color-amarillo">En curso<\/span>/);
+		assert.match(cuerpo, /Falta el separador\./);
+		// Y ya no hay iteración que pedir: la tarea no está hecha.
+		assert.doesNotMatch(cuerpo, /name="iterar"/);
+
+		// La vuelta parte el hilo: el separador abre la iteración 2 justo delante
+		// del comentario que la pidió, y las propiedades la cuentan.
+		assert.match(cuerpo, /<div class="iteracion"><span>Iteración 2 · /);
+		assert.ok(
+			cuerpo.indexOf('<div class="iteracion">') < cuerpo.indexOf("Falta el separador."),
+			"el separador no va antes del comentario que pidió la vuelta",
+		);
+		assert.match(cuerpo, /<span class="silencio">Iteración 2<\/span>/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+/** Cuántos botones ofrece el cuadro de comentar de una ficha; ninguno si no hay cuadro. */
+function botonesDeComentar(cuerpo: string): number {
+	const desde = cuerpo.indexOf('<form class="comentar"');
+	if (desde < 0) {
+		return 0;
+	}
+	return (cuerpo.slice(desde, cuerpo.indexOf("</form>", desde)).match(/<button/g) ?? []).length;
+}
+
+test("el cuadro de comentar cierra el hilo y ofrece lo que toca en cada columna", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const id = await crearTarea(montaje, cookie, "Exportar clientes", "Hace falta un CSV.");
+		await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "prepared" } });
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
+		const terminalId = valor.terminal.id;
+		tomarTarea(montaje.db, { tareaId: 1, fase: "analisis", terminalId });
+		comentarAnalisis(montaje.db, { tareaId: 1, terminalId, texto: "plan" });
+		tomarTarea(montaje.db, { tareaId: 1, fase: "ejecucion", terminalId });
+
+		// En curso solo se comenta, y el cuadro va detrás del hilo: es la caja de
+		// escribir de un chat, no una sección aparte.
+		const enCurso = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		assert.equal(botonesDeComentar(enCurso), 1);
+		assert.ok(
+			enCurso.indexOf('<div class="hilo">') < enCurso.indexOf('<form class="comentar"'),
+			"el cuadro de comentar no va después del hilo",
+		);
+		assert.match(enCurso, /placeholder="Escribe al agente…"/);
+		assert.doesNotMatch(enCurso, /<h2>Nota<\/h2>/);
+
+		// Hecha, además se puede pedir otra iteración.
+		comentarResultado(montaje.db, { tareaId: 1, terminalId, texto: "Commit: a1b2c3d" });
+		assert.equal(botonesDeComentar(await (await pedir(montaje, `/tareas/${id}`, { cookie })).text()), 2);
+
+		// Cerrada es de solo lectura: no hay cuadro.
+		await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "finished" } });
+		assert.equal(botonesDeComentar(await (await pedir(montaje, `/tareas/${id}`, { cookie })).text()), 0);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -1464,6 +1553,12 @@ test("el presupuesto se pone en el formulario, se ve en la ficha y avisa cuando 
 		const nueva = await (await pedir(montaje, "/tareas/nueva", { cookie })).text();
 		assert.match(nueva, /<span>Presupuesto en tokens<\/span>/);
 		assert.match(nueva, /<input type="number" name="presupuesto" min="0" step="1000" value="">/);
+		// Los modelos por defecto: Fable analiza y Opus ejecuta. La ejecución va
+		// marcada para que la hoja la esconda cuando el tipo elegido es pregunta.
+		assert.match(nueva, /<input type="text" name="analisisModelo" list="modelos" value="fable">/);
+		assert.match(nueva, /<fieldset data-fase="ejecucion">/);
+		assert.match(nueva, /<input type="text" name="ejecucionModelo" list="modelos" value="opus">/);
+		assert.match(nueva, /<label class="casilla" data-casilla="autoejecucion">/);
 
 		const respuesta = await pedir(montaje, "/tareas", {
 			cookie,

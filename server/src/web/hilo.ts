@@ -1,5 +1,6 @@
 import { html, raw } from "hono/html";
 import type { Comentario, Pregunta } from "../db/hilo.ts";
+import type { Estado } from "../db/tareas.ts";
 import { formatearId } from "../md/ids.ts";
 import { type Color, chipAutor } from "./componentes.ts";
 import { fechaLegible } from "./formatos.ts";
@@ -41,6 +42,41 @@ export function tarjetaComentario(
 			<div class="cuerpo">${raw(renderMarkdown(comentario.texto))}</div>
 			${extra}
 		</article>`;
+}
+
+/**
+ * El corte entre dos iteraciones: una línea con «Iteración n» y la fecha de la
+ * vuelta. Va donde empieza la iteración, no donde acabó la anterior.
+ */
+export function separadorIteracion(numero: number, creado: string): Html {
+	return html`<div class="iteracion"><span>Iteración ${numero} · ${fechaLegible(creado)}</span></div>`;
+}
+
+/**
+ * El cuadro de comentar, pegado al último mensaje: el hilo es un chat y esto es
+ * la caja de escribir. En `done` el humano elige entre dejar constancia y pedir
+ * otra iteración, que devuelve la tarea a `doing`. En `finished` no hay cuadro:
+ * una tarea cerrada es de solo lectura. `volver` es la ruta a la que se vuelve
+ * al escribir, que es lo que usa la bandeja para no abrir la ficha.
+ */
+export function cuadroDeComentar(tareaId: number, estado: Estado, volver?: string): Html {
+	if (estado === "finished") {
+		return html``;
+	}
+	return html`<form class="comentar" method="post" action="/tareas/${formatearId(tareaId)}/comentar">
+			${volver === undefined ? html`` : html`<input type="hidden" name="volver" value="${volver}">`}
+			<textarea name="texto" rows="3" required aria-label="Mensaje para el agente" placeholder="Escribe al agente…"></textarea>
+			<div class="acciones">
+				<button type="submit" class="principal">Comentar</button>
+				${
+					// Sin clase: el botón de siempre es el secundario, y pedir otra
+					// iteración no es lo que más se hace desde aquí.
+					estado === "done"
+						? html`<button type="submit" name="iterar" value="1">Comentar y pedir otra iteración</button>`
+						: html``
+				}
+			</div>
+		</form>`;
 }
 
 /** Una opción de una pregunta abierta: tarjeta seleccionable con su consecuencia. */

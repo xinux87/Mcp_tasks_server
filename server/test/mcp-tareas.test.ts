@@ -184,9 +184,21 @@ test("una tarea entera de principio a fin solo con las herramientas del MCP", as
 		assert.match(hija.texto, /^- T-0002 · doing · en marcha · Generar el fichero CSV · /m);
 
 		assert.match(
-			(await llamar(a, "comentar_tarea", { id: "T-0001", tipo: "avance", texto: "Botón puesto." })).texto,
-			/^comentado: avance$/m,
+			(await llamar(a, "comentar_tarea", { id: "T-0001", tipo: "comentario", texto: "Botón puesto." })).texto,
+			/^comentado: comentario$/m,
 		);
+		assert.match(
+			(await llamar(a, "leer_tarea", { id: "T-0001" })).texto,
+			/^### comentario · opus@portatil-a · .+\n\nBotón puesto\.$/m,
+		);
+
+		// Los dos tipos viejos se fundieron en `comentario`: la validación del
+		// esquema los rechaza antes de llegar a la base de datos.
+		for (const viejo of ["avance", "nota"]) {
+			const rechazado = await llamar(a, "comentar_tarea", { id: "T-0001", tipo: viejo, texto: "x" });
+			assert.ok(rechazado.error, `«${viejo}» ya no es un tipo de comentario y tiene que fallar`);
+			assert.match(rechazado.texto, /tipo/);
+		}
 
 		const cerrada = await llamar(a, "comentar_tarea", {
 			id: "T-0001",
@@ -199,7 +211,7 @@ test("una tarea entera de principio a fin solo con las herramientas del MCP", as
 
 		// Un estado con cualquier otro tipo de comentario no está permitido.
 		assert.equal(
-			codigoDe(await llamar(a, "comentar_tarea", { id: "T-0001", tipo: "avance", texto: "x", estado: "done" })),
+			codigoDe(await llamar(a, "comentar_tarea", { id: "T-0001", tipo: "comentario", texto: "x", estado: "done" })),
 			"estado_no_permitido",
 		);
 

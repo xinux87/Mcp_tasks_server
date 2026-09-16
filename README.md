@@ -15,7 +15,10 @@ las preguntas que le hagan; los agentes las toman solos, las trabajan y devuelve
 **Una tarea** pasa por cinco columnas: `backlog` (la escribe el humano), `prepared` (un agente la analiza),
 `doing` (otro la ejecuta), `done` (el humano revisa) y `finished`. Cada una lleva un hilo de comentarios
 donde queda el análisis, las preguntas con sus opciones, las respuestas del humano y el resultado con su
-commit, y cuenta los tokens que ha costado. Sobre la tarjeta se ven las marcas que dicen en qué anda
+commit, y cuenta los tokens que ha costado. Ese hilo es un chat: un comentario tuyo en una tarea
+En curso lo atiende el agente en su siguiente vuelta, y desde Hechas puedes pedir otra iteración
+con el mismo cuadro de comentar; las iteraciones se ven numeradas en la ficha. Sobre la tarjeta se
+ven las marcas que dicen en qué anda
 (`bloqueada` si espera una respuesta, `sin terminal` si cualquiera puede tomarla, `en marcha` si ya la ha
 tomado alguien, `esperando` si depende de otra tarea que aún no está hecha), y con `autoejecucion`
 activada —lo normal— la ejecución arranca sola en cuanto el análisis termina sin preguntas abiertas.
