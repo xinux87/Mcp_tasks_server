@@ -40,8 +40,11 @@ export const NOMBRE_PROYECTO = "MCP Tareas";
 /** Las cinco columnas del tablero, en su orden. El rótulo lo pone `rotuloColumna`. */
 export const COLUMNAS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
 
-/** Sugerencias de modelo del formulario de tarea. No es una lista cerrada. */
-export const MODELOS_SUGERIDOS: readonly string[] = ["fable", "opus", "sonnet", "haiku"];
+/**
+ * Los modelos del formulario de tarea. Son los mismos con los que se lanza un
+ * agente: una sola lista, la de `db/agentes.ts`.
+ */
+export { MODELOS as MODELOS_SUGERIDOS } from "../db/agentes.ts";
 
 /**
  * Clase CSS de cada marca. Las marcas llevan espacios y tildes, así que no se
@@ -156,6 +159,7 @@ const BLOQUES: readonly { titulo: string; entradas: readonly EntradaNav[] }[] = 
 		titulo: "Configuración",
 		entradas: [
 			{ ruta: "/proyectos", texto: "Proyectos", vistas: ["proyectos"] },
+			{ ruta: "/agentes", texto: "Agentes", vistas: ["agentes"] },
 			{ ruta: "/terminales", texto: "Terminales", vistas: ["terminales", "conectar"] },
 			{ ruta: "/usuarios", texto: "Usuarios", vistas: ["usuarios"] },
 		],

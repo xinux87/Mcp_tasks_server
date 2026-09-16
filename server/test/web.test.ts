@@ -1973,6 +1973,7 @@ test("cada pantalla con sesión dice para qué sirve", async () => {
 			"/informes",
 			"/actividad",
 			"/proyectos",
+			"/agentes",
 			"/terminales",
 			"/usuarios",
 		];

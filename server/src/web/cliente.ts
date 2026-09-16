@@ -18,6 +18,8 @@
  *    su botón «Ir», que solo hace falta sin JavaScript.
  * 7. El conmutador de tema: marca el radio que toca al cargar y, al cambiarlo,
  *    guarda la preferencia en el navegador y la aplica en el acto.
+ * 8. El desplegable de agente del formulario de tarea: al elegir un papel,
+ *    pone su modelo y su terminal en los otros dos y los deshabilita.
  *
  * Escrito sin acentos graves ni interpolaciones para que quepa tal cual en
  * esta plantilla de TypeScript. Nunca escribe `innerHTML` con nada que no
@@ -448,6 +450,45 @@ function prepararTema() {
 	}
 }
 
+// --- el agente de una fase ---------------------------------------------------
+
+/**
+ * Una fase con papel no deja elegir modelo ni terminal: los dos vienen del
+ * agente, y cada opción los trae puestos. Al elegir uno se copian y los dos
+ * desplegables se deshabilitan; con "ninguno" se vuelven a habilitar.
+ *
+ * Un <select disabled> no se envía, y da igual: el servidor no se fía de estos
+ * campos y copia del agente cuando llega uno.
+ */
+function prepararAgentes() {
+	for (const select of document.querySelectorAll("select[data-agente]")) {
+		const tarjeta = select.closest("[data-fase]");
+		if (tarjeta === null) {
+			continue;
+		}
+		const modelo = tarjeta.querySelector('select[name$="Modelo"]');
+		const terminal = tarjeta.querySelector('select[name$="Terminal"]');
+		const aplicar = function () {
+			const opcion = select.options[select.selectedIndex];
+			const conPapel = select.value !== "";
+			if (modelo !== null) {
+				if (conPapel) {
+					modelo.value = opcion.dataset.modelo || "";
+				}
+				modelo.disabled = conPapel;
+			}
+			if (terminal !== null) {
+				if (conPapel) {
+					terminal.value = opcion.dataset.terminal || "";
+				}
+				terminal.disabled = conPapel;
+			}
+		};
+		select.addEventListener("change", aplicar);
+		aplicar();
+	}
+}
+
 // --- selector de proyecto ----------------------------------------------------
 
 /**
@@ -626,6 +667,7 @@ function escucharEventos() {
 
 prepararTema();
 prepararLateral();
+prepararAgentes();
 prepararSelectorProyecto();
 prepararCopias();
 escucharEventos();

@@ -3,6 +3,7 @@ import { html } from "hono/html";
 import { registrarEstaticos } from "./estaticos.ts";
 import { NOMBRE_PROYECTO, pagina } from "./plantilla.ts";
 import { registrarRutasActividad } from "./rutas/actividad.ts";
+import { registrarRutasAgentes } from "./rutas/agentes.ts";
 import { registrarRutasBandeja } from "./rutas/bandeja.ts";
 import { registrarRutasEventos } from "./rutas/eventos.ts";
 import { registrarRutasFuncionalidades } from "./rutas/funcionalidades.ts";
@@ -33,6 +34,8 @@ const PRIVADAS = [
 	"/p/*",
 	"/proyectos",
 	"/proyectos/*",
+	"/agentes",
+	"/agentes/*",
 	"/ir",
 	"/terminales",
 	"/terminales/*",
@@ -81,6 +84,7 @@ export function montarWeb(app: Hono, deps: DependenciasWeb): void {
 	registrarRutasFuncionalidades(app, deps);
 	registrarRutasInformes(app, deps);
 	registrarRutasProyectos(app, deps);
+	registrarRutasAgentes(app, deps);
 	registrarRutasTerminales(app, deps);
 	registrarRutasUsuarios(app, deps);
 	registrarRutasActividad(app, deps);

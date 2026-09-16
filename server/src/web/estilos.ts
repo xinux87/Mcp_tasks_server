@@ -112,7 +112,9 @@ h3 {
 	font-weight: 600;
 }
 
-code, pre {
+/* Las instrucciones de un agente son el texto que lee un modelo: se escriben
+   en la misma tipografía en la que se leerán. */
+code, pre, textarea.codigo {
 	font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 	font-size: 0.88em;
 }

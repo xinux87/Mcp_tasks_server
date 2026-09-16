@@ -3,6 +3,7 @@ import type { Context, Hono } from "hono";
 import { html, raw } from "hono/html";
 import { type Actividad, actividadDe } from "../../db/actividad.ts";
 import { type TerminalListado, terminalesActivos } from "../../db/admin.ts";
+import { type Agente, listarAgentes } from "../../db/agentes.ts";
 import { buscarTerminalPorId, revisionActual } from "../../db/consultas.ts";
 import type { ConsumoDeTarea } from "../../db/consumo.ts";
 import { dependenciasPendientes, dependientesDe } from "../../db/dependencias.ts";
@@ -137,8 +138,11 @@ type ValoresTarea = {
 	autoejecucion: boolean;
 	/** Tope de tokens. `null` es sin tope; `NaN`, lo que el humano escribió y no era un número. */
 	presupuesto: number | null;
+	/** Papel de cada fase. Con él, el modelo y el terminal se copian del agente. */
+	analisisAgenteId: number | null;
 	analisisModelo: string | null;
 	analisisTerminalId: number | null;
+	ejecucionAgenteId: number | null;
 	ejecucionModelo: string | null;
 	ejecucionTerminalId: number | null;
 };
@@ -152,8 +156,10 @@ const TAREA_VACIA: ValoresTarea = {
 	dependeDe: [],
 	autoejecucion: true,
 	presupuesto: null,
+	analisisAgenteId: null,
 	analisisModelo: "fable",
 	analisisTerminalId: null,
+	ejecucionAgenteId: null,
 	ejecucionModelo: "opus",
 	ejecucionTerminalId: null,
 };
@@ -167,6 +173,8 @@ const TAREA_VACIA: ValoresTarea = {
  */
 type OpcionesTarea = {
 	activos: TerminalListado[];
+	/** Los papeles que se pueden asignar a una fase. */
+	agentes: Agente[];
 	padres: ItemIndice[];
 	candidatas: ItemIndice[];
 	/** En qué proyecto vive o va a nacer. No se elige: se enseña. */
@@ -177,6 +185,7 @@ function opcionesDeTarea(db: DatabaseSync, tareaId: number | null, proyecto: Pro
 	const items = listarTareas(db);
 	return {
 		activos: terminalesActivos(db),
+		agentes: listarAgentes(db),
 		padres: items.filter((item) => item.tipo === "funcionalidad" && item.estado !== "finished" && item.id !== tareaId),
 		candidatas: items.filter((item) => item.estado !== "finished" && item.id !== tareaId),
 		proyecto,
@@ -294,8 +303,13 @@ function valoresCrudos(formulario: Formulario): ValoresTarea {
 		dependeDe: codigosDeFormulario(formulario, "dependeDe"),
 		autoejecucion: tipo !== "tarea" || marcado(formulario, "autoejecucion"),
 		presupuesto: presupuestoDeFormulario(formulario),
+		// Con agente, el modelo y el terminal los copia la base de datos del papel
+		// e ignora lo que llegue en los otros dos campos: el formulario los
+		// deshabilita, así que ni siquiera se envían.
+		analisisAgenteId: numeroONull(campo(formulario, "analisisAgente")),
 		analisisModelo: campoOpcional(formulario, "analisisModelo"),
 		analisisTerminalId: numeroONull(campo(formulario, "analisisTerminal")),
+		ejecucionAgenteId: esPregunta ? null : numeroONull(campo(formulario, "ejecucionAgente")),
 		ejecucionModelo: esPregunta ? null : campoOpcional(formulario, "ejecucionModelo"),
 		ejecucionTerminalId: esPregunta ? null : numeroONull(campo(formulario, "ejecucionTerminal")),
 	};
@@ -331,7 +345,8 @@ function opcionTerminal(terminal: TerminalListado, seleccionado: number | null):
 	return html`<option value="${terminal.id}"${seleccionado === terminal.id ? raw(" selected") : ""}>${terminal.nombre}</option>`;
 }
 
-function selectTerminal(nombre: string, activos: TerminalListado[], seleccionado: number | null): Html {
+/** Los terminales activos con «cualquiera» delante. Lo comparte el alta de un agente. */
+export function selectTerminal(nombre: string, activos: TerminalListado[], seleccionado: number | null): Html {
 	return html`<select name="${nombre}">
 			<option value=""${seleccionado === null ? raw(" selected") : ""}>cualquiera</option>
 			${activos.map((terminal) => opcionTerminal(terminal, seleccionado))}
@@ -369,23 +384,44 @@ function casilla(nombre: string, marcada: boolean, texto: string, explicacion: s
 		</label>`;
 }
 
-/** Una de las dos tarjetas de asignación: modelo y terminal de una fase. */
-function fase(
-	titulo: string,
-	prefijo: string,
-	modelo: string | null,
-	terminalId: number | null,
-	activos: TerminalListado[],
-): Html {
+/**
+ * El desplegable de papel de una fase. Cada opción lleva el modelo y el
+ * terminal del agente, que es lo que `cliente.ts` copia en los otros dos
+ * desplegables antes de deshabilitarlos: con papel no se elige a mano.
+ */
+function selectAgente(nombre: string, agentes: readonly Agente[], elegido: number | null): Html {
+	return html`<select name="${nombre}" data-agente>
+			<option value=""${elegido === null ? raw(" selected") : ""}>ninguno</option>
+			${agentes.map(
+				(agente) =>
+					html`<option value="${agente.id}" data-modelo="${agente.modelo}" data-terminal="${agente.terminalId ?? ""}"${agente.id === elegido ? raw(" selected") : ""}>${agente.nombre}</option>`,
+			)}
+		</select>`;
+}
+
+/** Lo que se asigna a una fase: su papel, y el modelo y el terminal con los que corre. */
+type ValoresFase = {
+	agenteId: number | null;
+	modelo: string | null;
+	terminalId: number | null;
+};
+
+/** Una de las dos tarjetas de asignación: agente, modelo y terminal de una fase. */
+function fase(titulo: string, prefijo: string, valores: ValoresFase, opciones: OpcionesTarea): Html {
 	return html`<fieldset data-fase="${prefijo}">
 			<legend>${titulo}</legend>
 			<label>
+				<span>Agente</span>
+				${selectAgente(`${prefijo}Agente`, opciones.agentes, valores.agenteId)}
+				<span class="ayuda">Con papel, el modelo y el terminal vienen de él.</span>
+			</label>
+			<label>
 				<span>Modelo</span>
-				${selectModelo(`${prefijo}Modelo`, modelo)}
+				${selectModelo(`${prefijo}Modelo`, valores.modelo)}
 			</label>
 			<label>
 				<span>Terminal</span>
-				${selectTerminal(`${prefijo}Terminal`, activos, terminalId)}
+				${selectTerminal(`${prefijo}Terminal`, opciones.activos, valores.terminalId)}
 			</label>
 		</fieldset>`;
 }
@@ -499,16 +535,22 @@ function camposTarea(valores: ValoresTarea, opciones: OpcionesTarea): Html {
 			${fase(
 				esFuncionalidad ? "Análisis de la funcionalidad" : "Análisis",
 				"analisis",
-				valores.analisisModelo,
-				valores.analisisTerminalId,
-				opciones.activos,
+				{
+					agenteId: valores.analisisAgenteId,
+					modelo: valores.analisisModelo,
+					terminalId: valores.analisisTerminalId,
+				},
+				opciones,
 			)}
 			${fase(
 				esFuncionalidad ? "Ejecución de las partes (por defecto)" : "Ejecución",
 				"ejecucion",
-				valores.ejecucionModelo,
-				valores.ejecucionTerminalId,
-				opciones.activos,
+				{
+					agenteId: valores.ejecucionAgenteId,
+					modelo: valores.ejecucionModelo,
+					terminalId: valores.ejecucionTerminalId,
+				},
+				opciones,
 			)}
 		</div>`;
 }
@@ -722,6 +764,26 @@ function dependenciasLegibles(db: DatabaseSync, tareaId: number, dependeDe: read
 }
 
 /**
+ * Una fase en la ficha: el papel delante, enlazado a su edición, y detrás el
+ * modelo y el terminal con los que se trabaja de verdad. Sin papel, solo eso
+ * último, como siempre.
+ */
+function faseConPapel(completa: TareaCompleta, cual: "analisis" | "ejecucion"): Html {
+	const { tarea } = completa;
+	const esAnalisis = cual === "analisis";
+	const trabajo = faseLegible(
+		esAnalisis ? tarea.analisisModelo : tarea.ejecucionModelo,
+		esAnalisis ? completa.analisisTerminal : completa.ejecucionTerminal,
+	);
+	const agenteId = esAnalisis ? tarea.analisisAgenteId : tarea.ejecucionAgenteId;
+	const agente = esAnalisis ? completa.analisisAgente : completa.ejecucionAgente;
+	if (agenteId === null || agente === null) {
+		return html`${trabajo}`;
+	}
+	return html`<a href="/agentes/${agenteId}/editar">${agente}</a> · ${trabajo}`;
+}
+
+/**
  * Las propiedades de la tarea, en filas de dos columnas. Una pregunta no
  * enseña ejecución ni autoejecución: enseñarlas haría creer que después del
  * análisis viene otra fase.
@@ -739,9 +801,9 @@ function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe
 		filas.push({ nombre: "Tipo", valor: insigniaTipoTarea(tarea.tipo) });
 	}
 	filas.push({ nombre: "Rama", valor: ramaLegible(tarea.rama) });
-	filas.push({ nombre: "Análisis", valor: faseLegible(tarea.analisisModelo, completa.analisisTerminal) });
+	filas.push({ nombre: "Análisis", valor: faseConPapel(completa, "analisis") });
 	if (tarea.tipo !== "pregunta") {
-		filas.push({ nombre: "Ejecución", valor: faseLegible(tarea.ejecucionModelo, completa.ejecucionTerminal) });
+		filas.push({ nombre: "Ejecución", valor: faseConPapel(completa, "ejecucion") });
 		filas.push({ nombre: "Autoejecución", valor: tarea.autoejecucion ? "activada" : "desactivada" });
 	}
 	filas.push({ nombre: "Presupuesto", valor: presupuestoLegible(tarea.presupuesto) });
@@ -773,8 +835,8 @@ function propiedadesDeFuncionalidad(db: DatabaseSync, completa: TareaCompleta, c
 					? html`<span class="silencio">ninguna</span>`
 					: barraProgreso(completa.partesCerradas ?? 0, completa.partes ?? 0, "partes"),
 		},
-		{ nombre: "Análisis", valor: faseLegible(tarea.analisisModelo, completa.analisisTerminal) },
-		{ nombre: "Ejecución de las partes", valor: faseLegible(tarea.ejecucionModelo, completa.ejecucionTerminal) },
+		{ nombre: "Análisis", valor: faseConPapel(completa, "analisis") },
+		{ nombre: "Ejecución de las partes", valor: faseConPapel(completa, "ejecucion") },
 	];
 	if (completa.dependeDe.length > 0) {
 		filas.push({ nombre: "Dependencias", valor: dependenciasLegibles(db, tarea.id, completa.dependeDe) });
@@ -1025,8 +1087,10 @@ function detallesEditar(db: DatabaseSync, tarea: Tarea, padre: string | null, de
 						dependeDe,
 						autoejecucion: tarea.autoejecucion,
 						presupuesto: tarea.presupuesto,
+						analisisAgenteId: tarea.analisisAgenteId,
 						analisisModelo: tarea.analisisModelo,
 						analisisTerminalId: tarea.analisisTerminalId,
+						ejecucionAgenteId: tarea.ejecucionAgenteId,
 						ejecucionModelo: tarea.ejecucionModelo,
 						ejecucionTerminalId: tarea.ejecucionTerminalId,
 					},
