@@ -267,10 +267,14 @@ test("la página de proyectos crea, edita y borra, con sus tres errores de borra
 		// El `.git` y la barra final no son parte del repositorio.
 		assert.equal(web.repositorio, "https://github.com/ejemplo/web");
 
-		// La clave repetida no crea otro, y el aviso se ve en la misma página.
+		// La clave repetida no crea otro: vuelve el alta con el aviso y lo escrito.
 		const repetida = await pedir(montaje, "/proyectos", { cookie, formulario: { clave: "WEB", nombre: "Otra" } });
 		assert.equal(repetida.status, 422);
-		assert.match(await repetida.text(), /Ya hay un proyecto con la clave/);
+		const repintada = await repetida.text();
+		assert.match(repintada, /Ya hay un proyecto con la clave/);
+		assert.match(repintada, /<h1>Nuevo proyecto<\/h1>/);
+		assert.match(repintada, /<input type="text" name="clave" value="WEB"/);
+		assert.match(repintada, /<input type="text" name="nombre" value="Otra"/);
 
 		// La tabla, con sus cuentas y quién lo creó.
 		const lista = await (await pedir(montaje, "/proyectos", { cookie })).text();
@@ -340,7 +344,7 @@ test("el proyecto se crea con el color de sus siglas y se le cambia después", a
 		const cookie = await entrar(montaje);
 
 		// El alta ofrece los ocho colores, con «automático» puesto.
-		const formulario = await (await pedir(montaje, "/proyectos", { cookie })).text();
+		const formulario = await (await pedir(montaje, "/proyectos/nuevo", { cookie })).text();
 		assert.match(formulario, /<label class="muestra muestra-auto">/);
 		assert.match(formulario, /De dos a ocho caracteres/);
 
@@ -367,6 +371,33 @@ test("el proyecto se crea con el color de sus siglas y se le cambia después", a
 		crearTareaHumana(montaje.db, { titulo: "Tarea de la web", descripcion: "d", usuarioId: 1, proyectoId: web?.id });
 		const kanban = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
 		assert.ok(kanban.includes(chip("WEB", "morado")), "la tarjeta no lleva el color del proyecto");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("crear un proyecto es una página aparte a la que lleva la lista", async () => {
+	const montaje = montar();
+	try {
+		// Como el resto de la web, pide entrar.
+		const sinSesion = await pedir(montaje, "/proyectos/nuevo");
+		assert.equal(sinSesion.status, 302);
+		assert.equal(sinSesion.headers.get("location"), "/login?volver=%2Fproyectos%2Fnuevo");
+
+		const cookie = await entrar(montaje);
+		const alta = await (await pedir(montaje, "/proyectos/nuevo", { cookie })).text();
+		assert.match(alta, /<form method="post" action="\/proyectos">/);
+		assert.match(alta, /<input type="text" name="clave" value="" placeholder="WEB" required>/);
+		assert.match(alta, /<input type="text" name="ramaPrincipal" value="main" required>/);
+		assert.match(alta, /<label class="muestra muestra-auto">/);
+		assert.match(alta, /Un proyecto es un repositorio: clave, nombre, dónde está y cómo se verifica\./);
+		assert.match(alta, /<a class="boton" href="\/proyectos">Cancelar<\/a>/);
+
+		// Y la lista solo enlaza a ella: ni formulario al pie ni ancla.
+		const lista = await (await pedir(montaje, "/proyectos", { cookie })).text();
+		assert.match(lista, /<a class="boton principal" href="\/proyectos\/nuevo">Nuevo proyecto<\/a>/);
+		assert.ok(!lista.includes('<form method="post" action="/proyectos">'), "la lista sigue llevando el alta");
+		assert.ok(!lista.includes("nuevo-proyecto"), "la lista sigue llevando el ancla");
 	} finally {
 		await montaje.cerrar();
 	}

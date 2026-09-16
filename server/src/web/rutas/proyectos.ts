@@ -4,6 +4,7 @@ import { html } from "hono/html";
 import { altaPor } from "../../db/actividad.ts";
 import { listarTerminales } from "../../db/admin.ts";
 import { contarPendientes } from "../../db/bandeja.ts";
+import { type ColorUsuario, esColorUsuario } from "../../db/colores.ts";
 import {
 	borrarProyecto,
 	buscarProyectoPorClave,
@@ -190,51 +191,104 @@ function filaProyecto(db: DatabaseSync, fila: Fila, colorDe: ColorDe): Html {
 		</tr>`;
 }
 
+/**
+ * Lo que enseña el formulario: en blanco al entrar en el alta, lo que ya tiene
+ * el proyecto al editarlo, y lo que llegó cuando el alta rompió una regla.
+ */
+type ValoresProyecto = {
+	clave: string;
+	nombre: string;
+	descripcion: string;
+	repositorio: string | null;
+	ramaPrincipal: string | null;
+	verificacion: string | null;
+	color: ColorUsuario | null;
+};
+
+const PROYECTO_EN_BLANCO: ValoresProyecto = {
+	clave: "",
+	nombre: "",
+	descripcion: "",
+	repositorio: null,
+	ramaPrincipal: null,
+	verificacion: null,
+	color: null,
+};
+
+/** Lo que llegó en el alta, para repintarla sin perder lo escrito. */
+function valoresDeFormulario(formulario: Formulario): ValoresProyecto {
+	const color = campoOpcional(formulario, "color");
+	return {
+		clave: campo(formulario, "clave"),
+		nombre: campo(formulario, "nombre"),
+		descripcion: campo(formulario, "descripcion"),
+		repositorio: campoOpcional(formulario, "repositorio"),
+		ramaPrincipal: campoOpcional(formulario, "ramaPrincipal"),
+		verificacion: campoOpcional(formulario, "verificacion"),
+		color: color !== null && esColorUsuario(color) ? color : null,
+	};
+}
+
 /** Los campos que se editan de un proyecto. La clave no está: se fija al crear. */
-function camposProyecto(proyecto: Proyecto | null): Html {
+function camposProyecto(valores: ValoresProyecto, tituloColor: string): Html {
 	return html`<label>
 			<span>Nombre</span>
-			<input type="text" name="nombre" value="${proyecto?.nombre ?? ""}" required>
+			<input type="text" name="nombre" value="${valores.nombre}" required>
 		</label>
 		<label>
 			<span>Descripción</span>
-			<textarea name="descripcion" rows="3">${proyecto?.descripcion ?? ""}</textarea>
+			<textarea name="descripcion" rows="3">${valores.descripcion}</textarea>
 		</label>
 		<label>
 			<span>Repositorio</span>
-			<input type="text" name="repositorio" value="${proyecto?.repositorio ?? ""}" placeholder="https://github.com/usuario/repositorio">
+			<input type="text" name="repositorio" value="${valores.repositorio ?? ""}" placeholder="https://github.com/usuario/repositorio">
 			<span class="ayuda">Si lo pones, un terminal que trabaje en otro repositorio no podrá registrarse.</span>
 		</label>
 		<label>
 			<span>Rama principal</span>
-			<input type="text" name="ramaPrincipal" value="${proyecto?.ramaPrincipal ?? "main"}" required>
+			<input type="text" name="ramaPrincipal" value="${valores.ramaPrincipal ?? "main"}" required>
 		</label>
 		<label>
 			<span>Verificación</span>
-			<input type="text" name="verificacion" value="${proyecto?.verificacion ?? ""}" placeholder="cd server && npm test">
+			<input type="text" name="verificacion" value="${valores.verificacion ?? ""}" placeholder="cd server && npm test">
 			<span class="ayuda">El comando que tiene que pasar la parte que integra la rama.</span>
 		</label>
 		<p class="nombre-campo">Color</p>
-		${selectorDeColor(proyecto === null ? "Color del proyecto" : `Color de ${proyecto.clave}`, proyecto?.color ?? null)}`;
+		${selectorDeColor(tituloColor, valores.color)}`;
 }
 
-function tarjetaNuevoProyecto(): Html {
-	return html`<section class="caja" id="nuevo-proyecto">
-			<h2>Nuevo proyecto</h2>
-			<p>
-				Un proyecto es un repositorio. Sus tareas y sus terminales son suyos: un terminal trabaja para un
-				solo proyecto, y una tarea solo la toma un terminal de su proyecto.
-			</p>
-			<form method="post" action="/proyectos">
-				<label>
-					<span>Clave</span>
-					<input type="text" name="clave" placeholder="WEB" required>
-					<span class="ayuda">De dos a ocho caracteres, mayúsculas y cifras, empezando por letra. Va en las URLs y no se cambia.</span>
-				</label>
-				${camposProyecto(null)}
+/** El alta, en su propia página: es donde lleva «Nuevo proyecto» de la lista. */
+function paginaNuevoProyecto(
+	c: Context,
+	deps: DependenciasWeb,
+	valores: ValoresProyecto,
+	aviso: string | null,
+): RespuestaHtml {
+	const cuerpo = html`<form method="post" action="/proyectos">
+			<label>
+				<span>Clave</span>
+				<input type="text" name="clave" value="${valores.clave}" placeholder="WEB" required>
+				<span class="ayuda">De dos a ocho caracteres, mayúsculas y cifras, empezando por letra. Va en las URLs y no se cambia.</span>
+			</label>
+			${camposProyecto(valores, "Color del proyecto")}
+			<div class="acciones">
 				<button type="submit" class="principal">Crear proyecto</button>
-			</form>
-		</section>`;
+				<a class="boton" href="/proyectos">Cancelar</a>
+			</div>
+		</form>`;
+	return c.html(
+		pagina({
+			...navProyectos(c, deps.db),
+			titulo: "Nuevo proyecto",
+			proposito: "Un proyecto es un repositorio: clave, nombre, dónde está y cómo se verifica.",
+			usuario: usuarioActual(c),
+			vista: "proyectos",
+			migas: migasDe("Nuevo proyecto"),
+			aviso,
+			cuerpo,
+		}),
+		aviso === null ? 200 : ESTADO_AVISO,
+	);
 }
 
 function paginaProyectos(c: Context, deps: DependenciasWeb, aviso: string | null): RespuestaHtml {
@@ -250,8 +304,7 @@ function paginaProyectos(c: Context, deps: DependenciasWeb, aviso: string | null
 				</thead>
 				<tbody>${filas.map((fila) => filaProyecto(deps.db, fila, colorDe))}</tbody>
 			</table>
-		</div>
-		${tarjetaNuevoProyecto()}`;
+		</div>`;
 
 	return c.html(
 		pagina({
@@ -261,7 +314,7 @@ function paginaProyectos(c: Context, deps: DependenciasWeb, aviso: string | null
 			usuario: usuarioActual(c),
 			vista: "proyectos",
 			aviso,
-			acciones: html`<a class="boton principal" href="#nuevo-proyecto">Nuevo proyecto</a>`,
+			acciones: html`<a class="boton principal" href="/proyectos/nuevo">Nuevo proyecto</a>`,
 			cuerpo,
 		}),
 		aviso === null ? 200 : ESTADO_AVISO,
@@ -299,7 +352,7 @@ function paginaEditar(c: Context, deps: DependenciasWeb, proyecto: Proyecto, avi
 	const cuerpo = html`<form method="post" action="/proyectos/${proyecto.id}/editar">
 			<p class="nombre-campo">Clave</p>
 			<p>${chipProyecto(proyecto)} <span class="silencio">se fija al crear el proyecto y no se cambia.</span></p>
-			${camposProyecto(proyecto)}
+			${camposProyecto(proyecto, `Color de ${proyecto.clave}`)}
 			<div class="acciones">
 				<button type="submit" class="principal">Guardar cambios</button>
 				<a class="boton" href="/proyectos">Cancelar</a>
@@ -329,9 +382,11 @@ function colorElegido(formulario: Formulario): { color?: string } {
 	return color === null ? {} : { color };
 }
 
-/** Rutas de proyectos: la lista con su alta, la edición, el borrado y el salto de vista. */
+/** Rutas de proyectos: la lista, el alta, la edición, el borrado y el salto de vista. */
 export function registrarRutasProyectos(app: Hono, deps: DependenciasWeb): void {
 	app.get("/proyectos", (c) => paginaProyectos(c, deps, null));
+
+	app.get("/proyectos/nuevo", (c) => paginaNuevoProyecto(c, deps, PROYECTO_EN_BLANCO, null));
 
 	app.post("/proyectos", async (c) => {
 		const formulario = await leerFormulario(c);
@@ -348,7 +403,7 @@ export function registrarRutasProyectos(app: Hono, deps: DependenciasWeb): void 
 			});
 			return c.redirect("/proyectos", 302);
 		} catch (error) {
-			return paginaProyectos(c, deps, mensajeDeRegla(error));
+			return paginaNuevoProyecto(c, deps, valoresDeFormulario(formulario), mensajeDeRegla(error));
 		}
 	});
 
