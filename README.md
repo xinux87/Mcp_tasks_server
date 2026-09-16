@@ -54,14 +54,52 @@ Docker (o Node 24 si se levanta a mano) y, en la máquina del terminal, Claude C
 
 ## Levantarlo
 
+Con la imagen publicada, sin clonar el repositorio. En una carpeta vacía, el
+[`docker-compose.yml`](docker-compose.yml) de la raíz y un `.env` al lado:
+
+```sh
+mkdir mcp-tareas && cd mcp-tareas
+curl -fsSLO https://raw.githubusercontent.com/xinux87/Mcp_tasks_server/main/docker-compose.yml
+cat > .env <<EOF
+SESSION_SECRET=$(openssl rand -hex 32)
+ADMIN_PASSWORD=cambiala
+BASE_URL=http://localhost:9917
+DATOS=./datos
+EOF
+docker login ghcr.io -u xinux87
+docker compose up -d
+```
+
+El `docker login` hace falta mientras el repositorio, y con él la imagen, sean privados. Abre
+`http://localhost:9917` y entra como **`admin`** con la contraseña de `ADMIN_PASSWORD`; se crea sola en el
+primer arranque, cámbiala después en **Usuarios**.
+
+### El `.env`
+
+| Variable | Obligatoria | Qué es |
+|---|---|---|
+| `SESSION_SECRET` | sí | Clave con la que se firma la cookie de sesión. Cualquier cadena larga y aleatoria; `openssl rand -hex 32` vale. Cambiarla cierra todas las sesiones abiertas. |
+| `ADMIN_PASSWORD` | sí | Contraseña del usuario `admin` que se crea en el primer arranque. Después de ese arranque no se vuelve a leer: la contraseña se cambia desde la web. |
+| `BASE_URL` | no | URL pública del servidor, la que enseñan los enlaces y el tutorial de conexión. `http://localhost:9917` por defecto; si se accede por un dominio o una IP, va aquí. |
+| `DIRECCIONES` | no | Otras URLs por las que se llega al servidor, separadas por comas (`http://192.168.1.10:9917`). Necesaria cuando los terminales están en otra máquina: dentro de Docker el servidor solo ve las direcciones del contenedor. |
+| `DATOS` | no | Carpeta del anfitrión donde vive la base de datos (SQLite, el archivo `tareas.sqlite`) y todo lo de mcp-tareas. `./datos` por defecto, junto al compose. Copiarla con el servidor parado es la copia de seguridad. En Linux la escribe el uid 1000: si la creas con otro usuario, `sudo chown 1000:1000 datos`. |
+| `PORT` | no | Puerto publicado en el anfitrión, `9917` por defecto. Dentro del contenedor el servidor escucha siempre en 3000. |
+| `VERSION` | no | Etiqueta de la imagen, `0.1.2` por defecto. Para actualizar, súbela y vuelve a `docker compose up -d`; las migraciones de la base de datos corren solas al arrancar. |
+| `AVISOS_URL` | no | Si está, cada vez que un agente deja algo esperando por ti (una pregunta, un análisis por aprobar, un resultado) se manda un POST de texto llano a esa URL: la frase y el enlace a la ficha. Es el formato de [ntfy](https://ntfy.sh); cualquier receptor de texto vale. |
+
+### Desde el clon del repositorio
+
+Para desarrollar o construir la imagen desde el código, el compose de `server/` la construye en vez de
+descargarla y lee el `.env` de esa carpeta, con las mismas variables (menos `VERSION`; `DATOS` es opcional y
+sin ella usa el volumen `datos` de Docker):
+
 ```sh
 cd server
 printf 'BASE_URL=http://localhost:9917\nSESSION_SECRET=%s\nADMIN_PASSWORD=cambiala\n' "$(openssl rand -hex 32)" > .env
 docker compose up --build
 ```
 
-Abre `http://localhost:9917` (el puerto lo publica `compose.yaml`) y entra como **`admin`** con la
-contraseña de `ADMIN_PASSWORD`; se crea sola en el primer arranque, cámbiala después en **Usuarios**.
+### Conectar un terminal
 
 Crea un terminal en **Terminales**: la página que enseña su token trae el tutorial de conexión con los
 comandos ya montados para esa máquina, y un enlace para abrirlo allí directamente. El plugin se instala
@@ -79,8 +117,7 @@ El detalle está en [`plugin/README.md`](plugin/README.md). Después, una vez po
 
 Con `BASE_URL=http://localhost:9917` y sin nada más, cualquier petición desde otra máquina de la red
 responde `403 Invalid Host`: el servidor solo admite las direcciones que conoce. Y dentro de Docker las
-que detecta solo son las del contenedor, que no valen desde fuera. Añade al `server/.env`, antes de
-levantarlo:
+que detecta solo son las del contenedor, que no valen desde fuera. Añade al `.env`, antes de levantarlo:
 
 ```sh
 DIRECCIONES=http://<ip-del-anfitrión>:9917
@@ -112,15 +149,13 @@ instalar el plugin. La imagen se construye y se sube con el nombre del registro 
 
 ```sh
 cd server
-docker build -t <registro>/mcp-tareas-server:0.1.0 .
-docker push <registro>/mcp-tareas-server:0.1.0
+docker build -t <registro>/mcp-tareas-server:0.1.2 .
+docker push <registro>/mcp-tareas-server:0.1.2
 ```
 
-Para usarla sin construir, `IMAGEN=<registro>/mcp-tareas-server:0.1.0 docker compose up` la descarga. Y para
-desplegarla en una máquina sin el repositorio, basta el [`docker-compose.yml`](docker-compose.yml) de la raíz
-con un `.env` al lado: tira de la imagen publicada en GHCR y no construye nada. La base de datos (SQLite, un
-solo archivo) y todo lo de mcp-tareas van en la carpeta que diga `DATOS` en el `.env` (`./datos` si no se dice);
-copiarla con el servidor parado es la copia de seguridad.
+Desde el clon, `IMAGEN=<registro>/mcp-tareas-server:0.1.2 docker compose up` la descarga en vez de
+construirla. El `docker-compose.yml` de la raíz lleva la versión publicada en `VERSION`; al publicar una
+nueva se actualiza ahí también.
 
 ## Dónde está el detalle
 
