@@ -114,9 +114,7 @@ test("las dependencias se fijan en backlog, dejan rastro y ahí se congelan", ()
 
 		moverTareaHumano(banco.db, { tareaId: segunda.id, usuarioId: banco.ana, estado: "prepared" });
 		assert.equal(
-			codigoDe(() =>
-				fijarDependencias(banco.db, { tareaId: segunda.id, dependeDe: [], actor: { usuarioId: banco.ana } }),
-			),
+			codigoDe(() => fijarDependencias(banco.db, { tareaId: segunda.id, dependeDe: [], actor: { usuarioId: banco.ana } })),
 			"solo_en_backlog",
 		);
 	} finally {

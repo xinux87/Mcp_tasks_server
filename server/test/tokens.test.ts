@@ -20,12 +20,7 @@ test("crear usuario y terminal sube la revisión y el token encuentra el termina
 		const { valor: usuario, revision: trasUsuario } = crearUsuario(db, "ana", hashPassword("secreta"));
 		assert.equal(trasUsuario, 1);
 
-		const { valor, revision: trasTerminal } = crearTerminalConToken(
-			db,
-			usuario.id,
-			"portatil-ana",
-			"ana@ejemplo.com",
-		);
+		const { valor, revision: trasTerminal } = crearTerminalConToken(db, usuario.id, "portatil-ana", "ana@ejemplo.com");
 		assert.equal(trasTerminal, 2);
 		assert.equal(revisionActual(db), 2);
 		assert.equal(valor.token.length, 43);
