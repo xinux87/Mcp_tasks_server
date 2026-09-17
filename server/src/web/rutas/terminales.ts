@@ -8,6 +8,8 @@ import {
 	altaTerminal,
 	borrarTerminal,
 	cambiarAgentes,
+	type FaseEnMarcha,
+	fasesEnMarcha,
 	listarTerminales,
 	revocarTerminal,
 	rotarTerminal,
@@ -16,6 +18,7 @@ import {
 import type { Usuario } from "../../db/consultas.ts";
 import { listarProyectos, PROYECTO_PRINCIPAL, type Proyecto } from "../../db/proyectos.ts";
 import { direccionesDelServidor } from "../../direcciones.ts";
+import { formatearId } from "../../md/ids.ts";
 import {
 	type BuscaProyecto,
 	bloqueCodigo,
@@ -28,11 +31,12 @@ import {
 	etiqueta,
 	type Miga,
 } from "../componentes.ts";
-import { fechaLegible, SIN_DATO } from "../formatos.ts";
+import { edad, fechaLegible, SIN_DATO } from "../formatos.ts";
 import { campo, ESTADO_AVISO, leerFormulario, mensajeDeRegla } from "../formulario.ts";
-import { type Html, pagina, type RespuestaHtml } from "../plantilla.ts";
+import { type Html, insigniasMarcas, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, leerSesion, usuarioActual } from "../sesion.ts";
 import { enlaceDeConexion, type OpcionesTutorial, tutorialConexion } from "../tutorial.ts";
+import { NOMBRE_FASE } from "../vocabulario.ts";
 import { navProyectos } from "./proyectos.ts";
 
 /** Cómo se busca el color de cada usuario que aparece en la página. */
@@ -261,6 +265,74 @@ function tarjetaNuevoTerminal(proyectos: readonly Proyecto[]): Html {
 		</section>`;
 }
 
+/**
+ * Una fase tomada, en una línea: qué tarea, qué fase, con qué modelo y desde
+ * hace cuánto. Parada, la edad duele y la línea lo dice con su etiqueta.
+ */
+function lineaEnMarcha(fase: FaseEnMarcha): Html {
+	const id = formatearId(fase.codigo);
+	const cuanto = fase.desde === null ? "en marcha" : `en marcha ${edad(fase.desde)}`;
+	return html`<li>
+			<a href="/tareas/${id}">${id}</a>
+			<span class="ahora-titulo">${fase.titulo}</span>
+			<span class="pequeno silencio">${NOMBRE_FASE[fase.fase]}${fase.modelo === null ? "" : ` · ${fase.modelo}`}</span>
+			<span class="edad${fase.parada ? " edad-peligro" : ""}" title="${fase.desde ?? ""}">${cuanto}</span>
+			${fase.parada ? insigniasMarcas(["parada"]) : html``}
+		</li>`;
+}
+
+/** Qué trabaja un terminal ahora mismo, o desde cuándo está en reposo. */
+function tarjetaEnMarcha(terminal: TerminalListado, fases: readonly FaseEnMarcha[], proyectoDe: BuscaProyecto): Html {
+	const proyecto = proyectoDe(terminal.proyectoId);
+	const conexion = terminal.conectadoEn === null ? "Sin conectar" : `Conectado desde hace ${edad(terminal.conectadoEn)}`;
+	return html`<article class="ahora-terminal">
+			<p class="ahora-cabecera">
+				<strong>${terminal.nombre}</strong>
+				${proyecto === undefined ? html`` : chipProyecto(proyecto)}
+				<span class="pequeno silencio" title="${terminal.conectadoEn ?? ""}">${conexion}</span>
+			</p>
+			${
+				fases.length === 0
+					? html`<p class="silencio">En reposo.</p>`
+					: html`<ul class="ahora-fases">${fases.map(lineaEnMarcha)}</ul>`
+			}
+		</article>`;
+}
+
+/**
+ * «Ahora mismo»: qué está trabajando cada terminal y desde cuándo. Contesta de
+ * un vistazo si está pasando algo o si el bucle se ha muerto, que mirando solo
+ * la columna «Conectado» de la tabla había que adivinar.
+ *
+ * Los revocados quedan fuera: no van a tomar nada. Se refresca con la tabla,
+ * que se recarga por intervalo porque la telemetría no sube la revisión.
+ */
+function franjaEnMarcha(
+	deps: DependenciasWeb,
+	terminales: readonly TerminalListado[],
+	proyectoDe: BuscaProyecto,
+): Html {
+	const activos = terminales.filter((terminal) => terminal.revocadoEn === null);
+	if (activos.length === 0) {
+		return html``;
+	}
+	const porTerminal = new Map<number, FaseEnMarcha[]>();
+	for (const fase of fasesEnMarcha(deps.db, deps.config.FASE_PARADA_HORAS)) {
+		const suyas = porTerminal.get(fase.terminalId);
+		if (suyas === undefined) {
+			porTerminal.set(fase.terminalId, [fase]);
+		} else {
+			suyas.push(fase);
+		}
+	}
+	return html`<section class="ahora">
+			<h2>Ahora mismo</h2>
+			<div class="ahora-rejilla">
+				${activos.map((terminal) => tarjetaEnMarcha(terminal, porTerminal.get(terminal.id) ?? [], proyectoDe))}
+			</div>
+		</section>`;
+}
+
 function paginaTerminales(c: Context, deps: DependenciasWeb, aviso: string | null): RespuestaHtml {
 	const terminales = listarTerminales(deps.db);
 	const colorDe = buscadorDeColor(deps.db);
@@ -293,7 +365,7 @@ function paginaTerminales(c: Context, deps: DependenciasWeb, aviso: string | nul
 			aviso,
 			acciones: html`<a class="boton" href="/terminales/conectar">Cómo conectar un terminal</a>
 				<a class="boton principal" href="#nuevo-terminal">Nuevo terminal</a>`,
-			cuerpo: html`${tabla}${tarjetaNuevoTerminal(listarProyectos(deps.db))}`,
+			cuerpo: html`${franjaEnMarcha(deps, terminales, proyectoDe)}${tabla}${tarjetaNuevoTerminal(listarProyectos(deps.db))}`,
 		}),
 		aviso === null ? 200 : ESTADO_AVISO,
 	);

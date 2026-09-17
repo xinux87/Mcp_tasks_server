@@ -24,6 +24,7 @@ import {
 	type Usuario,
 } from "./consultas.ts";
 import { exigirProyectoPorId, PROYECTO_PRINCIPAL } from "./proyectos.ts";
+import { comoTarea, type Fase, faseParada, faseQueToca } from "./tareas.ts";
 
 /**
  * Gestión de usuarios y terminales desde la web. Las reglas viven aquí, no en
@@ -234,6 +235,46 @@ export function listarTerminales(db: DatabaseSync): TerminalListado[] {
 			creado: texto(fila, "creado"),
 			revocadoEn: textoOpcional(fila, "revocado_en"),
 		}));
+}
+
+/** Una fase que un terminal tiene tomada ahora mismo: lo que enseña «Ahora mismo». */
+export type FaseEnMarcha = {
+	terminalId: number;
+	codigo: string;
+	titulo: string;
+	fase: Fase;
+	/** El modelo con el que se tomó la fase, o nulo si la tarea llegó sin ninguno. */
+	modelo: string | null;
+	/** Cuándo se tomó, o nulo en las que ya lo estaban antes de guardarse la fecha. */
+	desde: string | null;
+	/** Si pasó del umbral: lo más probable es que el subagente haya muerto. */
+	parada: boolean;
+};
+
+/**
+ * Todas las fases en marcha de una vez. La franja «Ahora mismo» pinta una
+ * tarjeta por terminal y no puede consultar la base una vez por cada uno.
+ *
+ * La fase es la que toca según el estado y el hilo, con la misma regla que las
+ * marcas: aquí se llama a `faseQueToca`, no se reescribe en SQL.
+ */
+export function fasesEnMarcha(db: DatabaseSync, horasParada: number): FaseEnMarcha[] {
+	const sql = "SELECT * FROM tareas WHERE en_marcha_terminal_id IS NOT NULL ORDER BY en_marcha_desde, id";
+	return sentencia(db, sql)
+		.all()
+		.map((fila) => {
+			const tarea = comoTarea(fila);
+			const fase = faseQueToca(tarea);
+			return {
+				terminalId: entero(fila, "en_marcha_terminal_id"),
+				codigo: tarea.codigo,
+				titulo: tarea.titulo,
+				fase,
+				modelo: fase === "analisis" ? tarea.analisisModelo : tarea.ejecucionModelo,
+				desde: tarea.enMarchaDesde,
+				parada: faseParada(tarea, horasParada),
+			};
+		});
 }
 
 export type AltaTerminal = {

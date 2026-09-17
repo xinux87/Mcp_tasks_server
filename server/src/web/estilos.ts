@@ -2120,4 +2120,57 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
 	text-align: right;
 	font-size: 0.8125rem;
 }
+
+/* --- «Ahora mismo» en terminales ----------------------------------------- */
+
+/* Qué trabaja cada terminal, encima de la tabla: una tarjeta por terminal vivo
+   y una línea por fase tomada. Contesta si está pasando algo o si el bucle se
+   ha muerto, que mirando solo la columna «Conectado» había que adivinarlo. */
+.ahora-rejilla {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+	gap: 0.8rem;
+	margin-bottom: 1.6rem;
+}
+
+.ahora-terminal {
+	border: 1px solid var(--borde);
+	border-radius: 8px;
+	background: var(--fondo);
+	padding: 0.8rem;
+}
+
+.ahora-cabecera {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+	margin: 0 0 0.5rem;
+}
+
+.ahora-terminal > p:last-child {
+	margin: 0;
+}
+
+.ahora-fases {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ahora-fases li {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+/* El título se come el hueco que quede: la edad se va al borde derecho. */
+.ahora-titulo {
+	flex: 1;
+	min-width: 6rem;
+}
 `;

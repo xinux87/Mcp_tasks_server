@@ -10,7 +10,7 @@ import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { actividadDe } from "../src/db/actividad.ts";
 import { listarTerminales, listarUsuarios } from "../src/db/admin.ts";
 import { COLORES_USUARIO } from "../src/db/colores.ts";
-import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
+import { crearUsuario, marcarTerminalConectado, revisionActual } from "../src/db/consultas.ts";
 import { registrarConsumo } from "../src/db/consumo.ts";
 import { comentarAnalisis, comentarioDeAgente, comentarResultado, preguntar } from "../src/db/hilo.ts";
 import {
@@ -2153,6 +2153,80 @@ test("la ficha enseña la edad de la fase en marcha, la marca «parada» y el bo
 		const despues = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
 		assert.ok(!despues.includes(`/tareas/${id}/liberar`), "el botón sigue tras liberar");
 		assert.equal(actividadDe(montaje.db, "tarea", tarea.id).filter((f) => f.accion === "liberar_fase").length, 1);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+/** La tarjeta de un terminal dentro de la franja «Ahora mismo». */
+function tarjetaAhora(cuerpo: string, nombre: string): string {
+	const trozos = cuerpo.split('<article class="ahora-terminal">');
+	const encontrado = trozos.find((trozo) => trozo.includes(`<strong>${nombre}</strong>`));
+	assert.ok(encontrado !== undefined, `no aparece el terminal «${nombre}» en la franja`);
+	return encontrado.split("</article>")[0] ?? "";
+}
+
+test("la franja «Ahora mismo» enseña la fase en marcha de cada terminal y el reposo de los demás", async () => {
+	// Un umbral de una hora, para no tener que esperar seis.
+	const montaje = montar({ ...CONFIG_PRUEBA, FASE_PARADA_HORAS: 1 });
+	try {
+		const cookie = await entrar(montaje);
+		const ana = listarUsuarios(montaje.db)[0]?.id ?? 0;
+		const portatil = crearTerminalConToken(montaje.db, ana, "portatil-ana", "ana@ejemplo.com").valor.terminal.id;
+		crearTerminalConToken(montaje.db, ana, "sobremesa-ana", "ana@ejemplo.com");
+		const tarea = crearTareaHumana(montaje.db, {
+			titulo: "Exportar el listado de clientes",
+			descripcion: "d",
+			usuarioId: ana,
+			analisisModelo: "sonnet",
+			analisisTerminalId: portatil,
+		});
+		moverTareaHumano(montaje.db, { tareaId: tarea.id, usuarioId: ana, estado: "prepared" });
+		marcarTerminalConectado(montaje.db, portatil);
+		tomarTarea(montaje.db, { tareaId: tarea.id, fase: "analisis", terminalId: portatil });
+
+		const lista = await (await pedir(montaje, "/terminales", { cookie })).text();
+		assert.match(lista, /<h2>Ahora mismo<\/h2>/);
+		const trabajando = tarjetaAhora(lista, "portatil-ana");
+		const id = formatearId(tarea.codigo);
+		assert.ok(trabajando.includes(`<a href="/tareas/${id}">${id}</a>`), "la fase no enlaza a la ficha");
+		assert.ok(trabajando.includes("Exportar el listado de clientes"), "falta el título de la tarea");
+		assert.ok(trabajando.includes("Análisis · sonnet"), "falta la fase con su modelo");
+		assert.match(trabajando, /<span class="edad"[^>]*>en marcha 0 min<\/span>/);
+		assert.ok(trabajando.includes("Conectado desde hace 0 min"), "falta desde cuándo está conectado");
+		assert.ok(!trabajando.includes("marca-parada"), "la fase recién tomada no está parada");
+
+		// El que no tiene nada tomado dice que está en reposo, y que nunca conectó.
+		const reposo = tarjetaAhora(lista, "sobremesa-ana");
+		assert.ok(reposo.includes("En reposo."), "el terminal sin fases no dice que está en reposo");
+		assert.ok(reposo.includes("Sin conectar"), "un terminal que nunca conectó dice otra cosa");
+
+		// Pasado el umbral, la edad duele y la línea lo dice con su etiqueta.
+		const haceTres = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+		montaje.db.prepare("UPDATE tareas SET en_marcha_desde = ? WHERE id = ?").run(haceTres, tarea.id);
+		const parada = tarjetaAhora(await (await pedir(montaje, "/terminales", { cookie })).text(), "portatil-ana");
+		assert.match(parada, /<span class="edad edad-peligro"[^>]*>en marcha 3 h<\/span>/);
+		assert.ok(parada.includes("marca-parada"), "falta la etiqueta de fase parada");
+		assert.ok(parada.includes("Fase parada"), "la etiqueta no lleva su nombre legible");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("un terminal revocado no sale en la franja «Ahora mismo»", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const ana = listarUsuarios(montaje.db)[0]?.id ?? 0;
+		const terminal = crearTerminalConToken(montaje.db, ana, "portatil-ana", "ana@ejemplo.com").valor.terminal.id;
+		const antes = await (await pedir(montaje, "/terminales", { cookie })).text();
+		assert.ok(antes.includes("<strong>portatil-ana</strong>"), "el terminal vivo no sale en la franja");
+
+		await pedir(montaje, `/terminales/${terminal}/revocar`, { cookie, formulario: {} });
+		const despues = await (await pedir(montaje, "/terminales", { cookie })).text();
+		assert.ok(!despues.includes("<strong>portatil-ana</strong>"), "el revocado sigue en la franja");
+		// Sin ningún terminal vivo no hay nada que enseñar y la franja no se pinta.
+		assert.ok(!despues.includes("Ahora mismo"), "la franja se pinta sin terminales vivos");
 	} finally {
 		await montaje.cerrar();
 	}

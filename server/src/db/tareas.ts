@@ -482,6 +482,20 @@ function horasEnMarcha(desde: string | null): number {
 }
 
 /**
+ * Si la fase que un terminal tiene tomada pasó del umbral: lo más probable es
+ * que el subagente haya muerto sin cerrarla. Es un aviso al humano, que la
+ * libera desde la ficha: nada se suelta solo, porque una ejecución larga de
+ * verdad también pasa del umbral y soltarla lanzaría dos subagentes sobre el
+ * mismo trabajo.
+ *
+ * Es la condición de la marca `parada`, aparte porque la franja «Ahora mismo»
+ * la necesita sin el resto de las marcas.
+ */
+export function faseParada(tarea: Tarea, horasParada: number): boolean {
+	return tarea.enMarchaTerminalId !== null && horasEnMarcha(tarea.enMarchaDesde) > horasParada;
+}
+
+/**
  * Marcas activas de la tarea, en el orden en el que se muestran. No se
  * guardan en la base de datos: son consecuencia del estado.
  *
@@ -515,11 +529,7 @@ export function marcasDe(
 	}
 	if (tarea.enMarchaTerminalId !== null) {
 		marcas.push("en marcha");
-		// Pasado el umbral lo más probable es que el subagente haya muerto sin
-		// cerrar la fase. Es un aviso al humano, que la libera desde la ficha:
-		// nada se suelta solo, porque una ejecución larga de verdad también pasa
-		// del umbral y soltarla lanzaría dos subagentes sobre el mismo trabajo.
-		if (horasEnMarcha(tarea.enMarchaDesde) > horasParada) {
+		if (faseParada(tarea, horasParada)) {
 			marcas.push("parada");
 		}
 	}
