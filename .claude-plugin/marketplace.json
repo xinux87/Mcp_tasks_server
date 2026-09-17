@@ -9,7 +9,7 @@
       "name": "mcp-tareas",
       "source": "./plugin",
       "description": "Reporta a la web el uso de la cuenta de este terminal, desde la linea de estado de Claude Code.",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "author": {
         "name": "xinux87"
       },
