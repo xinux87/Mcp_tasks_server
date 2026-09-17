@@ -8,6 +8,7 @@ import {
 	interrupcionesPorModelo,
 	primeraTransicion,
 	ritmo,
+	ritmoPorDia,
 } from "../../db/informes.ts";
 import { barraProgreso } from "../componentes.ts";
 import { duracion, fechaLegible, SIN_DATO, tokensAbreviados } from "../formatos.ts";
@@ -139,20 +140,29 @@ function tablaDevoluciones(db: DependenciasWeb["db"], filtro: FiltroInforme): Ht
 }
 
 /**
- * El ritmo: una fila por semana con la barra de la tarjeta como gráfico. El
- * máximo de la barra es la semana más alta del periodo, así que lo que se ve
- * es la forma de la serie y no un valor absoluto.
+ * El ritmo, con la barra de la tarjeta como gráfico y el máximo de la serie
+ * como tope: lo que se ve es la forma, no un valor absoluto. En los periodos
+ * cortos va por día sobre los últimos catorce, porque con pocas semanas de
+ * datos tres barras semanales no dicen nada; en los largos, por semana.
+ *
+ * Los días a cero cuentan como fila pero no como dato: si no hubo ninguna
+ * tarea, el bloque dice lo mismo que las tablas vacías.
  */
-function tablaRitmo(db: DependenciasWeb["db"], filtro: FiltroInforme): Html {
-	const semanas = ritmo(db, filtro);
-	const maximo = Math.max(1, ...semanas.map((semana) => semana.tareas));
-	const filas = semanas.map(
-		(semana) => html`<tr>
-			<td>${semana.semana}</td>
-			<td>${barraProgreso(semana.tareas, maximo, "")}</td>
+function tablaRitmo(db: DependenciasWeb["db"], filtro: FiltroInforme, porDia: boolean): Html {
+	const serie = porDia
+		? ritmoPorDia(db, filtro).map((dia) => ({ rotulo: dia.dia, tareas: dia.tareas }))
+		: ritmo(db, filtro).map((semana) => ({ rotulo: semana.semana, tareas: semana.tareas }));
+	const maximo = Math.max(1, ...serie.map((punto) => punto.tareas));
+	const vacio = serie.every((punto) => punto.tareas === 0);
+	const filas = vacio
+		? []
+		: serie.map(
+				(punto) => html`<tr>
+			<td>${punto.rotulo}</td>
+			<td>${barraProgreso(punto.tareas, maximo, "")}</td>
 		</tr>`,
-	);
-	return bloque("Ritmo", html`<th>Semana</th><th>Tareas hechas</th>`, filas);
+			);
+	return bloque("Ritmo", html`<th>${porDia ? "Día" : "Semana"}</th><th>Tareas hechas</th>`, filas);
 }
 
 /** `GET /informes` y `GET /p/:clave/informes`: las cuatro preguntas y el ritmo. */
@@ -169,7 +179,7 @@ export function registrarRutasInformes(app: Hono, deps: DependenciasWeb): void {
 			${tablaInterrupciones(deps.db, filtro)}
 			${tablaCiclo(deps.db, filtro)}
 			${tablaDevoluciones(deps.db, filtro)}
-			${tablaRitmo(deps.db, filtro)}
+			${tablaRitmo(deps.db, filtro, elegido === "7" || elegido === "30")}
 			<p class="silencio pie-informes">
 				${
 					desdeCuando === null

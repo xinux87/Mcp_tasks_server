@@ -13,6 +13,7 @@ import {
 	interrupcionesPorModelo,
 	primeraTransicion,
 	ritmo,
+	ritmoPorDia,
 } from "../src/db/informes.ts";
 import { crearProyecto } from "../src/db/proyectos.ts";
 import { crearTareaHumana } from "../src/db/tareas.ts";
@@ -508,6 +509,81 @@ test("el informe de un proyecto no cuenta el gasto de otro", async () => {
 
 		// Una clave que no existe sigue siendo un 404.
 		assert.equal((await pedir(montaje, "/p/NADA/informes", cookie)).status, 404);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el ritmo por día son catorce filas, con ceros donde no hubo nada", () => {
+	const banco = sembrar();
+	try {
+		salto(banco.db, banco.tranquila, "doing", "done", hace(0));
+		salto(banco.db, banco.tranquila, "doing", "done", hace(3));
+
+		const dias = ritmoPorDia(banco.db, { proyectoId: 1 });
+		assert.equal(dias.length, 14);
+		// Uno detrás de otro y sin huecos: la serie ya viene ordenada.
+		assert.deepEqual(
+			[...dias].map((dia) => dia.dia).sort(),
+			dias.map((dia) => dia.dia),
+		);
+		const dia = (atras: number): string => hace(atras).slice(0, 10);
+		assert.equal(dias.at(-1)?.dia, dia(0));
+
+		const cuantas = new Map(dias.map((fila) => [fila.dia, fila.tareas]));
+		assert.equal(cuantas.get(dia(0)), 1, "el cierre de hoy");
+		assert.equal(cuantas.get(dia(3)), 1, "el cierre de hace tres días");
+		// Hace cuatro días cerraron una tarea y una funcionalidad: solo cuenta la tarea.
+		assert.equal(cuantas.get(dia(4)), 1);
+		// Un día sin cierres existe igual, a cero, y el otro proyecto no cuenta.
+		assert.equal(cuantas.get(dia(1)), 0);
+		assert.equal(cuantas.get(dia(2)), 0, "el cierre de WEB no es de este proyecto");
+
+		// La ventana es fija: el periodo elegido no la recorta.
+		assert.deepEqual(ritmoPorDia(banco.db, { proyectoId: 1, desde: hace(7) }), dias);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("el ritmo va por día en los periodos cortos y por semana en los largos", async () => {
+	const { montaje } = montarWebConDatos();
+	try {
+		const cookie = await entrar(montaje);
+		const mes = await (await pedir(montaje, "/informes?dias=30", cookie)).text();
+		assert.ok(mes.includes("<th>Día</th>"), "el mes debería enseñar el ritmo por día");
+		// Las catorce filas, con la de hace ocho días a uno y el día de hoy a cero.
+		assert.ok(mes.includes(`<td>${hace(8).slice(0, 10)}</td>`), "falta el día del cierre");
+		assert.ok(mes.includes(`<td>${hace(0).slice(0, 10)}</td>`), "falta el día de hoy");
+
+		const trimestre = await (await pedir(montaje, "/informes?dias=90", cookie)).text();
+		assert.ok(trimestre.includes("<th>Semana</th>"), "el trimestre debería enseñar el ritmo por semana");
+		assert.ok(!trimestre.includes("<th>Día</th>"));
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("sin cierres, el ritmo por día dice que no hay datos", async () => {
+	const db = abrirBaseDeDatos(":memory:");
+	const { valor: usuario } = crearUsuario(db, "ana", hashPassword("secreta"));
+	assert.ok(usuario.id > 0);
+	const { app, cerrar } = crearApp({ db, config: CONFIG_PRUEBA });
+	const montaje: Montaje = {
+		db,
+		app,
+		cerrar: async () => {
+			await cerrar();
+			db.close();
+		},
+	};
+	try {
+		const cookie = await entrar(montaje);
+		const cuerpo = await (await pedir(montaje, "/informes?dias=30", cookie)).text();
+		assert.equal(ritmoPorDia(db).length, 14, "las filas existen aunque no haya nada que contar");
+		assert.ok(cuerpo.includes("<h2>Ritmo</h2>"));
+		assert.ok(!cuerpo.includes("<th>Día</th>"), "sin datos no se pinta la tabla");
+		assert.ok(cuerpo.includes("Todavía no hay transiciones registradas."));
 	} finally {
 		await montaje.cerrar();
 	}

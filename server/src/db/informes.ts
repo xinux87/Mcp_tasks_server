@@ -60,6 +60,12 @@ export type SemanaRitmo = {
 	tareas: number;
 };
 
+/** Un día del ritmo: `2026-09-17` y cuántas tareas llegaron a `done` ese día. */
+export type DiaRitmo = {
+	dia: string;
+	tareas: number;
+};
+
 // --- el filtro compartido ----------------------------------------------------
 
 /**
@@ -307,6 +313,38 @@ export function ritmo(db: DatabaseSync, filtro: FiltroInforme = {}): SemanaRitmo
 	)
 		.all(...donde.params)
 		.map((fila) => ({ semana: texto(fila, "semana"), tareas: entero(fila, "tareas") }));
+}
+
+/** Cuántos días enseña el ritmo diario. Es la ventana de Paperclip: dos semanas. */
+const DIAS_DEL_RITMO = 14;
+
+/**
+ * Cuántas tareas llegaron a `done` cada uno de los últimos catorce días, hoy
+ * incluido y en UTC, con los días vacíos a cero: una serie con huecos no se lee
+ * como una serie. La ventana es fija, así que del filtro solo usa el proyecto;
+ * el periodo elegido decide si se llama a esta o a `ritmo`, no cuánto abarca.
+ */
+export function ritmoPorDia(db: DatabaseSync, filtro: FiltroInforme = {}): DiaRitmo[] {
+	const donde = acotar("t", "tr.creado", { proyectoId: filtro.proyectoId });
+	return sentencia(
+		db,
+		`WITH RECURSIVE dias(dia) AS (
+				SELECT date('now', '-${DIAS_DEL_RITMO - 1} days')
+				UNION ALL
+				SELECT date(dia, '+1 day') FROM dias WHERE dia < date('now')
+			),
+			hechas AS (
+				SELECT date(tr.creado) AS dia, COUNT(*) AS tareas
+					FROM transiciones tr JOIN tareas t ON t.id = tr.tarea_id
+					WHERE tr.a = 'done' AND ${donde.sql}
+					GROUP BY dia
+			)
+			SELECT d.dia AS dia, COALESCE(h.tareas, 0) AS tareas
+				FROM dias d LEFT JOIN hechas h ON h.dia = d.dia
+				ORDER BY d.dia`,
+	)
+		.all(...donde.params)
+		.map((fila) => ({ dia: texto(fila, "dia"), tareas: entero(fila, "tareas") }));
 }
 
 /**
