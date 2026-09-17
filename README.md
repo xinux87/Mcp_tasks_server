@@ -83,7 +83,7 @@ primer arranque, cámbiala después en **Usuarios**.
 | `DIRECCIONES` | no | Otras URLs por las que se llega al servidor, separadas por comas (`http://192.168.1.10:9917`). Necesaria cuando los terminales están en otra máquina: dentro de Docker el servidor solo ve las direcciones del contenedor. |
 | `DATOS` | no | Carpeta del anfitrión donde vive la base de datos (SQLite, el archivo `tareas.sqlite`) y todo lo de mcp-tareas. `./datos` por defecto, junto al compose. Copiarla con el servidor parado es la copia de seguridad. En Linux la escribe el uid 1000: si la creas con otro usuario, `sudo chown 1000:1000 datos`. |
 | `PORT` | no | Puerto publicado en el anfitrión, `9917` por defecto. Dentro del contenedor el servidor escucha siempre en 3000. |
-| `VERSION` | no | Etiqueta de la imagen, `0.2.0` por defecto. Para actualizar, súbela y vuelve a `docker compose up -d`; las migraciones de la base de datos corren solas al arrancar. |
+| `VERSION` | no | Etiqueta de la imagen, `0.2.1` por defecto. Para actualizar, súbela y vuelve a `docker compose up -d`; las migraciones de la base de datos corren solas al arrancar. |
 | `AVISOS_URL` | no | Si está, cada vez que un agente deja algo esperando por ti (una pregunta, un análisis por aprobar, un resultado) se manda un POST de texto llano a esa URL: la frase y el enlace a la ficha. Es el formato de [ntfy](https://ntfy.sh); cualquier receptor de texto vale. |
 
 ### Desde el clon del repositorio
@@ -157,10 +157,10 @@ no se puede cargar en el Docker local, por eso se construye y se sube en el mism
 cd server
 docker buildx create --name mcp-tareas --driver docker-container --use   # solo la primera vez
 docker login -u xinux87
-docker buildx build --platform linux/amd64,linux/arm64 -t xinux87/mcp-tareas-server:0.2.0 --push .
+docker buildx build --platform linux/amd64,linux/arm64 -t xinux87/mcp-tareas-server:0.2.1 --push .
 ```
 
-Desde el clon, `IMAGEN=xinux87/mcp-tareas-server:0.2.0 docker compose up` la descarga en vez de
+Desde el clon, `IMAGEN=xinux87/mcp-tareas-server:0.2.1 docker compose up` la descarga en vez de
 construirla. El `docker-compose.yml` de la raíz lleva la versión publicada en `VERSION`; al publicar una
 nueva se actualiza ahí también.
 
