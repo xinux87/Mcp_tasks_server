@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "mcp-tareas",
   "displayName": "MCP Tareas",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "Reporta a la web el uso de la cuenta de este terminal desde la linea de estado de Claude Code. Opcional: el servidor MCP de tareas y la skill del bucle se conectan con dos comandos, sin plugin.",
   "author": {
     "name": "xinux87"
