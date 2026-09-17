@@ -1985,3 +1985,123 @@ test("cada pantalla con sesión dice para qué sirve", async () => {
 		await montaje.cerrar();
 	}
 });
+
+test("la búsqueda de la barra lateral lleva a la lista del proyecto que toca", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+
+		// El proyecto de la URL manda sobre lo recordado.
+		const acotada = await (await pedir(montaje, "/p/DEFAULT/tareas", { cookie: `${cookie}; proyecto=todos` })).text();
+		assert.match(acotada, /<form class="buscador" id="buscador" method="get" action="\/p\/DEFAULT\/tareas">/);
+		assert.match(acotada, /<input type="search" id="q-lateral" name="q" placeholder="Buscar tareas">/);
+		// El botón existe en el HTML: sin JavaScript es la única forma de enviar.
+		assert.match(acotada, /<button type="submit" class="pequeno">Buscar<\/button>/);
+
+		// Con «Todos los proyectos» puesto, la vista cruzada.
+		const todos = await (await pedir(montaje, "/tareas", { cookie: `${cookie}; proyecto=todos` })).text();
+		assert.match(todos, /<form class="buscador" id="buscador" method="get" action="\/tareas">/);
+
+		// Sin cookie, el proyecto por defecto.
+		const sinCookie = await (await pedir(montaje, "/tareas", { cookie })).text();
+		assert.match(sinCookie, /<form class="buscador" id="buscador" method="get" action="\/p\/DEFAULT\/tareas">/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("la ficha enseña quién bloquea a quién, y la rama solo cuando la tarea la tiene", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const base = crearTareaHumana(montaje.db, {
+			titulo: "Crear la tabla de clientes",
+			descripcion: "Sin ella no hay nada que exportar.",
+			usuarioId: 1,
+			rama: "clientes",
+		});
+		const encima = crearTareaHumana(montaje.db, {
+			titulo: "Exportar el listado a CSV",
+			descripcion: "Los comerciales lo copian a mano.",
+			usuarioId: 1,
+			dependeDe: [base.id],
+		});
+		const idBase = formatearId(base.codigo);
+		const idEncima = formatearId(encima.codigo);
+
+		// La que espera: de qué depende, que no bloquea a nadie y que no tiene rama.
+		const arriba = await (await pedir(montaje, `/tareas/${idEncima}`, { cookie })).text();
+		assert.match(arriba, new RegExp(`<dt>Depende de</dt>[\\s\\S]*?href="/tareas/${idBase}"`));
+		assert.match(arriba, /<dt>Bloquea a<\/dt>\s*<dd><span class="silencio">ninguna<\/span><\/dd>/);
+		assert.ok(!arriba.includes("<dt>Rama</dt>"), "sin rama, la fila no existe");
+
+		// La de abajo: quién la espera, con su etiqueta de estado, y su rama.
+		const abajo = await (await pedir(montaje, `/tareas/${idBase}`, { cookie })).text();
+		assert.match(
+			abajo,
+			new RegExp(
+				`<dt>Bloquea a</dt>[\\s\\S]*?estado-backlog color-gris">Por definir</span> <a class="id-tarea" href="/tareas/${idEncima}">`,
+			),
+		);
+		assert.match(abajo, /<dt>Rama<\/dt>\s*<dd><code>clientes<\/code><\/dd>/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el bloque de hijas de la ficha lleva la cuenta, la barra y en qué punto está cada una", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
+		const terminalId = valor.terminal.id;
+		const padre = crearTareaHumana(montaje.db, {
+			titulo: "Exportar el listado a CSV",
+			descripcion: "Los comerciales lo copian a mano.",
+			usuarioId: 1,
+			analisisTerminalId: terminalId,
+			ejecucionTerminalId: terminalId,
+		});
+		const id = formatearId(padre.codigo);
+
+		// Sin hijas, el bloque dice lo de siempre.
+		const sinHijas = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		assert.match(sinHijas, /<h2>Hijas<\/h2>\s*<p class="silencio">Ninguna\.<\/p>/);
+
+		moverTareaHumano(montaje.db, { tareaId: padre.id, usuarioId: 1, estado: "prepared" });
+		tomarTarea(montaje.db, { tareaId: padre.id, fase: "analisis", terminalId, modelo: "sonnet" });
+		comentarAnalisis(montaje.db, { tareaId: padre.id, terminalId, texto: "Plan." });
+		tomarTarea(montaje.db, { tareaId: padre.id, fase: "ejecucion", terminalId, modelo: "opus" });
+		const hecha = crearHija(montaje.db, {
+			titulo: "Generar el fichero",
+			descripcion: "d",
+			padreId: padre.id,
+			terminalId,
+		});
+		const atascada = crearHija(montaje.db, {
+			titulo: "Elegir el separador",
+			descripcion: "d",
+			padreId: padre.id,
+			terminalId,
+		});
+		crearHija(montaje.db, { titulo: "Tests de la exportación", descripcion: "d", padreId: padre.id, terminalId });
+		comentarResultado(montaje.db, { tareaId: hecha.id, terminalId, texto: "Hecho. Commit: a1b2c3d" });
+		preguntar(montaje.db, {
+			tareaId: atascada.id,
+			terminalId,
+			pregunta: "¿Qué separador usamos en el CSV?",
+			porQueImporta: "La hoja de cálculo de los comerciales está en español.",
+			opciones: [
+				{ texto: "Punto y coma", consecuencia: "Se abre directamente en su hoja de cálculo." },
+				{ texto: "No hacer nada", consecuencia: "Siguen copiando a mano." },
+			],
+			recomendacion: "Punto y coma",
+		});
+
+		const ficha = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		assert.match(ficha, /<h2>Hijas 1\/3 <progress class="progreso" value="1" max="3"><\/progress><\/h2>/);
+		assert.match(ficha, /<p class="pequeno silencio">1 hecha · 2 en curso · 1 con pregunta abierta<\/p>/);
+	} finally {
+		await montaje.cerrar();
+	}
+});

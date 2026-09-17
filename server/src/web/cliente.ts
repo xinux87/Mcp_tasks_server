@@ -15,7 +15,8 @@
  *    `lateral-abierta` en el `<body>`.
  * 5. Copia al portapapeles cualquier bloque de código, entero o línea a línea.
  * 6. Navega al cambiar el selector de proyecto de la barra lateral, y esconde
- *    su botón «Ir», que solo hace falta sin JavaScript.
+ *    su botón «Ir» y el «Buscar» de la búsqueda, que solo hacen falta sin
+ *    JavaScript.
  * 7. El conmutador de tema: marca el radio que toca al cargar y, al cambiarlo,
  *    guarda la preferencia en el navegador y la aplica en el acto.
  * 8. El desplegable de agente del formulario de tarea: al elegir un papel,
@@ -520,6 +521,21 @@ function prepararSelectorProyecto() {
 	});
 }
 
+/**
+ * La búsqueda de la barra lateral es un formulario GET normal: con JavaScript
+ * basta con la tecla Intro, así que su botón sobra igual que el «Ir».
+ */
+function prepararBuscador() {
+	const formulario = document.getElementById("buscador");
+	if (formulario === null) {
+		return;
+	}
+	const boton = formulario.querySelector("button");
+	if (boton !== null) {
+		boton.hidden = true;
+	}
+}
+
 // --- copiar bloques de comandos ----------------------------------------------
 
 /**
@@ -669,6 +685,7 @@ prepararTema();
 prepararLateral();
 prepararAgentes();
 prepararSelectorProyecto();
+prepararBuscador();
 prepararCopias();
 escucharEventos();
 

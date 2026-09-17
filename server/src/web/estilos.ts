@@ -158,16 +158,25 @@ pre {
 	text-decoration: none;
 }
 
-/* El selector de proyecto, debajo del nombre: ocupa el ancho de la barra y el
-   botón «Ir» solo se ve sin JavaScript, que es quien lo esconde. */
-.selector-proyecto {
+/* El selector de proyecto y la búsqueda, debajo del nombre: ocupan el ancho de
+   la barra y sus botones solo se ven sin JavaScript, que es quien los esconde. */
+.selector-proyecto,
+.buscador {
 	display: flex;
 	gap: 0.3rem;
-	margin: 0 0 1.1rem;
 	padding: 0 0.5rem;
 }
 
-.selector-proyecto select {
+.selector-proyecto {
+	margin: 0 0 0.4rem;
+}
+
+.buscador {
+	margin: 0 0 1.1rem;
+}
+
+.selector-proyecto select,
+.buscador input {
 	flex: 1;
 	min-width: 0;
 	font-size: 0.85rem;

@@ -472,7 +472,14 @@ test("una hija de trabajo nace en doing colgando del padre y con sus asignacione
 
 		const completa = leerTarea(banco.db, padre.id);
 		assert.deepEqual(completa?.hijas, [
-			{ id: hija.id, codigo: hija.codigo, estado: "doing", titulo: "Generar el fichero CSV", dependeDe: [] },
+			{
+				id: hija.id,
+				codigo: hija.codigo,
+				estado: "doing",
+				titulo: "Generar el fichero CSV",
+				dependeDe: [],
+				bloqueada: false,
+			},
 		]);
 	} finally {
 		banco.cerrar();

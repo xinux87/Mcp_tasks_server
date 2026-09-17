@@ -107,6 +107,8 @@ export type HijaDeTarea = {
 	titulo: string;
 	/** Códigos de las hermanas que tienen que ir antes que ella. Vacío si no depende de ninguna. */
 	dependeDe: string[];
+	/** Si tiene alguna pregunta sin contestar: la marca `bloqueada`, para el desglose de la ficha. */
+	bloqueada: boolean;
 };
 
 /** Lo que necesita `lineaIndice`: una tarea sin cuerpo ni hilo. */
@@ -407,7 +409,12 @@ export function contarPreguntasAbiertas(db: DatabaseSync, tareaId: number): numb
 }
 
 function hijasDe(db: DatabaseSync, tareaId: number): HijaDeTarea[] {
-	const hijas = sentencia(db, "SELECT id, codigo, estado, titulo FROM tareas WHERE padre_id = ? ORDER BY id")
+	const hijas = sentencia(
+		db,
+		`SELECT id, codigo, estado, titulo,
+			EXISTS (SELECT 1 FROM preguntas p WHERE p.tarea_id = tareas.id AND p.respuesta_opcion IS NULL) AS bloqueada
+			FROM tareas WHERE padre_id = ? ORDER BY id`,
+	)
 		.all(tareaId)
 		.map((fila) => ({
 			id: entero(fila, "id"),
@@ -415,6 +422,7 @@ function hijasDe(db: DatabaseSync, tareaId: number): HijaDeTarea[] {
 			estado: comoEstado(fila, "estado"),
 			titulo: texto(fila, "titulo"),
 			dependeDe: [] as string[],
+			bloqueada: entero(fila, "bloqueada") > 0,
 		}));
 	// Las dependencias de todas las hijas se leen de una vez: la
 	// descomposición de una funcionalidad son varias partes encadenadas.

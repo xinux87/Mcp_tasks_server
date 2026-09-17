@@ -282,6 +282,20 @@ function selectorProyecto(proyectos: readonly Proyecto[], proyecto: Proyecto | u
 }
 
 /**
+ * La búsqueda de la barra lateral: la misma `?q=` de la lista, desde cualquier
+ * pantalla. Apunta al proyecto que ya llevan puesto las entradas de
+ * navegación, y a la vista cruzada cuando se eligieron todos los proyectos.
+ * Sin ruta nueva; el botón solo hace falta sin JavaScript, como el «Ir».
+ */
+function buscador(prefijo: string): Html {
+	return html`<form class="buscador" id="buscador" method="get" action="${prefijo}/tareas">
+			<label class="solo-lectores" for="q-lateral">Buscar tareas</label>
+			<input type="search" id="q-lateral" name="q" placeholder="Buscar tareas">
+			<button type="submit" class="pequeno">Buscar</button>
+		</form>`;
+}
+
+/**
  * La barra lateral: el nombre de la aplicación, el selector de proyecto, los
  * dos bloques de navegación y, abajo, quién está dentro y por dónde se sale.
  */
@@ -294,6 +308,7 @@ function barraLateral(
 	return html`<aside class="lateral" id="lateral">
 			<a class="marca" href="/">${NOMBRE_PROYECTO}</a>
 			${nav.proyectos.length === 0 ? html`` : selectorProyecto(nav.proyectos, nav.proyecto, vista)}
+			${buscador(prefijo)}
 			<nav class="bloque bloque-suelto">${enlaceNav(BANDEJA, vista, prefijo, nav.pendientes)}</nav>
 			${BLOQUES.map(
 				(bloque) => html`<nav class="bloque">

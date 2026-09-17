@@ -18,6 +18,7 @@ import {
 	crearTareaHumana,
 	type Estado,
 	esTipoTarea,
+	type HijaDeTarea,
 	type ItemIndice,
 	idDeCodigo,
 	idDeCodigoONull,
@@ -738,29 +739,47 @@ function padreLegible(db: DatabaseSync, padreId: number | null): Html {
 }
 
 /**
- * De qué depende la tarea: el estado de cada una y su enlace. Las que todavía
- * no están hechas van en naranja, que es el color de lo que frena: son las
- * que mantienen la marca `esperando`.
+ * Una lista de tareas por su código, cada una con la etiqueta de su estado y
+ * su enlace. Las de `naranjas` van en ese color, que es el de lo que frena.
  */
-function dependenciasLegibles(db: DatabaseSync, tareaId: number, dependeDe: readonly string[]): Html {
-	if (dependeDe.length === 0) {
+function tareasConEstado(db: DatabaseSync, codigos: readonly string[], naranjas: ReadonlySet<string>): Html {
+	if (codigos.length === 0) {
 		return html`<span class="silencio">ninguna</span>`;
 	}
-	const pendientes = new Set(dependenciasPendientes(db, tareaId));
 	return html`<span class="dependencias">
-			${dependeDe.map((codigo) => {
+			${codigos.map((codigo) => {
 				const otra = buscarTareaPorCodigo(db, codigo);
 				const insignia =
 					otra === undefined
 						? html``
 						: etiqueta(
 								NOMBRE_ESTADO[otra.estado],
-								pendientes.has(codigo) ? "naranja" : COLOR_ESTADO[otra.estado],
+								naranjas.has(codigo) ? "naranja" : COLOR_ESTADO[otra.estado],
 								`estado-${otra.estado}`,
 							);
 				return html`<span class="dependencia">${insignia} ${enlaceTarea(codigo)}</span>`;
 			})}
 		</span>`;
+}
+
+/**
+ * De qué depende la tarea: el estado de cada una y su enlace. Las que todavía
+ * no están hechas van en naranja: son las que mantienen la marca `esperando`.
+ */
+function dependenciasLegibles(db: DatabaseSync, tareaId: number, dependeDe: readonly string[]): Html {
+	return tareasConEstado(db, dependeDe, new Set(dependenciasPendientes(db, tareaId)));
+}
+
+/**
+ * La otra dirección: qué tareas esperan a esta. Es lo que dice cuántas hay
+ * detrás de desbloquearla, y hasta ahora solo se veía al ir a borrarla.
+ */
+function dependientesLegibles(db: DatabaseSync, tareaId: number): Html {
+	return tareasConEstado(
+		db,
+		dependientesDe(db, tareaId).map((otra) => otra.codigo),
+		new Set(),
+	);
 }
 
 /**
@@ -800,7 +819,9 @@ function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe
 	if (tarea.tipo === "pregunta") {
 		filas.push({ nombre: "Tipo", valor: insigniaTipoTarea(tarea.tipo) });
 	}
-	filas.push({ nombre: "Rama", valor: ramaLegible(tarea.rama) });
+	if (tarea.rama !== null) {
+		filas.push({ nombre: "Rama", valor: ramaLegible(tarea.rama) });
+	}
 	filas.push({ nombre: "Análisis", valor: faseConPapel(completa, "analisis") });
 	if (tarea.tipo !== "pregunta") {
 		filas.push({ nombre: "Ejecución", valor: faseConPapel(completa, "ejecucion") });
@@ -808,7 +829,8 @@ function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe
 	}
 	filas.push({ nombre: "Presupuesto", valor: presupuestoLegible(tarea.presupuesto) });
 	filas.push({ nombre: "Padre", valor: padreLegible(db, tarea.padreId) });
-	filas.push({ nombre: "Dependencias", valor: dependenciasLegibles(db, tarea.id, completa.dependeDe) });
+	filas.push({ nombre: "Depende de", valor: dependenciasLegibles(db, tarea.id, completa.dependeDe) });
+	filas.push({ nombre: "Bloquea a", valor: dependientesLegibles(db, tarea.id) });
 	filas.push({ nombre: "Orden", valor: String(tarea.orden) });
 	filas.push({ nombre: "Creada", valor: creadaLegible(tarea, creadorDe) });
 	filas.push({ nombre: "Revisión", valor: String(tarea.revision) });
@@ -826,26 +848,66 @@ function propiedadesDeFuncionalidad(db: DatabaseSync, completa: TareaCompleta, c
 		{ nombre: "Estado", valor: estadoLegible(completa, 1) },
 		{ nombre: "Proyecto", valor: proyectoLegible(db, tarea.proyectoId) },
 		{ nombre: "Tipo", valor: insigniaTipoTarea(tarea.tipo) },
-		{ nombre: "Rama", valor: ramaLegible(tarea.rama) },
-		{
-			nombre: "Partes",
-			// Sin partes no hay barra que pintar: todavía no está descompuesta.
-			valor:
-				completa.partes === 0
-					? html`<span class="silencio">ninguna</span>`
-					: barraProgreso(completa.partesCerradas ?? 0, completa.partes ?? 0, "partes"),
-		},
-		{ nombre: "Análisis", valor: faseConPapel(completa, "analisis") },
-		{ nombre: "Ejecución de las partes", valor: faseConPapel(completa, "ejecucion") },
 	];
-	if (completa.dependeDe.length > 0) {
-		filas.push({ nombre: "Dependencias", valor: dependenciasLegibles(db, tarea.id, completa.dependeDe) });
+	if (tarea.rama !== null) {
+		filas.push({ nombre: "Rama", valor: ramaLegible(tarea.rama) });
 	}
+	filas.push({
+		nombre: "Partes",
+		// Sin partes no hay barra que pintar: todavía no está descompuesta.
+		valor:
+			completa.partes === 0
+				? html`<span class="silencio">ninguna</span>`
+				: barraProgreso(completa.partesCerradas ?? 0, completa.partes ?? 0, "partes"),
+	});
+	filas.push({ nombre: "Análisis", valor: faseConPapel(completa, "analisis") });
+	filas.push({ nombre: "Ejecución de las partes", valor: faseConPapel(completa, "ejecucion") });
+	filas.push({ nombre: "Depende de", valor: dependenciasLegibles(db, tarea.id, completa.dependeDe) });
+	filas.push({ nombre: "Bloquea a", valor: dependientesLegibles(db, tarea.id) });
 	filas.push({ nombre: "Consumo de las partes", valor: `${numeroLegible(completa.consumo.totalConHijas)} tokens` });
 	filas.push({ nombre: "Presupuesto", valor: presupuestoLegible(tarea.presupuesto) });
 	filas.push({ nombre: "Creada", valor: creadaLegible(tarea, creadorDe) });
 	filas.push({ nombre: "Revisión", valor: String(tarea.revision) });
 	return propiedades(filas);
+}
+
+/**
+ * En qué punto están las hijas: «2 hechas · 2 en curso · 1 con pregunta abierta». De la
+ * más avanzada a la menos, y al final las que tienen una pregunta abierta, que
+ * es lo que hay que atender. Solo se nombra lo que hay.
+ */
+function desgloseHijas(hijas: readonly HijaDeTarea[]): string {
+	const partes: string[] = [];
+	for (const estado of [...ESTADOS].reverse()) {
+		const cuantas = hijas.filter((hija) => hija.estado === estado).length;
+		if (cuantas > 0) {
+			// El singular es el nombre del estado; el plural, el de la columna.
+			const nombre = cuantas === 1 ? NOMBRE_ESTADO[estado] : NOMBRE_COLUMNA[estado];
+			partes.push(`${cuantas} ${nombre.toLowerCase()}`);
+		}
+	}
+	const bloqueadas = hijas.filter((hija) => hija.bloqueada).length;
+	if (bloqueadas > 0) {
+		partes.push(`${bloqueadas} con pregunta abierta`);
+	}
+	return partes.join(" · ");
+}
+
+/**
+ * Las hijas de la tarea, con la misma cuenta y la misma barra que la tarjeta
+ * del tablero: es donde el humano decide si acepta el resultado de la padre.
+ */
+function bloqueHijas(hijas: readonly HijaDeTarea[]): Html {
+	if (hijas.length === 0) {
+		return html`<h2>Hijas</h2>
+			<p class="silencio">Ninguna.</p>`;
+	}
+	const hechas = hijas.filter((hija) => hija.estado === "done" || hija.estado === "finished").length;
+	return html`<h2>Hijas ${hechas}/${hijas.length} <progress class="progreso" value="${hechas}" max="${hijas.length}"></progress></h2>
+		<p class="pequeno silencio">${desgloseHijas(hijas)}</p>
+		<ul class="hijas">
+			${hijas.map((hija) => html`<li>${insigniaEstado(hija.estado)} ${enlaceTarea(hija.codigo)} ${hija.titulo}</li>`)}
+		</ul>`;
 }
 
 function tablaConsumo(consumo: ConsumoDeTarea, presupuesto: number | null): Html {
@@ -1312,16 +1374,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 				${actividad}`
 			: html`${descripcion}
 
-				<h2>Hijas</h2>
-				${
-					completa.hijas.length === 0
-						? html`<p class="silencio">Ninguna.</p>`
-						: html`<ul class="hijas">
-							${completa.hijas.map(
-								(hija) => html`<li>${insigniaEstado(hija.estado)} ${enlaceTarea(hija.codigo)} ${hija.titulo}</li>`,
-							)}
-						</ul>`
-				}
+				${bloqueHijas(completa.hijas)}
 
 				${comun}
 				${actividad}`;
