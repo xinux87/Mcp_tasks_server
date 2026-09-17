@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
 import { type Actor, registrarActividad } from "./actividad.ts";
 import { ahora, enTransaccion, entero, enteroOpcional, idInsertado, sentencia, texto } from "./base.ts";
+import type { Estado, Fase } from "./tareas.ts";
 
 /**
  * Agentes: un papel escrito en Markdown que se asigna a la fase de una tarea.
@@ -134,6 +135,49 @@ export function fasesAsignadas(db: DatabaseSync, agenteId: number): number {
 		throw new Error("el recuento de fases no devolvió ninguna fila");
 	}
 	return entero(fila, "total");
+}
+
+/** Una fase que este agente lleva en una tarea, con lo que costó y cómo fue. */
+export type TareaDeAgente = {
+	codigo: string;
+	titulo: string;
+	fase: Fase;
+	estado: Estado;
+	/** Tokens de esa fase en esa tarea, sumando todo lo que se reportó. */
+	tokens: number;
+	/** Cuántas veces volvió de `done` a `doing`: lo entregado no valía. */
+	devoluciones: number;
+};
+
+/**
+ * Las tareas que lo tienen asignado ahora mismo, una fila por fase y de la más
+ * reciente a la más antigua: una tarea con el papel en las dos sale dos veces.
+ *
+ * Es todo el historial que se puede dar sin guardar el agente en `consumo`: al
+ * borrarlo, las referencias quedan a nulo y su historial se va con él.
+ */
+export function tareasDeAgente(db: DatabaseSync, agenteId: number, limite = 20): TareaDeAgente[] {
+	return sentencia(
+		db,
+		`SELECT t.codigo, t.titulo, f.fase, t.estado,
+				(SELECT COALESCE(SUM(c.tokens), 0) FROM consumo c WHERE c.tarea_id = t.id AND c.fase = f.fase) AS tokens,
+				(SELECT COUNT(*) FROM transiciones r WHERE r.tarea_id = t.id AND r.de = 'done' AND r.a = 'doing') AS devoluciones
+			FROM tareas t
+			JOIN (SELECT 'analisis' AS fase UNION ALL SELECT 'ejecucion') f
+				ON (f.fase = 'analisis' AND t.analisis_agente_id = ?1)
+					OR (f.fase = 'ejecucion' AND t.ejecucion_agente_id = ?1)
+			ORDER BY t.actualizada DESC, t.id DESC, f.fase
+			LIMIT ?2`,
+	)
+		.all(agenteId, limite)
+		.map((fila) => ({
+			codigo: texto(fila, "codigo"),
+			titulo: texto(fila, "titulo"),
+			fase: texto(fila, "fase") as Fase,
+			estado: texto(fila, "estado") as Estado,
+			tokens: entero(fila, "tokens"),
+			devoluciones: entero(fila, "devoluciones"),
+		}));
 }
 
 // --- asignación a una fase ---------------------------------------------------

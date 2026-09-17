@@ -785,7 +785,7 @@ function dependientesLegibles(db: DatabaseSync, tareaId: number): Html {
 }
 
 /**
- * Una fase en la ficha: el papel delante, enlazado a su edición, y detrás el
+ * Una fase en la ficha: el papel delante, enlazado a su ficha, y detrás el
  * modelo y el terminal con los que se trabaja de verdad. Sin papel, solo eso
  * último, como siempre.
  */
@@ -801,7 +801,7 @@ function faseConPapel(completa: TareaCompleta, cual: "analisis" | "ejecucion"): 
 	if (agenteId === null || agente === null) {
 		return html`${trabajo}`;
 	}
-	return html`<a href="/agentes/${agenteId}/editar">${agente}</a> · ${trabajo}`;
+	return html`<a href="/agentes/${agenteId}">${agente}</a> · ${trabajo}`;
 }
 
 /**

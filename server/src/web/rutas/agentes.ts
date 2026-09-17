@@ -11,12 +11,18 @@ import {
 	fasesAsignadas,
 	listarAgentes,
 	MODELOS,
+	type TareaDeAgente,
+	tareasDeAgente,
 	terminalDeAgente,
 } from "../../db/agentes.ts";
-import { buscadorDeColor, type Color, chipDeAlta, type Miga } from "../componentes.ts";
+import { tokensAbreviados } from "../../db/consumo.ts";
+import { formatearId } from "../../md/ids.ts";
+import { buscadorDeColor, type Color, chipDeAlta, type Miga, type Propiedad, propiedades } from "../componentes.ts";
 import { campo, campoOpcional, ESTADO_AVISO, type Formulario, leerFormulario, mensajeDeRegla } from "../formulario.ts";
-import { type Html, pagina, type RespuestaHtml } from "../plantilla.ts";
+import { renderMarkdown } from "../markdown.ts";
+import { type Html, insigniaEstado, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
+import { NOMBRE_FASE } from "../vocabulario.ts";
 import { navProyectos } from "./proyectos.ts";
 import { selectTerminal } from "./tareas.ts";
 
@@ -36,7 +42,7 @@ function migasDe(donde: string): Miga[] {
 function filaAgente(deps: DependenciasWeb, agente: Agente, colorDe: ColorDe): Html {
 	const terminal = terminalDeAgente(deps.db, agente);
 	return html`<tr>
-			<td><a href="/agentes/${agente.id}/editar">${agente.nombre}</a></td>
+			<td><a href="/agentes/${agente.id}">${agente.nombre}</a></td>
 			<td class="pequeno">${agente.descripcion === "" ? html`<span class="silencio">—</span>` : agente.descripcion}</td>
 			<td class="pequeno"><code>${agente.modelo}</code></td>
 			<td class="pequeno">${
@@ -82,6 +88,77 @@ function paginaAgentes(c: Context, deps: DependenciasWeb, aviso: string | null):
 			cuerpo,
 		}),
 		aviso === null ? 200 : ESTADO_AVISO,
+	);
+}
+
+// --- la ficha ----------------------------------------------------------------
+
+/** El terminal del papel, o «cualquiera» cuando corre en el que sea. */
+function terminalLegible(terminal: string | null): Html {
+	return terminal === null ? html`<span class="silencio">cualquiera</span>` : html`<code>${terminal}</code>`;
+}
+
+function filaTrabajada(trabajada: TareaDeAgente): Html {
+	const id = formatearId(trabajada.codigo);
+	return html`<tr>
+			<td><a class="id-tarea" href="/tareas/${id}">${id}</a></td>
+			<td>${trabajada.titulo}</td>
+			<td class="pequeno">${NOMBRE_FASE[trabajada.fase]}</td>
+			<td>${insigniaEstado(trabajada.estado)}</td>
+			<td class="numero pequeno">${
+				trabajada.tokens === 0 ? html`<span class="silencio">—</span>` : tokensAbreviados(trabajada.tokens)
+			}</td>
+			<td class="numero pequeno">${trabajada.devoluciones}</td>
+		</tr>`;
+}
+
+/**
+ * La ficha de un agente: un papel solo se puede juzgar por lo que ha hecho.
+ * El papel arriba y debajo las tareas que lo llevan ahora mismo, con lo que
+ * costó cada fase y cuántas veces se devolvió lo entregado.
+ */
+function paginaAgente(c: Context, deps: DependenciasWeb, agente: Agente): RespuestaHtml {
+	const trabajadas = tareasDeAgente(deps.db, agente.id);
+	const filas: Propiedad[] = [
+		{ nombre: "Modelo", valor: html`<code>${agente.modelo}</code>` },
+		{ nombre: "Terminal", valor: terminalLegible(terminalDeAgente(deps.db, agente)) },
+		{ nombre: "Fases asignadas", valor: String(fasesAsignadas(deps.db, agente.id)) },
+		{ nombre: "Creado por", valor: chipDeAlta(altaPor(deps.db, "agente", agente.id), buscadorDeColor(deps.db)) },
+	];
+	const tabla =
+		trabajadas.length === 0
+			? html`<p class="silencio">Todavía no ha trabajado ninguna tarea.</p>`
+			: html`<div class="tabla-envuelta">
+				<table class="tabla-trabajadas">
+					<thead>
+						<tr>
+							<th>Id</th><th>Título</th><th>Fase</th><th>Estado</th>
+							<th class="numero">Tokens</th><th class="numero">Devoluciones</th>
+						</tr>
+					</thead>
+					<tbody>${trabajadas.map(filaTrabajada)}</tbody>
+				</table>
+			</div>`;
+	const cuerpo = html`${propiedades(filas)}
+
+		<h2>Instrucciones</h2>
+		<div class="cuerpo">${raw(renderMarkdown(agente.instrucciones))}</div>
+
+		<h2>Tareas trabajadas</h2>
+		${tabla}`;
+	return c.html(
+		pagina({
+			...navProyectos(c, deps.db),
+			titulo: agente.nombre,
+			// La descripción del papel dice para qué es mejor que ninguna frase fija.
+			proposito: agente.descripcion === "" ? PROPOSITO : agente.descripcion,
+			usuario: usuarioActual(c),
+			vista: "agentes",
+			migas: migasDe(agente.nombre),
+			acciones: html`<a class="boton" href="/agentes/${agente.id}/editar">Editar</a>
+				<a class="boton peligro" href="/agentes/${agente.id}/borrar">Borrar</a>`,
+			cuerpo,
+		}),
 	);
 }
 
@@ -246,6 +323,12 @@ export function registrarRutasAgentes(app: Hono, deps: DependenciasWeb): void {
 	app.get("/agentes", (c) => paginaAgentes(c, deps, null));
 
 	app.get("/agentes/nuevo", (c) => paginaNuevo(c, deps, AGENTE_EN_BLANCO, null));
+
+	// Después de `/agentes/nuevo`: Hono resuelve por orden de registro.
+	app.get("/agentes/:id", (c) => {
+		const agente = agenteDeRuta(deps, c);
+		return agente === undefined ? paginaNoEncontrado(c, deps) : paginaAgente(c, deps, agente);
+	});
 
 	app.post("/agentes", async (c) => {
 		const formulario = await leerFormulario(c);
