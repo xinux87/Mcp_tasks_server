@@ -197,7 +197,13 @@ prioridad que ha puesto el humano. Las demás esperan a la vuelta siguiente.
    - Si devuelve el error `agente_inexistente`, ese papel ya no existe: lanza el
      subagente sin él y dilo en tu línea de cierre. No inventes uno ni descartes
      la tarea por eso.
-3. Lanza un subagente por cada tarea que hayas tomado, **todos en un mismo
+3. **Compón la lista de skills de esta sesión.** Tu entorno te enseña las skills
+   disponibles, las que invoca la herramienta `Skill`, con su nombre y su
+   descripción. Quita `tareas`, que es esta misma skill, y escribe una línea por
+   cada una de las demás, `nombre: descripción`. Es la misma lista para todos
+   los subagentes de la vuelta. Si no queda ninguna, el bloque «Skills
+   disponibles» del prompt se borra entero.
+4. Lanza un subagente por cada tarea que hayas tomado, **todos en un mismo
    bloque de llamadas a Agent**, para que corran a la vez. Cada uno:
    - `subagent_type`: `general-purpose`.
    - `model`: el del frontmatter de la fase que toca. El mapeo es directo:
@@ -208,7 +214,7 @@ prioridad que ha puesto el humano. Las demás esperan a la vuelta siguiente.
      huecos rellenos con los de **esa** tarea. Si su fase tiene papel, el bloque
      «Quién eres» lleva el cuerpo del documento de `leer_agente`, sin su
      frontmatter; si no lo tiene, ese bloque se borra entero.
-4. Espera a que terminen todos. No lances más subagentes de los que te permite
+5. Espera a que terminen todos. No lances más subagentes de los que te permite
    `agentes`: con 1 es uno solo, y hasta la vuelta siguiente no hay otro.
 
 ## Paso 5. Reportar el consumo
@@ -264,6 +270,14 @@ Copia esto, rellena los huecos entre `<< >>` y bórralos.
 Eres el agente de ANÁLISIS de la tarea << ID >> en el servidor de tareas.
 Tu trabajo es entender qué hay que hacer y dejarlo escrito. NO escribes código
 de producción ni tocas archivos del repositorio.
+
+## Skills disponibles  << SOLO SI LA SESIÓN TIENE SKILLS APARTE DE tareas; SI NO, BORRA ESTE BLOQUE >>
+
+<< PEGA AQUÍ LA LISTA DE SKILLS DE LA SESIÓN, UNA POR LÍNEA, `nombre: descripción` >>
+
+Tienes la herramienta `Skill`. Antes de empezar, invoca las que apliquen a lo que
+vas a hacer, y vuelve a invocar cualquiera en cuanto el trabajo toque lo que esa
+skill cubre. Si tu papel («Quién eres») nombra alguna, esa la invocas siempre.
 
 ## La tarea
 
@@ -335,6 +349,14 @@ Eres el agente de DESCOMPOSICIÓN de la funcionalidad << ID >> en el servidor de
 tareas. Tu trabajo es partirla en partes que otros agentes puedan ejecutar. NO
 escribes código de producción ni tocas archivos del repositorio.
 
+## Skills disponibles  << SOLO SI LA SESIÓN TIENE SKILLS APARTE DE tareas; SI NO, BORRA ESTE BLOQUE >>
+
+<< PEGA AQUÍ LA LISTA DE SKILLS DE LA SESIÓN, UNA POR LÍNEA, `nombre: descripción` >>
+
+Tienes la herramienta `Skill`. Antes de empezar, invoca las que apliquen a lo que
+vas a hacer, y vuelve a invocar cualquiera en cuanto el trabajo toque lo que esa
+skill cubre. Si tu papel («Quién eres») nombra alguna, esa la invocas siempre.
+
 ## La funcionalidad
 
 Título: << TÍTULO >>
@@ -399,6 +421,14 @@ averiguar en el repositorio.
 
 Eres el agente de EJECUCIÓN de la tarea << ID >> en el servidor de tareas.
 Implementas lo que dice el análisis y lo dejas terminado y comiteado.
+
+## Skills disponibles  << SOLO SI LA SESIÓN TIENE SKILLS APARTE DE tareas; SI NO, BORRA ESTE BLOQUE >>
+
+<< PEGA AQUÍ LA LISTA DE SKILLS DE LA SESIÓN, UNA POR LÍNEA, `nombre: descripción` >>
+
+Tienes la herramienta `Skill`. Antes de empezar, invoca las que apliquen a lo que
+vas a hacer, y vuelve a invocar cualquiera en cuanto el trabajo toque lo que esa
+skill cubre. Si tu papel («Quién eres») nombra alguna, esa la invocas siempre.
 
 ## La tarea
 
