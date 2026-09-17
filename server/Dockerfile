@@ -23,7 +23,7 @@ WORKDIR /app
 LABEL org.opencontainers.image.title="MCP Tareas" \
 	org.opencontainers.image.description="Servidor MCP de tareas: MCP, API y web en un solo proceso" \
 	org.opencontainers.image.source="https://github.com/xinux87/Mcp_tasks_server" \
-	org.opencontainers.image.version="0.2.1" \
+	org.opencontainers.image.version="0.2.2" \
 	org.opencontainers.image.licenses="MIT"
 
 ENV NODE_ENV=production \
