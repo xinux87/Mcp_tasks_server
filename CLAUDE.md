@@ -293,6 +293,15 @@ CREATE TABLE agentes (
 - **Crear, editar y borrar un agente dejan rastro** (`alta_agente`, `editar_agente` con los campos que cambiaron salvo `instrucciones`, que se anota como `instrucciones` a secas, `baja_agente`) con `objeto = 'agente'`, y **no suben la revisión**: nada cambia en las tareas hasta que se asigna, y asignar es editar una tarea, que ya la sube.
 - **Un agente se borra siempre**, con confirmación que dice a cuántas fases está asignado: esas fases se quedan sin papel y con su modelo y terminal copiados.
 
+### Las skills del subagente
+
+Un subagente lanzado con la herramienta Agent arranca sin ninguna skill cargada, ni las del padre ni las del proyecto, pero conserva la herramienta `Skill` y puede invocar las skills de usuario, de proyecto y de plugin que haya en la máquina. Verificado el 17 de septiembre de 2026 contra `code.claude.com/docs/en/sub-agents`: «without it [el campo `skills`], the subagent can still discover and invoke project, user, and plugin skills through the Skill tool during execution»; y «Built-in agents don't preload skills», así que con `subagent_type: general-purpose` no hay precarga posible. Lo que sí hereda es toda la jerarquía de `CLAUDE.md` y las herramientas MCP. Decidido el 17 de septiembre de 2026:
+
+- **El bucle pasa al subagente las skills de su sesión.** La sesión donde corre `/loop /tareas` ve su lista de skills disponibles con el nombre y la descripción de cada una. En cada lanzamiento, el bucle copia esa lista al prompt del subagente, bajo un título «Skills disponibles», una por línea como `nombre: descripción`, sin la propia `tareas`. Debajo le dice que tiene la herramienta `Skill` y que invoque las que apliquen a lo que va a hacer antes de empezar, y en cuanto una tarea toque lo que la skill cubre. Sin skills en la sesión, el bloque se borra entero.
+- **El papel puede exigir skills.** Las `instrucciones` de un agente pueden nombrar skills («Invoca `ponytail` antes de escribir código»). Como el papel entra entero en el prompt, no hace falta ningún campo: el subagente las invoca porque su papel se lo manda. Un campo `skills` propio se añadiría solo si se quiere ver en la lista de agentes.
+- **No se precarga nada.** Se descartaron los agentes personalizados en `.claude/agents/` con `skills:` precargadas: el papel viviría en dos sitios, el servidor y cada repositorio, y el contenido precargado cuesta tokens en cada turno del subagente. Y se descartó que el servidor guarde o sirva skills: ya viven en `~/.claude/skills` y en `.claude/skills` de la máquina del terminal, que es donde corre el subagente.
+- **Nada cambia en el servidor.** Es una regla de la skill del bucle, `server/src/skill/SKILL.md`, y de sus tres plantillas de prompt.
+
 ### En el Markdown
 
 - **El frontmatter** de cada fase lleva `agente: revisor` como primera línea del bloque cuando lo hay; sin agente, la línea no aparece: `analisis:\n  agente: revisor\n  modelo: sonnet\n  terminal: portatil-ana`.
@@ -1069,6 +1078,17 @@ Todos se ejecutan dentro de `server/`.
 | `docker compose up --build` | Levanta el servidor con su volumen. Lee `server/.env`, que no está en el repositorio: sin `SESSION_SECRET` ni `ADMIN_PASSWORD` falla al interpolar, antes de construir nada |
 
 `node --test` toma patrones glob, no directorios: `node --test test/` falla. Los tests viven fuera de `rootDir`, por eso tienen su propio `tsconfig.test.json`.
+
+### Cómo se publica una versión
+
+Consolidado el 17 de septiembre de 2026 tras las versiones 0.1.3, 0.1.4 y 0.1.5. Publicar es una acción hacia fuera y la decide el humano: lo demás se integra en commits locales y se ve en el contenedor local (`docker compose up --build -d` en `server/`, puerto 9917) hasta que él dice «publica la imagen y haz push».
+
+1. **La versión va en seis sitios a la vez**: `server/package.json`, `plugin/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `server/Dockerfile` (`org.opencontainers.image.version`), `docker-compose.yml` de la raíz (`VERSION:-X.Y.Z`) y el README (los ejemplos de «Publicar una versión» y la tabla del `.env`); `server/compose.yaml` la cita en un comentario. Se comprueba con `git grep` de la versión anterior.
+2. **Verificación completa** antes del commit: `npm run lint && npm run typecheck && npm test` en `server/` y `claude plugin validate ./plugin --strict && claude plugin validate . --strict`.
+3. **Commit «Versión X.Y.Z: …» y etiqueta anotada `vX.Y.Z`**. La etiqueta es lo que fija `xinux87/Mcp_tasks_server#vX.Y.Z` al instalar el plugin.
+4. **Imagen multi-arquitectura a Docker Hub**, con el builder `mcp-tareas` (creado una vez con `docker buildx create --name mcp-tareas --driver docker-container`) y la sesión de `docker login -u xinux87` que abre el humano: `docker buildx build --builder mcp-tareas --platform linux/amd64,linux/arm64 -t xinux87/mcp-tareas-server:X.Y.Z -t xinux87/mcp-tareas-server:latest --push .` desde `server/`. Una imagen multi-arquitectura no se carga en el Docker local: se construye y se sube en el mismo comando. `latest` apunta siempre a la última.
+5. **`git push origin main` y `git push origin vX.Y.Z`**, en ese orden.
+6. **Actualizar un servidor desplegado** es `VERSION=X.Y.Z` en el `.env` junto al `docker-compose.yml` y `docker compose pull && docker compose up -d`; las migraciones corren solas al arrancar. Si la versión cambió la skill, cada terminal la vuelve a bajar con el segundo comando de «Conexión en dos comandos» y relanza `/loop 2m /tareas`.
 
 ## Conexión en dos comandos
 
