@@ -26,7 +26,7 @@
  * esta plantilla de TypeScript. Nunca escribe `innerHTML` con nada que no
  * venga del servidor, y no usa `eval` ni `Function`.
  */
-export const CLIENTE_JS = `// Cliente de MCP Tareas. Servido desde src/web/cliente.ts.
+export const CLIENTE_JS = `// Cliente de TABO Tasks. Servido desde src/web/cliente.ts.
 
 const cuerpo = document.body;
 const vista = cuerpo.dataset.vista || "";

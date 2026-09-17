@@ -1746,6 +1746,44 @@ test("el tema tiene tres opciones, se aplica antes de pintar y la hoja lo sigue"
 	}
 });
 
+test("la identidad: el nombre, el icono y la paleta", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+
+		// El favicon y la marca se sirven como los demás estáticos.
+		const favicon = await pedir(montaje, "/static/favicon.svg");
+		assert.equal(favicon.status, 200);
+		assert.equal(favicon.headers.get("content-type"), "image/svg+xml; charset=utf-8");
+		assert.match(await favicon.text(), /<svg/);
+		assert.equal((await pedir(montaje, "/static/icono.svg")).status, 200);
+
+		// El `<head>` lo declara, y la barra lateral pinta la marca en línea.
+		const cuerpo = await (await pedir(montaje, "/tareas", { cookie })).text();
+		assert.match(cuerpo, /<link rel="icon" type="image\/svg\+xml" href="\/static\/favicon.svg">/);
+		assert.match(cuerpo, /<a class="marca" href="\/"><svg[\s\S]*?<\/svg>TABO Tasks<\/a>/);
+		assert.match(cuerpo, /<title>Tareas · TABO Tasks<\/title>/);
+
+		// La entrada no tiene barra lateral, pero sí icono y nombre.
+		const entrada = await (await pedir(montaje, "/login")).text();
+		assert.match(entrada, /<p class="marca-entrada"><svg[\s\S]*?<\/svg>TABO Tasks<\/p>/);
+		assert.match(entrada, /<link rel="icon"/);
+
+		// La paleta: negros, verde chillón y los nueve colores reteñidos.
+		const css = await (await pedir(montaje, "/static/app.css")).text();
+		assert.ok(css.includes("--acento-texto: #39f26f"), "el verde como texto en oscuro");
+		assert.ok(css.includes("--fondo: #0d0f0c"), "el negro de la marca como papel en oscuro");
+		assert.match(css, /\.color-verde \{ background: #b6f5c9; color: #0a4a22; \}/);
+		assert.match(css, /\.color-verde \{ background: #0b4a24; color: #39f26f; \}/);
+		// Y ni un color de la paleta vieja.
+		for (const viejo of ["#0f766e", "#b45309", "#1c2430", "#d3e5ef"]) {
+			assert.ok(!css.includes(viejo), `${viejo} ya no está en la hoja`);
+		}
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
 test("la ficha se recarga sola, y espera si hay algo escrito sin enviar", async () => {
 	const montaje = montar();
 	try {

@@ -14,6 +14,7 @@ import {
 	type Miga,
 } from "./componentes.ts";
 import { edad } from "./formatos.ts";
+import { MARCA } from "./icono.ts";
 import {
 	NOMBRE_COLUMNA,
 	NOMBRE_ESTADO,
@@ -35,8 +36,25 @@ export type Html = ReturnType<typeof html>;
  */
 export type RespuestaHtml = Response | Promise<Response>;
 
-/** Nombre del proyecto, tal como aparece en la barra lateral y en el título. */
-export const NOMBRE_PROYECTO = "MCP Tareas";
+/** Nombre del producto, tal como aparece en la barra lateral y en el título. */
+export const NOMBRE_PROYECTO = "TABO Tasks";
+
+/**
+ * El icono y el nombre, que es lo que abre la barra lateral y la cabecera de
+ * móvil. El SVG se incrusta en línea: es una constante propia, no entrada de
+ * nadie, así que el `raw` no abre ninguna puerta.
+ */
+export function marca(): Html {
+	return html`<a class="marca" href="/">${raw(MARCA)}${NOMBRE_PROYECTO}</a>`;
+}
+
+/**
+ * La misma marca en las páginas sin barra lateral (entrar, error): el icono
+ * grande y el nombre debajo, encima del formulario.
+ */
+export function marcaEntrada(): Html {
+	return html`<p class="marca-entrada">${raw(MARCA)}${NOMBRE_PROYECTO}</p>`;
+}
 
 /** Las cinco columnas del tablero, en su orden. El rótulo lo pone `rotuloColumna`. */
 export const COLUMNAS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
@@ -316,7 +334,7 @@ function barraLateral(
 ): Html {
 	const prefijo = nav.proyecto === undefined ? "" : `/p/${nav.proyecto.clave}`;
 	return html`<aside class="lateral" id="lateral">
-			<a class="marca" href="/">${NOMBRE_PROYECTO}</a>
+			${marca()}
 			${nav.proyectos.length === 0 ? html`` : selectorProyecto(nav.proyectos, nav.proyecto, vista)}
 			${buscador(prefijo)}
 			<nav class="bloque bloque-suelto">${enlaceNav(BANDEJA, vista, prefijo, nav.pendientes)}</nav>
@@ -380,6 +398,7 @@ export function pagina({
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${cuantas}${titulo} · ${NOMBRE_PROYECTO}</title>
 <script>try{var t=localStorage.getItem("tema");if(t==="claro"||t==="oscuro"){document.documentElement.dataset.tema=t;}}catch(e){}</script>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body${atributosCuerpo(vista, revision)}>
@@ -388,7 +407,7 @@ ${
 		? html``
 		: html`<header class="cabecera-movil">
 	<button type="button" class="alternar-lateral" id="alternar-lateral" aria-controls="lateral" aria-label="Navegación">☰</button>
-	<a class="marca" href="/">${NOMBRE_PROYECTO}</a>
+	${marca()}
 </header>
 ${barraLateral(usuario, vista ?? "", { proyectos: proyectos ?? [], proyecto, pendientes })}`
 }

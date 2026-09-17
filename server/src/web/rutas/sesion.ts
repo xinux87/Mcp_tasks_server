@@ -3,7 +3,7 @@ import { html } from "hono/html";
 import { verificarPassword } from "../../auth/passwords.ts";
 import { buscarUsuarioPorNombre } from "../../db/consultas.ts";
 import { campo, leerFormulario } from "../formulario.ts";
-import { type Html, NOMBRE_PROYECTO, pagina } from "../plantilla.ts";
+import { type Html, marcaEntrada, pagina } from "../plantilla.ts";
 import { cerrarSesion, type DependenciasWeb, destinoSeguro, iniciarSesion, leerSesion } from "../sesion.ts";
 
 /**
@@ -14,7 +14,7 @@ import { cerrarSesion, type DependenciasWeb, destinoSeguro, iniciarSesion, leerS
  */
 function paginaLogin(volver: string, aviso: string | null): Html {
 	const cuerpo = html`<section class="caja">
-		<p class="marca-entrada">${NOMBRE_PROYECTO}</p>
+		${marcaEntrada()}
 		<h1>Entrar</h1>
 		${aviso === null ? html`` : html`<p class="aviso" role="alert">${aviso}</p>`}
 		<form method="post" action="/login">

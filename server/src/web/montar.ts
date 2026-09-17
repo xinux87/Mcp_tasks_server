@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { html } from "hono/html";
 import { registrarEstaticos } from "./estaticos.ts";
-import { NOMBRE_PROYECTO, pagina } from "./plantilla.ts";
+import { marcaEntrada, pagina } from "./plantilla.ts";
 import { registrarRutasActividad } from "./rutas/actividad.ts";
 import { registrarRutasAgentes } from "./rutas/agentes.ts";
 import { registrarRutasBandeja } from "./rutas/bandeja.ts";
@@ -103,7 +103,7 @@ export function montarWeb(app: Hono, deps: DependenciasWeb): void {
 				titulo: "Error",
 				usuario: null,
 				cuerpo: html`<section class="caja">
-					<p class="marca-entrada">${NOMBRE_PROYECTO}</p>
+					${marcaEntrada()}
 					<h1>Algo ha fallado</h1>
 					<p>Ha sido en el servidor, no en lo que pediste. Vuelve a intentarlo.</p>
 					<p><a class="boton" href="/tareas">Volver a la lista de tareas</a></p>

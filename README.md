@@ -1,6 +1,7 @@
-# MCP Tareas
+# TABO Tasks
 
-Un tablero para trabajar con agentes de Claude Code sin ir pidiéndoles las cosas por el terminal.
+TABO Tasks, antes MCP Tareas, es un tablero para trabajar con agentes de Claude Code sin ir
+pidiéndoles las cosas por el terminal.
 El humano define las tareas en una web, las asigna a un terminal y a un modelo, y contesta desde ahí
 las preguntas que le hagan; los agentes las toman solos, las trabajan y devuelven lo que han hecho.
 

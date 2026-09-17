@@ -3,8 +3,9 @@ import { createRequire } from "node:module";
 import type { Hono } from "hono";
 import { CLIENTE_JS } from "./cliente.ts";
 import { CSS } from "./estilos.ts";
+import { FAVICON, MARCA } from "./icono.ts";
 
-/** Un día: los tres estáticos cambian solo cuando cambia la imagen. */
+/** Un día: los estáticos cambian solo cuando cambia la imagen. */
 const CACHE = "public, max-age=3600";
 
 /**
@@ -18,9 +19,10 @@ function leerSortable(): string {
 }
 
 /**
- * Los tres estáticos de la web: la hoja de estilos y el JavaScript propio son
- * constantes, y SortableJS se lee una sola vez al montar la web. No hay
- * archivos estáticos en disco, así que el Dockerfile no copia nada más.
+ * Los estáticos de la web: la hoja de estilos, el JavaScript propio y los dos
+ * SVG del icono son constantes, y SortableJS se lee una sola vez al montar la
+ * web. No hay archivos estáticos en disco, así que el Dockerfile no copia nada
+ * más.
  */
 export function registrarEstaticos(app: Hono): void {
 	const sortable = leerSortable();
@@ -45,4 +47,16 @@ export function registrarEstaticos(app: Hono): void {
 			"Cache-Control": CACHE,
 		}),
 	);
+
+	for (const [ruta, svg] of [
+		["/static/icono.svg", MARCA],
+		["/static/favicon.svg", FAVICON],
+	] as const) {
+		app.get(ruta, (c) =>
+			c.body(svg, 200, {
+				"Content-Type": "image/svg+xml; charset=utf-8",
+				"Cache-Control": CACHE,
+			}),
+		);
+	}
 }

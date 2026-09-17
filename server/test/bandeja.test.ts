@@ -350,7 +350,7 @@ test("el contador de pendientes sale en la barra lateral y en el título de cada
 
 		// Sin nada pendiente, ni número ni prefijo.
 		const vacia = await ver(montaje, cookie, "/tareas");
-		assert.match(vacia, /<title>Tareas · MCP Tareas<\/title>/);
+		assert.match(vacia, /<title>Tareas · TABO Tasks<\/title>/);
 		assert.doesNotMatch(vacia, /class="enlace-nav" href="\/">Bandeja<span class="contador">/);
 
 		// Una bloqueada, una por aprobar y una hecha: tres pendientes. El backlog
@@ -374,11 +374,11 @@ test("el contador de pendientes sale en la barra lateral y en el título de cada
 		envejecer(db, vieja.id, 9);
 
 		const lista = await ver(montaje, cookie, "/tareas");
-		assert.match(lista, /<title>\(3\) Tareas · MCP Tareas<\/title>/);
+		assert.match(lista, /<title>\(3\) Tareas · TABO Tasks<\/title>/);
 		assert.match(lista, /href="\/">Bandeja<span class="contador">3<\/span>/);
 
 		// Y en cualquier otra página con sesión, que es de lo que se trata.
-		assert.match(await ver(montaje, cookie, "/actividad"), /<title>\(3\) Actividad · MCP Tareas<\/title>/);
+		assert.match(await ver(montaje, cookie, "/actividad"), /<title>\(3\) Actividad · TABO Tasks<\/title>/);
 	} finally {
 		await montaje.cerrar();
 	}

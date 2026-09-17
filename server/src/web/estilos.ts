@@ -5,7 +5,8 @@
  *
  * El diseño es el de «Diseño visual» en CLAUDE.md: el puesto de mando de quien
  * dirige agentes. Un único color de señal (`--turno`) para lo que espera por el
- * humano, otro (`--acento`) para las acciones, y lo demás neutro.
+ * humano, otro (`--acento`) para las acciones, y lo demás neutro. `--acento`
+ * es solo relleno: todo texto en color de acento usa `--acento-texto`.
  *
  * El tema tiene tres estados y tres bloques, que redefinen los mismos tokens:
  * `:root` es la paleta clara, `@media (prefers-color-scheme: dark)` acotado a
@@ -16,18 +17,22 @@
 export const CSS = `:root {
 	color-scheme: light;
 
-	/* Los diez tokens de la tabla de CLAUDE.md. Nada más define color. */
-	--fondo: #ffffff;
-	--fondo-lateral: #f4f5f7;
-	--fondo-hover: rgba(28, 36, 48, 0.06);
-	--texto: #1c2430;
-	--texto-suave: rgba(28, 36, 48, 0.62);
-	--borde: rgba(28, 36, 48, 0.14);
-	--acento: #0f766e;
-	--turno: #b45309;
-	--turno-fondo: #fff4e5;
-	--sobre-turno: #ffffff;
-	--peligro: #b91c1c;
+	/* Los tokens de la tabla de CLAUDE.md. Nada más define color. En claro el
+	   negro es la tinta y los dos vivos se oscurecen donde son texto: el verde
+	   chillón sobre papel no llega a 4,5:1. */
+	--fondo: #fbfbf6;
+	--fondo-lateral: #f0f2ea;
+	--fondo-hover: rgba(13, 15, 12, 0.06);
+	--texto: #0d0f0c;
+	--texto-suave: #5c6357;
+	--borde: #d5d9cf;
+	--acento: #39f26f;
+	--acento-texto: #0a7d37;
+	--sobre-acento: #0d0f0c;
+	--turno: #c24e00;
+	--turno-fondo: #ffe8d6;
+	--sobre-turno: #fbfbf6;
+	--peligro: #c92626;
 
 	/* Medidas: 4 px en controles, 8 px en tarjetas, 15 rem de barra lateral. */
 	--radio: 4px;
@@ -41,17 +46,19 @@ export const CSS = `:root {
 	:root:not([data-tema="claro"]) {
 		color-scheme: dark;
 
-		--fondo: #1b2027;
-		--fondo-lateral: #14181d;
-		--fondo-hover: rgba(255, 255, 255, 0.06);
-		--texto: rgba(255, 255, 255, 0.86);
-		--texto-suave: rgba(255, 255, 255, 0.5);
-		--borde: rgba(255, 255, 255, 0.12);
-		--acento: #34b8ab;
-		--turno: #f59e0b;
-		--turno-fondo: rgba(245, 158, 11, 0.14);
-		--sobre-turno: #1a0d00;
-		--peligro: #f87171;
+		--fondo: #0d0f0c;
+		--fondo-lateral: #161a15;
+		--fondo-hover: rgba(255, 255, 255, 0.07);
+		--texto: #f1f3ec;
+		--texto-suave: #a9b0a4;
+		--borde: #2a2f28;
+		--acento: #39f26f;
+		--acento-texto: #39f26f;
+		--sobre-acento: #0d0f0c;
+		--turno: #ff7a1a;
+		--turno-fondo: rgba(255, 122, 26, 0.16);
+		--sobre-turno: #0d0f0c;
+		--peligro: #ff5c5c;
 	}
 }
 
@@ -59,17 +66,19 @@ export const CSS = `:root {
 :root[data-tema="oscuro"] {
 	color-scheme: dark;
 
-	--fondo: #1b2027;
-	--fondo-lateral: #14181d;
-	--fondo-hover: rgba(255, 255, 255, 0.06);
-	--texto: rgba(255, 255, 255, 0.86);
-	--texto-suave: rgba(255, 255, 255, 0.5);
-	--borde: rgba(255, 255, 255, 0.12);
-	--acento: #34b8ab;
-	--turno: #f59e0b;
-	--turno-fondo: rgba(245, 158, 11, 0.14);
-	--sobre-turno: #1a0d00;
-	--peligro: #f87171;
+	--fondo: #0d0f0c;
+	--fondo-lateral: #161a15;
+	--fondo-hover: rgba(255, 255, 255, 0.07);
+	--texto: #f1f3ec;
+	--texto-suave: #a9b0a4;
+	--borde: #2a2f28;
+	--acento: #39f26f;
+	--acento-texto: #39f26f;
+	--sobre-acento: #0d0f0c;
+	--turno: #ff7a1a;
+	--turno-fondo: rgba(255, 122, 26, 0.16);
+	--sobre-turno: #0d0f0c;
+	--peligro: #ff5c5c;
 }
 
 /* --- base ---------------------------------------------------------------- */
@@ -89,7 +98,7 @@ body {
 }
 
 a {
-	color: var(--acento);
+	color: var(--acento-texto);
 }
 
 h1, h2, h3 {
@@ -154,11 +163,21 @@ pre {
 }
 
 .lateral .marca {
-	display: block;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
 	padding: 0.25rem 0.5rem 1rem;
 	color: var(--texto);
 	font-weight: 700;
 	text-decoration: none;
+}
+
+/* El icono se incrusta en línea, así que su tamaño lo pone la hoja: 20 px
+   junto al nombre, y 40 px sobre él en la tarjeta de entrada. */
+.marca svg {
+	flex: none;
+	width: 20px;
+	height: 20px;
 }
 
 /* El selector de proyecto y la búsqueda, debajo del nombre: ocupan el ancho de
@@ -352,6 +371,13 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 	letter-spacing: 0.02em;
 }
 
+.marca-entrada svg {
+	display: block;
+	width: 40px;
+	height: 40px;
+	margin: 0 0 0.6rem;
+}
+
 /* --- cabecera de página -------------------------------------------------- */
 
 .cabecera-pagina {
@@ -461,43 +487,44 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 	color: var(--texto-suave);
 }
 
-/* Los nueve colores, los de Notion. Van después de «.insignia» y «.chip»
+/* Los nueve colores, reteñidos para el mundo negro. Van después de «.insignia»
+   y «.chip»
    porque tienen la misma especificidad y aquí manda el último que gana. */
 
-.color-gris { background: #e3e2e0; color: #32302c; }
-.color-marron { background: #eee0da; color: #442a1e; }
-.color-naranja { background: #fadec9; color: #49290e; }
-.color-amarillo { background: #fdecc8; color: #402c1b; }
-.color-verde { background: #dbeddb; color: #1c3829; }
-.color-azul { background: #d3e5ef; color: #183347; }
-.color-morado { background: #e8deee; color: #412454; }
-.color-rosa { background: #f5e0e9; color: #4c2337; }
-.color-rojo { background: #ffe2dd; color: #5d1715; }
+.color-gris { background: #e6e8e0; color: #0d0f0c; }
+.color-marron { background: #eee0d2; color: #4a2c14; }
+.color-naranja { background: #ffe0c2; color: #5a2600; }
+.color-amarillo { background: #fff3b8; color: #4a3d00; }
+.color-verde { background: #b6f5c9; color: #0a4a22; }
+.color-azul { background: #d3ecf5; color: #123c4a; }
+.color-morado { background: #e6dcf7; color: #3a1f66; }
+.color-rosa { background: #f9dcea; color: #5a1a3f; }
+.color-rojo { background: #ffd6d6; color: #6a1010; }
 
 /* Los nueve en oscuro, dos veces: siguiendo al sistema y elegido a mano. Las
    dos listas son la misma, y el selector de raíz las hace ganar a las de
    arriba sin depender del orden de la hoja. */
 @media (prefers-color-scheme: dark) {
-	:root:not([data-tema="claro"]) .color-gris { background: #373737; color: rgba(255, 255, 255, 0.81); }
-	:root:not([data-tema="claro"]) .color-marron { background: #603b2c; color: rgba(255, 255, 255, 0.81); }
-	:root:not([data-tema="claro"]) .color-naranja { background: #854c1d; color: rgba(255, 255, 255, 0.81); }
-	:root:not([data-tema="claro"]) .color-amarillo { background: #89632a; color: rgba(255, 255, 255, 0.81); }
-	:root:not([data-tema="claro"]) .color-verde { background: #2b593f; color: rgba(255, 255, 255, 0.81); }
-	:root:not([data-tema="claro"]) .color-azul { background: #28456c; color: rgba(255, 255, 255, 0.81); }
-	:root:not([data-tema="claro"]) .color-morado { background: #492f64; color: rgba(255, 255, 255, 0.81); }
-	:root:not([data-tema="claro"]) .color-rosa { background: #69314c; color: rgba(255, 255, 255, 0.81); }
-	:root:not([data-tema="claro"]) .color-rojo { background: #6e3630; color: rgba(255, 255, 255, 0.81); }
+	:root:not([data-tema="claro"]) .color-gris { background: #2a2f28; color: #f1f3ec; }
+	:root:not([data-tema="claro"]) .color-marron { background: #3a2a1e; color: #e0b48a; }
+	:root:not([data-tema="claro"]) .color-naranja { background: #3d2a08; color: #ffb366; }
+	:root:not([data-tema="claro"]) .color-amarillo { background: #3a3308; color: #ffe066; }
+	:root:not([data-tema="claro"]) .color-verde { background: #0b4a24; color: #39f26f; }
+	:root:not([data-tema="claro"]) .color-azul { background: #1d3a45; color: #8fd9ff; }
+	:root:not([data-tema="claro"]) .color-morado { background: #33224a; color: #c9a6ff; }
+	:root:not([data-tema="claro"]) .color-rosa { background: #4a1f38; color: #ff9ad1; }
+	:root:not([data-tema="claro"]) .color-rojo { background: #4a1414; color: #ff8a8a; }
 }
 
-:root[data-tema="oscuro"] .color-gris { background: #373737; color: rgba(255, 255, 255, 0.81); }
-:root[data-tema="oscuro"] .color-marron { background: #603b2c; color: rgba(255, 255, 255, 0.81); }
-:root[data-tema="oscuro"] .color-naranja { background: #854c1d; color: rgba(255, 255, 255, 0.81); }
-:root[data-tema="oscuro"] .color-amarillo { background: #89632a; color: rgba(255, 255, 255, 0.81); }
-:root[data-tema="oscuro"] .color-verde { background: #2b593f; color: rgba(255, 255, 255, 0.81); }
-:root[data-tema="oscuro"] .color-azul { background: #28456c; color: rgba(255, 255, 255, 0.81); }
-:root[data-tema="oscuro"] .color-morado { background: #492f64; color: rgba(255, 255, 255, 0.81); }
-:root[data-tema="oscuro"] .color-rosa { background: #69314c; color: rgba(255, 255, 255, 0.81); }
-:root[data-tema="oscuro"] .color-rojo { background: #6e3630; color: rgba(255, 255, 255, 0.81); }
+:root[data-tema="oscuro"] .color-gris { background: #2a2f28; color: #f1f3ec; }
+:root[data-tema="oscuro"] .color-marron { background: #3a2a1e; color: #e0b48a; }
+:root[data-tema="oscuro"] .color-naranja { background: #3d2a08; color: #ffb366; }
+:root[data-tema="oscuro"] .color-amarillo { background: #3a3308; color: #ffe066; }
+:root[data-tema="oscuro"] .color-verde { background: #0b4a24; color: #39f26f; }
+:root[data-tema="oscuro"] .color-azul { background: #1d3a45; color: #8fd9ff; }
+:root[data-tema="oscuro"] .color-morado { background: #33224a; color: #c9a6ff; }
+:root[data-tema="oscuro"] .color-rosa { background: #4a1f38; color: #ff9ad1; }
+:root[data-tema="oscuro"] .color-rojo { background: #4a1414; color: #ff8a8a; }
 
 /* La señal: lo que espera por el humano, con el verbo de lo que le toca. Va
    después de los nueve colores porque no es uno de ellos, es el único color de
@@ -777,7 +804,7 @@ label.opcion .consecuencia {
 
 .recomendada {
 	margin-left: 0.4rem;
-	color: var(--acento);
+	color: var(--acento-texto);
 	font-size: 0.78rem;
 	white-space: nowrap;
 }
@@ -802,7 +829,7 @@ button:hover, .boton:hover {
 button.principal, .boton.principal {
 	background: var(--acento);
 	border-color: var(--acento);
-	color: #ffffff;
+	color: var(--sobre-acento);
 }
 
 button.principal:hover, .boton.principal:hover {
@@ -1006,7 +1033,7 @@ button.enlace:hover {
 }
 
 .copiar-linea:hover {
-	color: var(--acento);
+	color: var(--acento-texto);
 }
 
 /* Sin portapapeles no hay nada que copiar con un botón: se esconden todos, los
@@ -1228,6 +1255,9 @@ button.enlace:hover {
 	}
 
 	.cabecera-movil .marca {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 		color: var(--texto);
 		font-weight: 700;
 		text-decoration: none;
@@ -1323,7 +1353,7 @@ button.pequeno, .boton.pequeno {
 
 /* Rotar un token no destruye nada: no lleva el rojo de revocar. */
 .accion-fila.neutra {
-	color: var(--acento);
+	color: var(--acento-texto);
 }
 
 /* Las dos acciones de la fila de un terminal, una debajo de otra si no caben:
@@ -2000,7 +2030,7 @@ details.caja[open] > summary {
 }
 
 .ciclo .agente .paso-nombre {
-	color: var(--acento);
+	color: var(--acento-texto);
 }
 
 /* Qué pasa ahora, como píldora debajo del nombre del paso actual. */
@@ -2017,7 +2047,7 @@ details.caja[open] > summary {
 
 .ciclo .agente .paso-ahora {
 	background: var(--fondo-hover);
-	color: var(--acento);
+	color: var(--acento-texto);
 }
 
 /* En estrecho no caben cinco columnas: los pasos van uno debajo de otro, y

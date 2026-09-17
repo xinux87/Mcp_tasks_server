@@ -646,7 +646,7 @@ Las acciones del humano sobre tareas llaman a las funciones de `src/db/`; la web
 
 ### Decisiones de la web
 
-- **El nombre visible del proyecto es «MCP Tareas».** La web habla en castellano llano: las columnas se titulan Por definir, Preparadas, En curso, Hechas y Cerradas, y ningún nombre interno (`prepared`, `doing`, `analisis`, `bloqueada`…) llega a la pantalla. El mapa completo está en «Diseño visual › Vocabulario». Los valores de formularios, URLs y clases CSS siguen siendo los internos.
+- **El nombre visible del producto es «TABO Tasks»** (renombrado el 17 de septiembre de 2026; antes «MCP Tareas». El paquete, la imagen Docker y el plugin conservan sus nombres técnicos: cambiarlos rompería instalaciones). Va en la barra lateral junto al icono, en la tarjeta de login, en el `<title>` de todas las páginas (`(3) TABO Tasks`) y en el tutorial. La web habla en castellano llano: las columnas se titulan Por definir, Preparadas, En curso, Hechas y Cerradas, y ningún nombre interno (`prepared`, `doing`, `analisis`, `bloqueada`…) llega a la pantalla. El mapa completo está en «Diseño visual › Vocabulario». Los valores de formularios, URLs y clases CSS siguen siendo los internos.
 - **El CSS y el JavaScript propio se sirven desde constantes** (`src/web/estilos.ts` en `/static/app.css`, `src/web/cliente.ts` en `/static/app.js`). SortableJS se instala como dependencia npm y se sirve desde `node_modules` en `/static/sortable.min.js`. No hay archivos estáticos en disco ni cambios en el Dockerfile.
 - **Arrastrar una tarjeta en el kanban** llama a `POST /tareas/T-0042/orden` con la columna y la posición de destino. Dentro de la misma columna es `reordenar`; a otra columna es `moverTareaHumano` seguido de `reordenar`, y si la transición exige nota el navegador la pide antes de enviar. Una transición no permitida devuelve 422 y el tablero se recarga tal como está en el servidor.
 - **Usuarios.** Borrar un usuario es contenido y sube la revisión; cambiar la contraseña no. No se puede borrar el último usuario (`ultimo_usuario`) ni uno con terminales a su nombre (`usuario_con_terminales`): el token quedaría sin dueño. Al borrar, las referencias en tareas y preguntas quedan a nulo; el autor ya está escrito como texto en el hilo.
@@ -697,11 +697,16 @@ Los filtros, los `<option value>`, las URLs (`?estado=prepared`), las clases CSS
 
 **Esqueleto**
 
-- **Barra lateral** a la izquierda, 15 rem, fondo `--fondo-lateral`. Arriba el nombre de la aplicación, el selector de proyecto y, debajo, la búsqueda (ver «Un tablero que se lee de un vistazo › Filtros de un clic y búsqueda»). Después la navegación: primero «Bandeja» sola, con el contador de pendientes en `--turno`; luego el bloque «Trabajo» (Tareas, Funcionalidades, Informes, Actividad) y el bloque «Configuración» (Proyectos, Terminales, Usuarios). Los títulos de bloque van en `--texto-suave`, tamaño pequeño, sin mayúsculas. La entrada activa lleva fondo `--fondo-hover` y texto en negrita. La vista activa se deduce de `vista`; «Tareas» está activa en la lista, el tablero, la ficha y el alta.
+- **Barra lateral** a la izquierda, 15 rem, fondo `--fondo-lateral`. Arriba el icono y el nombre de la aplicación, el selector de proyecto y, debajo, la búsqueda (ver «Un tablero que se lee de un vistazo › Filtros de un clic y búsqueda»). Después la navegación: primero «Bandeja» sola, con el contador de pendientes en `--turno`; luego el bloque «Trabajo» (Tareas, Funcionalidades, Informes, Actividad) y el bloque «Configuración» (Proyectos, Terminales, Usuarios). Los títulos de bloque van en `--texto-suave`, tamaño pequeño, sin mayúsculas. La entrada activa lleva fondo `--fondo-hover` y texto en negrita. La vista activa se deduce de `vista`; «Tareas» está activa en la lista, el tablero, la ficha y el alta.
 - **Abajo en la barra**: el conmutador de tema y, debajo, el chip del usuario con el botón «Salir». Ver «Tema».
 - **Por debajo de 48 rem** la barra se oculta y aparece una cabecera con el nombre de la aplicación y un botón «☰» que la despliega como panel sobre el contenido; `cliente.ts` alterna la clase `lateral-abierta` en `<body>`. Los `data-vista` y `data-revision` del `<body>` no cambian.
 - **Contenido** con ancho máximo de 64 rem y relleno de 2.5 rem arriba, salvo las vistas de tablero, lista y ficha, que ocupan todo el ancho (`ancho: "completo"` en `pagina`).
 - **Cada página empieza con `cabeceraPagina`**: migas (`DEFAULT › Tareas › T-0042`), título en 1.75 rem y peso 600, debajo la frase de propósito (`proposito`) en `--texto-suave`, y debajo las etiquetas de estado y marcas cuando las hay; a la derecha las acciones principales como botones. Las páginas sin sesión (login) no tienen barra lateral: una tarjeta centrada de 22 rem con el nombre de la aplicación y el formulario.
+
+**Icono** (decidido el 17 de septiembre de 2026)
+
+- **La marca** es un tablero: fondo redondeado (radio 14 sobre 64) en el negro `#0d0f0c`, ocho tarjetas en tres columnas en el verde `#39f26f` (las de abajo de la primera y segunda columna al 40 %) y la tarjeta de arriba del centro en el naranja `#ff7a1a`: la que espera por ti. **El favicon** es la variante de dos columnas y cuatro tarjetas grandes, la naranja arriba a la izquierda, que sigue leyéndose a 16 px. Los dos SVG viven como constantes en `src/web/icono.ts` (`MARCA`, `FAVICON`, con `viewBox="0 0 64 64"`), sin archivos en disco, y se sirven en `/static/icono.svg` y `/static/favicon.svg` desde `estaticos.ts` con `image/svg+xml`.
+- **Dónde va**: `<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">` en el `<head>` de todas las páginas; la marca a 20 px junto al nombre en la barra lateral y en la cabecera móvil, y a 40 px sobre el nombre en la tarjeta de login. `MARCA` se incrusta en línea en la plantilla (es un `raw` de una constante propia, no de entrada de nadie), para que no cueste una petición.
 
 **Tema**
 
@@ -710,36 +715,40 @@ Los filtros, los `<option value>`, las URLs (`?estado=prepared`), las clases CSS
 - **Se aplica antes de pintar**: un `<script>` mínimo en el `<head>`, antes de la hoja de estilos, lee la clave y pone `data-tema="claro|oscuro"` en `<html>`. Sin él la página parpadearía en el tema del sistema al cargar. Es el único JavaScript en línea de la web; no usa `eval` ni `new Function`.
 - **En CSS**, `:root` define la paleta clara; `:root[data-tema="oscuro"]` y `@media (prefers-color-scheme: dark) { :root:not([data-tema="claro"]) }` redefinen los mismos tokens. `color-scheme` va con cada bloque (`light`, `dark`), para que los controles nativos y las barras de scroll sigan al tema. Ningún color se define fuera de los tokens y de la tabla de nueve colores.
 
-**Tokens** (variables CSS en `:root`):
+**Tokens** (variables CSS en `:root`). Paleta decidida el 17 de septiembre de 2026: negros, naranja vivo y verde chillón. El oscuro es el tema principal; el claro conserva la familia con el negro como tinta y los dos vivos oscurecidos donde son texto, porque el verde chillón sobre papel no llega a 4,5:1.
 
-| Token | Claro | Oscuro | Para qué |
+| Token | Oscuro | Claro | Para qué |
 |---|---|---|---|
-| `--fondo` | `#ffffff` | `#1b2027` | el papel: contenido, tarjetas, controles |
-| `--fondo-lateral` | `#f4f5f7` | `#14181d` | el suelo: barra lateral, cabeceras de franja, filas alternas |
-| `--fondo-hover` | `rgba(28, 36, 48, 0.06)` | `rgba(255, 255, 255, 0.06)` | al pasar, entrada activa, fondo de controles |
-| `--texto` | `#1c2430` | `rgba(255, 255, 255, 0.86)` | tinta |
-| `--texto-suave` | `rgba(28, 36, 48, 0.62)` | `rgba(255, 255, 255, 0.5)` | rótulos, frases de propósito, metadatos |
-| `--borde` | `rgba(28, 36, 48, 0.14)` | `rgba(255, 255, 255, 0.12)` | bordes de tarjeta, tabla y separadores |
-| `--acento` | `#0f766e` | `#34b8ab` | enlaces, botón principal, anillo de foco |
-| `--turno` | `#b45309` | `#f59e0b` | la señal: lo que espera por el humano |
-| `--turno-fondo` | `#fff4e5` | `rgba(245, 158, 11, 0.14)` | fondo suave de la etiqueta «Espera por ti» y del paso actual |
-| `--peligro` | `#b91c1c` | `#f87171` | borrar, rechazar, edades que duelen |
+| `--fondo` | `#0d0f0c` | `#fbfbf6` | el papel: contenido, tarjetas, controles. El negro es cálido, con un punto de verde, nunca puro |
+| `--fondo-lateral` | `#161a15` | `#f0f2ea` | el suelo: barra lateral, cabeceras de franja, filas alternas |
+| `--fondo-hover` | `rgba(255, 255, 255, 0.07)` | `rgba(13, 15, 12, 0.06)` | al pasar, entrada activa, fondo de controles |
+| `--texto` | `#f1f3ec` | `#0d0f0c` | tinta (17:1 y 18,5:1) |
+| `--texto-suave` | `#a9b0a4` | `#5c6357` | rótulos, frases de propósito, metadatos (8,6:1 y 6:1) |
+| `--borde` | `#2a2f28` | `#d5d9cf` | bordes de tarjeta, tabla y separadores |
+| `--acento` | `#39f26f` | `#39f26f` | el verde chillón: relleno del botón principal, anillo de foco, barras de progreso, lo del agente |
+| `--acento-texto` | `#39f26f` | `#0a7d37` | el mismo verde como texto: enlaces, ids, el paso actual del agente. En oscuro es el propio acento (12,9:1); en claro se oscurece (5:1) |
+| `--sobre-acento` | `#0d0f0c` | `#0d0f0c` | texto sobre el botón principal: siempre el negro |
+| `--turno` | `#ff7a1a` | `#c24e00` | la señal: lo que espera por el humano (7,4:1 y 4,6:1) |
+| `--turno-fondo` | `rgba(255, 122, 26, 0.16)` | `#ffe8d6` | fondo de «Espera por ti» y del paso actual cuando es tuyo |
+| `--peligro` | `#ff5c5c` | `#c92626` | borrar, rechazar, edades que duelen |
+
+Todo enlace y todo texto en color de acento usa `--acento-texto`; `--acento` es solo relleno. El botón principal es `--acento` con texto `--sobre-acento`.
 
 Tipografía `"Avenir Next", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`, una sola familia, 15 px de base, interlineado 1.5. Escala: `h1` 1.75 rem / 600, `h2` 1.2 rem / 600, `h3` 1 rem / 600, texto pequeño 0.8125 rem. Los ids y las cifras van con `font-variant-numeric: tabular-nums`, no en monoespaciada; la monoespaciada es solo para código y comandos. Radio de 4 px en controles y 8 px en tarjetas. Sin sombras salvo la tarjeta del tablero al arrastrar y el panel lateral en móvil. Los controles de formulario no tienen borde propio: fondo `--fondo-hover`, y al enfocar un anillo de 2 px en `--acento`. `prefers-reduced-motion: reduce` apaga toda transición.
 
-**Nueve colores de etiqueta**, fijos e iguales en los dos temas salvo el fondo. Cada uno es una clase `.color-<nombre>`: fondo suave y texto oscuro en claro; fondo oscuro y texto `rgba(255, 255, 255, 0.81)` en oscuro.
+**Nueve colores de etiqueta**, reteñidos para el mundo negro. Cada uno es una clase `.color-<nombre>`: en oscuro, fondo del color muy oscurecido y texto en su versión viva; en claro, fondo pálido y texto profundo. Los nombres no cambian, así que ni las clases ni `usuarios.color` ni `proyectos.color` se tocan.
 
-| Nombre | Claro (fondo / texto) | Oscuro (fondo) |
+| Nombre | Oscuro (fondo / texto) | Claro (fondo / texto) |
 |---|---|---|
-| `gris` | `#e3e2e0` / `#32302c` | `#373737` |
-| `marron` | `#eee0da` / `#442a1e` | `#603b2c` |
-| `naranja` | `#fadec9` / `#49290e` | `#854c1d` |
-| `amarillo` | `#fdecc8` / `#402c1b` | `#89632a` |
-| `verde` | `#dbeddb` / `#1c3829` | `#2b593f` |
-| `azul` | `#d3e5ef` / `#183347` | `#28456c` |
-| `morado` | `#e8deee` / `#412454` | `#492f64` |
-| `rosa` | `#f5e0e9` / `#4c2337` | `#69314c` |
-| `rojo` | `#ffe2dd` / `#5d1715` | `#6e3630` |
+| `gris` | `#2a2f28` / `#f1f3ec` | `#e6e8e0` / `#0d0f0c` |
+| `marron` | `#3a2a1e` / `#e0b48a` | `#eee0d2` / `#4a2c14` |
+| `naranja` | `#3d2a08` / `#ffb366` | `#ffe0c2` / `#5a2600` |
+| `amarillo` | `#3a3308` / `#ffe066` | `#fff3b8` / `#4a3d00` |
+| `verde` | `#0b4a24` / `#39f26f` | `#b6f5c9` / `#0a4a22` |
+| `azul` | `#1d3a45` / `#8fd9ff` | `#d3ecf5` / `#123c4a` |
+| `morado` | `#33224a` / `#c9a6ff` | `#e6dcf7` / `#3a1f66` |
+| `rosa` | `#4a1f38` / `#ff9ad1` | `#f9dcea` / `#5a1a3f` |
+| `rojo` | `#4a1414` / `#ff8a8a` | `#ffd6d6` / `#6a1010` |
 
 **Qué color lleva cada cosa**
 
