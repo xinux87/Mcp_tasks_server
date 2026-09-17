@@ -68,6 +68,7 @@ export function registrarHerramientaComentarTarea(
 	db: DatabaseSync,
 	terminalId: number,
 	avisar: Avisador,
+	horasParada: number,
 ): void {
 	server.registerTool(
 		NOMBRE,
@@ -102,7 +103,7 @@ export function registrarHerramientaComentarTarea(
 				const funcionalidadAntes = funcionalidadDe(db, tareaId);
 				ESCRITORES[tipo](db, { tareaId, terminalId, texto });
 				// Escrito y confirmado: ahora sí se avisa de lo que queda esperando.
-				const item = itemIndiceDe(db, tareaId);
+				const item = itemIndiceDe(db, tareaId, horasParada);
 				avisarDeLoQueEspera(avisar, db, item, funcionalidadAntes);
 				return [`comentado: ${tipo}`, lineaIndice(item)].join("\n");
 			}),

@@ -18,6 +18,13 @@ const listaDeDirecciones = z
 	.transform((direcciones) => direcciones.map(sinBarraFinal));
 
 /**
+ * Horas que una fase puede llevar en marcha antes de recibir la marca
+ * `parada`. Vive aquí, que es donde están los valores por defecto, y de aquí
+ * baja como parámetro hasta `marcasDe`: nadie lo lee de un global.
+ */
+export const HORAS_PARADA_DEFECTO = 6;
+
+/**
  * Variables de entorno del servidor. La tabla de referencia está en
  * CLAUDE.md, sección «Variables de entorno del servidor».
  *
@@ -33,12 +40,13 @@ const esquemaConfig = z.object({
 	ADMIN_PASSWORD: z.string().min(1).optional(),
 	DIRECCIONES: listaDeDirecciones.optional(),
 	AVISOS_URL: z.url({ error: "AVISOS_URL tiene que ser una URL absoluta" }).optional(),
+	FASE_PARADA_HORAS: z.coerce.number().int().min(1).default(HORAS_PARADA_DEFECTO),
 });
 
 export type Config = z.infer<typeof esquemaConfig>;
 
-/** Solo lo que necesita el CLI: dónde vive la base de datos. */
-const esquemaConfigDatos = esquemaConfig.pick({ DATA_DIR: true });
+/** Solo lo que necesita el CLI: dónde vive la base de datos y el umbral de las fases paradas. */
+const esquemaConfigDatos = esquemaConfig.pick({ DATA_DIR: true, FASE_PARADA_HORAS: true });
 
 export type ConfigDatos = z.infer<typeof esquemaConfigDatos>;
 
@@ -58,7 +66,7 @@ export function leerConfig(entorno: NodeJS.ProcessEnv = process.env): Config {
 	return resultado.data;
 }
 
-/** Lee solo `DATA_DIR`. El CLI no necesita BASE_URL ni SESSION_SECRET. */
+/** Lee lo del CLI. No necesita BASE_URL ni SESSION_SECRET. */
 export function leerConfigDatos(entorno: NodeJS.ProcessEnv = process.env): ConfigDatos {
 	const resultado = esquemaConfigDatos.safeParse(entorno);
 	if (!resultado.success) {

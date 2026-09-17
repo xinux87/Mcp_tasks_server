@@ -743,3 +743,33 @@ test("la migración de los papeles crea la tabla, cuelga las dos fases y admite 
 		rmSync(carpeta, { recursive: true, force: true });
 	}
 });
+
+test("la migración de la fase en marcha deja sin fecha lo que ya estaba tomado", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-en-marcha-desde.sql"));
+		assert.ok(cual > 0, "no está la migración de la fase en marcha");
+
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		// Una tarea que un terminal tenía tomada cuando llegó la columna.
+		db
+			.prepare(
+				`INSERT INTO tareas (id, codigo, titulo, descripcion, tipo, estado, orden, en_marcha_terminal_id,
+					creada, actualizada, estado_desde, revision)
+				VALUES (7, 'K7M3XQ', 'De antes', 'd', 'tarea', 'doing', 1, NULL, ?, ?, ?, 3)`,
+			)
+			.run(FECHA, FECHA, FECHA);
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		// No se inventa una fecha que nadie apuntó: sin ella no hay marca `parada`.
+		assert.equal(db.prepare("SELECT en_marcha_desde FROM tareas WHERE id = 7").get()?.en_marcha_desde, null);
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});

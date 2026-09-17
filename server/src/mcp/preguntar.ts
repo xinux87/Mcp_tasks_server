@@ -20,6 +20,7 @@ export function registrarHerramientaPreguntar(
 	db: DatabaseSync,
 	terminalId: number,
 	avisar: Avisador,
+	horasParada: number,
 ): void {
 	server.registerTool(
 		NOMBRE,
@@ -53,7 +54,7 @@ export function registrarHerramientaPreguntar(
 			conErroresDeRegla(() => {
 				const tareaId = idDeCodigo(db, parsearId(id));
 				const creada = preguntar(db, { tareaId, terminalId, pregunta, porQueImporta, opciones, recomendacion });
-				const item = itemIndiceDe(db, tareaId);
+				const item = itemIndiceDe(db, tareaId, horasParada);
 				// La pregunta ya está escrita: el aviso sale fuera de la transacción.
 				avisar({ tipo: "pregunta", codigo: item.codigo, titulo: item.titulo, pregunta });
 				return [`pregunta: P${creada.numero}`, lineaIndice(item)].join("\n");

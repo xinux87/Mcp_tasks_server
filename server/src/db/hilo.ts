@@ -8,6 +8,7 @@ import {
 	enteroOpcional,
 	escribirContenido,
 	idInsertado,
+	SOLTAR_FASE,
 	sentencia,
 	texto,
 	textoOpcional,
@@ -131,6 +132,9 @@ function comoPregunta(fila: Record<string, unknown>): Pregunta {
  * El autor lo compone el servidor, nunca el que escribe. Para una persona es
  * su nombre de usuario en la web.
  */
+/** Autor del comentario que escribe el propio servidor, no un agente ni una persona. */
+export const AUTOR_SERVIDOR = "servidor";
+
 export function autorHumano(db: DatabaseSync, usuarioId: number): string {
 	const usuario = buscarUsuarioPorId(db, usuarioId);
 	if (usuario === undefined) {
@@ -228,11 +232,11 @@ export type ComentarioDeAgente = {
  */
 const CERRAR_ANALISIS = `
 	UPDATE tareas
-		SET analisis_hecho = 1, en_marcha_terminal_id = NULL, actualizada = ?, revision = ?
+		SET analisis_hecho = 1, actualizada = ?, revision = ?${SOLTAR_FASE}
 		WHERE id = ?`;
 
 /** Lo que una pregunta escribe además de irse a `done`: el estado lo mueve `cambiarEstado`. */
-const CERRAR_PREGUNTA = ", analisis_hecho = 1, en_marcha_terminal_id = NULL";
+const CERRAR_PREGUNTA = `, analisis_hecho = 1${SOLTAR_FASE}`;
 
 /**
  * Comentario `analisis`: qué hay que hacer, plan y riesgos. Es el que da el
@@ -321,7 +325,7 @@ export function comentarResultado(db: DatabaseSync, datos: ComentarioDeAgente): 
 			texto: datos.texto,
 			preguntaId: null,
 		});
-		cambiarEstado(conexion, revision, tarea.id, "done", ", en_marcha_terminal_id = NULL");
+		cambiarEstado(conexion, revision, tarea.id, "done", SOLTAR_FASE);
 		return comentario;
 	});
 }
@@ -512,7 +516,7 @@ export function comentarioHumano(db: DatabaseSync, datos: ComentarioHumano): Com
 		// Al volver a `doing` nadie la tiene tomada todavía: la marca «en
 		// marcha» la vuelve a poner el agente con `tomar_tarea`.
 		if (iterar) {
-			cambiarEstado(conexion, revision, tarea.id, "doing", ", en_marcha_terminal_id = NULL");
+			cambiarEstado(conexion, revision, tarea.id, "doing", SOLTAR_FASE);
 		}
 		registrarActividad(conexion, {
 			actor: { usuarioId: datos.usuarioId },

@@ -1,9 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
 import { formatearId } from "../md/ids.ts";
-import { entero, escribirContenido, sentencia, texto } from "./base.ts";
+import { entero, escribirContenido, SOLTAR_FASE, sentencia, texto } from "./base.ts";
 import { escribirDependencias } from "./dependencias.ts";
-import { insertarComentario } from "./hilo.ts";
+import { AUTOR_SERVIDOR, insertarComentario } from "./hilo.ts";
 import { cambiarEstado, comoTarea, exigirTarea, insertarTarea, type Tarea } from "./tareas.ts";
 
 /**
@@ -14,9 +14,6 @@ import { cambiarEstado, comoTarea, exigirTarea, insertarTarea, type Tarea } from
  * Aquí vive todo lo que solo pasa en una funcionalidad: crear una parte,
  * aprobar la descomposición y cerrarla sola cuando la última parte se cierra.
  */
-
-/** Autor del comentario que escribe el propio servidor, no un agente ni una persona. */
-const AUTOR_SERVIDOR = "servidor";
 
 export type PartesDeFuncionalidad = {
 	total: number;
@@ -167,7 +164,7 @@ export function aprobarDescomposicion(conexion: DatabaseSync, revision: number, 
 		);
 	}
 
-	cambiarEstado(conexion, revision, funcionalidad.id, "doing", ", ejecucion_aprobada = 1, en_marcha_terminal_id = NULL");
+	cambiarEstado(conexion, revision, funcionalidad.id, "doing", `, ejecucion_aprobada = 1${SOLTAR_FASE}`);
 
 	// Las partes salen a `prepared` en el orden que traían, detrás de lo que ya
 	// hubiera en esa columna: cada una entra al final, que es lo que hace

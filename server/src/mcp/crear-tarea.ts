@@ -24,7 +24,12 @@ function exigirPadre(db: DatabaseSync, clase: string, padre: string | undefined)
  * una propuesta nace en `backlog` para que la decida el humano; una parte nace
  * en `backlog` colgando de la funcionalidad que se está descomponiendo.
  */
-export function registrarHerramientaCrearTarea(server: McpServer, db: DatabaseSync, terminalId: number): void {
+export function registrarHerramientaCrearTarea(
+	server: McpServer,
+	db: DatabaseSync,
+	terminalId: number,
+	horasParada: number,
+): void {
 	server.registerTool(
 		NOMBRE,
 		{
@@ -83,7 +88,7 @@ export function registrarHerramientaCrearTarea(server: McpServer, db: DatabaseSy
 				} else {
 					creada = crearPropuesta(db, { titulo, descripcion, terminalId, tipo });
 				}
-				return [`creada: ${formatearId(creada.codigo)}`, lineaIndice(itemIndiceDe(db, creada.id))].join("\n");
+				return [`creada: ${formatearId(creada.codigo)}`, lineaIndice(itemIndiceDe(db, creada.id, horasParada))].join("\n");
 			}),
 	);
 }

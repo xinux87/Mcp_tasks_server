@@ -32,8 +32,8 @@ function porEdad(items: ItemIndice[], desde: (item: ItemIndice) => string): Item
 	return items.sort((uno, otro) => desde(uno).localeCompare(desde(otro)));
 }
 
-export function bandejaDelHumano(db: DatabaseSync, ahora: Date = new Date()): Bandeja {
-	const items = listarTareas(db);
+export function bandejaDelHumano(db: DatabaseSync, ahora: Date = new Date(), horasParada?: number): Bandeja {
+	const items = listarTareas(db, {}, horasParada);
 	const limite = HORAS_BACKLOG * 60 * 60 * 1000;
 	return {
 		// En una bloqueada lo que espera es la pregunta, no la columna.

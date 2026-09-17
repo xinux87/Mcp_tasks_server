@@ -182,8 +182,8 @@ export function filtroDeIndice(db: DatabaseSync, filtros: Filtros): FiltroIndice
 	};
 }
 
-function tareasFiltradas(db: DatabaseSync, filtros: Filtros): ItemIndice[] {
-	return listarTareas(db, filtroDeIndice(db, filtros)).filter((item) => {
+function tareasFiltradas(db: DatabaseSync, filtros: Filtros, horasParada: number): ItemIndice[] {
+	return listarTareas(db, filtroDeIndice(db, filtros), horasParada).filter((item) => {
 		if (esMarca(filtros.marca) && !item.marcas.includes(filtros.marca)) {
 			return false;
 		}
@@ -351,7 +351,7 @@ function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
 				${proyecto === undefined ? html`` : chipProyecto(proyecto)}
 				${esperaPorTi(item.estado, item.marcas)}
 				${insigniaTipoDeItem(item)}
-				${insigniasMarcas(item.marcas)}
+				${insigniasMarcas(item.marcas, item.enMarchaDesde)}
 				${edadEnColumna(item)}
 			</div>
 			<p class="titulo">${item.titulo}</p>
@@ -531,8 +531,8 @@ function franja(db: DatabaseSync, { cual, items }: Franja, vecindad: Vecindad): 
  * dirección de la que salió, para volver a pedirse con sus mismos filtros: la
  * ficha de una funcionalidad enseña este mismo tablero con solo sus partes.
  */
-export function tablero(db: DatabaseSync, filtros: Filtros, acotado?: Proyecto): Html {
-	const items = tareasFiltradas(db, filtros);
+export function tablero(db: DatabaseSync, filtros: Filtros, horasParada: number, acotado?: Proyecto): Html {
+	const items = tareasFiltradas(db, filtros, horasParada);
 	const carriles = enCarriles(filtros);
 	// Dentro del tablero de una funcionalidad, y dentro de una franja, cada
 	// tarjeta cuelga de la que encabeza: repetir su título en todas no diría
@@ -553,7 +553,7 @@ function paginaKanban(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	const filtros = filtrosDe(c);
 	const acotado = proyectoActual(c);
 	const cuerpo = html`${filaFiltros("tablero", filtros, acotado)}
-		${tablero(db, filtros, acotado)}`;
+		${tablero(db, filtros, deps.config.FASE_PARADA_HORAS, acotado)}`;
 	// El tablero ocupa todo el ancho: cinco columnas no caben en 60 rem.
 	return c.html(
 		pagina({
@@ -685,7 +685,9 @@ export function registrarRutasKanban(app: Hono, deps: DependenciasWeb): void {
 
 	// Solo el fragmento: el cliente sustituye `#tablero` sin repintar la página.
 	const fragmento = (c: Context): RespuestaHtml =>
-		c.html(tablero(deps.db, filtrosDe(c), proyectoActual(c)), 200, { "Cache-Control": "no-store" });
+		c.html(tablero(deps.db, filtrosDe(c), deps.config.FASE_PARADA_HORAS, proyectoActual(c)), 200, {
+			"Cache-Control": "no-store",
+		});
 	app.get("/tareas/kanban/tablero", fragmento);
 	app.get("/p/:clave/tareas/kanban/tablero", fragmento);
 

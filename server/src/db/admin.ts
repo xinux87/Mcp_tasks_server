@@ -392,13 +392,12 @@ export function revocarTerminal(db: DatabaseSync, terminalId: number, actorId: n
 }
 
 /**
- * Las cuatro columnas de `tareas` que nombran a un terminal. Al borrarlo pasan
- * a nulo: la tarea sigue, sin terminal, y cualquiera puede tomarla.
+ * Las columnas de `tareas` que nombran a un terminal y se anulan solas. La de
+ * la fase en marcha va aparte, porque arrastra consigo `en_marcha_desde`.
  */
 const COLUMNAS_TERMINAL_EN_TAREAS = [
 	"analisis_terminal_id",
 	"ejecucion_terminal_id",
-	"en_marcha_terminal_id",
 	"creada_por_terminal_id",
 ] as const;
 
@@ -434,6 +433,12 @@ export function borrarTerminal(db: DatabaseSync, terminalId: number, actorId: nu
 		for (const columna of COLUMNAS_TERMINAL_EN_TAREAS) {
 			sentencia(conexion, `UPDATE tareas SET ${columna} = NULL WHERE ${columna} = ?`).run(terminalId);
 		}
+		// La fase que tuviera tomada se suelta entera: sin terminal no hay desde
+		// cuándo, y la tarea vuelve a estar disponible para cualquiera.
+		sentencia(
+			conexion,
+			"UPDATE tareas SET en_marcha_terminal_id = NULL, en_marcha_desde = NULL WHERE en_marcha_terminal_id = ?",
+		).run(terminalId);
 		sentencia(conexion, "UPDATE consumo SET terminal_id = NULL WHERE terminal_id = ?").run(terminalId);
 		// Un agente sin terminal corre en cualquiera: el papel sobrevive al borrado.
 		sentencia(conexion, "UPDATE agentes SET terminal_id = NULL WHERE terminal_id = ?").run(terminalId);

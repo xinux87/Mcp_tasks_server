@@ -11,7 +11,7 @@ import { buscadorDeColor, chipProyecto, edadEnColumna } from "../componentes.ts"
 import { edad } from "../formatos.ts";
 import { ESTADO_AVISO } from "../formulario.ts";
 import { type ColorDe, cuadroDeComentar, tarjetaComentario, tarjetaPreguntaAbierta } from "../hilo.ts";
-import { type Html, insigniaEstado, pagina, type RespuestaHtml } from "../plantilla.ts";
+import { type Html, insigniaEstado, insigniasMarcas, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
 import { navProyectos } from "./proyectos.ts";
 
@@ -54,6 +54,7 @@ function linea(item: ItemIndice, claves: Claves, cuanto?: Html): Html {
 	return html`<p class="linea-bandeja">
 			${proyecto === undefined ? html`` : chipProyecto(proyecto)}
 			<a class="id-tarea" href="/tareas/${id}">${id}</a>
+			${insigniasMarcas(item.marcas, item.enMarchaDesde)}
 			<span class="titulo">${item.titulo}</span>
 			${cuanto ?? edadEnColumna(item)}
 		</p>`;
@@ -146,7 +147,7 @@ function porRevisar(item: ItemIndice, entorno: Entorno): Html {
 export function paginaBandeja(c: Context, deps: DependenciasWeb, aviso: string | null = null): RespuestaHtml {
 	const { db } = deps;
 	const ahora = new Date();
-	const bandeja = bandejaDelHumano(db, ahora);
+	const bandeja = bandejaDelHumano(db, ahora, deps.config.FASE_PARADA_HORAS);
 	const entorno: Entorno = {
 		db,
 		claves: new Map(listarProyectos(db).map((proyecto) => [proyecto.id, proyecto])),

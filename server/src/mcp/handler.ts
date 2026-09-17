@@ -23,21 +23,24 @@ export const VERSION_SERVIDOR = "0.1.0";
  *
  * `avisar` es lo que manda el aviso fuera de la web cuando una herramienta deja
  * algo esperando al humano. Lo usan `preguntar` y `comentar_tarea`.
+ *
+ * `horasParada` es el umbral de la marca `parada`: baja desde la configuración
+ * hasta las herramientas que pintan marcas, porque nadie lo lee de un global.
  */
-export function crearHandlerMcp(db: DatabaseSync, avisar: Avisador): McpHttpHandler {
+export function crearHandlerMcp(db: DatabaseSync, avisar: Avisador, horasParada: number): McpHttpHandler {
 	return createMcpHandler(
 		({ authInfo }) => {
 			const terminalId = idTerminalDeAuthInfo(authInfo);
 			const server = new McpServer({ name: NOMBRE_SERVIDOR, version: VERSION_SERVIDOR });
 			registrarHerramientaRegistrarTerminal(server, db, terminalId);
-			registrarHerramientaNovedades(server, db, terminalId);
-			registrarHerramientaListarTareas(server, db, terminalId);
-			registrarHerramientaLeerTarea(server, db);
+			registrarHerramientaNovedades(server, db, terminalId, horasParada);
+			registrarHerramientaListarTareas(server, db, terminalId, horasParada);
+			registrarHerramientaLeerTarea(server, db, horasParada);
 			registrarHerramientaLeerAgente(server, db);
-			registrarHerramientaTomarTarea(server, db, terminalId);
-			registrarHerramientaComentarTarea(server, db, terminalId, avisar);
-			registrarHerramientaCrearTarea(server, db, terminalId);
-			registrarHerramientaPreguntar(server, db, terminalId, avisar);
+			registrarHerramientaTomarTarea(server, db, terminalId, horasParada);
+			registrarHerramientaComentarTarea(server, db, terminalId, avisar, horasParada);
+			registrarHerramientaCrearTarea(server, db, terminalId, horasParada);
+			registrarHerramientaPreguntar(server, db, terminalId, avisar, horasParada);
 			registrarHerramientaReportarConsumo(server, db, terminalId);
 			return server;
 		},

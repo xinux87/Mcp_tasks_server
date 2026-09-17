@@ -21,7 +21,12 @@ export const NOMBRE = "novedades";
  *
  * Si no hay nada nuevo, la salida es solo la línea `revision: <n>`.
  */
-export function registrarHerramientaNovedades(server: McpServer, db: DatabaseSync, terminalId: number): void {
+export function registrarHerramientaNovedades(
+	server: McpServer,
+	db: DatabaseSync,
+	terminalId: number,
+	horasParada: number,
+): void {
 	server.registerTool(
 		NOMBRE,
 		{
@@ -43,7 +48,7 @@ export function registrarHerramientaNovedades(server: McpServer, db: DatabaseSyn
 				const actual = revisionActual(db);
 				const salida = salidaNovedades({
 					revision: actual,
-					tareas: tareasParaTerminalDesde(db, desde),
+					tareas: tareasParaTerminalDesde(db, desde, horasParada),
 					preguntas: preguntasContestadasDesde(db, desde),
 				});
 				// Dejar apuntado por dónde va el terminal es telemetría: no sube el

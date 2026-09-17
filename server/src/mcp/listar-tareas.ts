@@ -27,7 +27,12 @@ function porPrioridad(items: ItemIndice[]): ItemIndice[] {
  * Está acotada al proyecto del terminal, como `novedades` y `tomar_tarea`: el
  * agente no sabe que hay proyectos, solo ve el suyo.
  */
-export function registrarHerramientaListarTareas(server: McpServer, db: DatabaseSync, terminalId: number): void {
+export function registrarHerramientaListarTareas(
+	server: McpServer,
+	db: DatabaseSync,
+	terminalId: number,
+	horasParada: number,
+): void {
 	server.registerTool(
 		NOMBRE,
 		{
@@ -45,11 +50,15 @@ export function registrarHerramientaListarTareas(server: McpServer, db: Database
 		async ({ estado, soloMias }) =>
 			conErroresDeRegla(() => {
 				const items = porPrioridad(
-					listarTareas(db, {
-						estado,
-						terminalId: soloMias === true ? terminalId : undefined,
-						proyectoId: proyectoDeTerminal(db, terminalId),
-					}),
+					listarTareas(
+						db,
+						{
+							estado,
+							terminalId: soloMias === true ? terminalId : undefined,
+							proyectoId: proyectoDeTerminal(db, terminalId),
+						},
+						horasParada,
+					),
 				);
 				return items.length === 0 ? "Ninguna." : items.map(lineaIndice).join("\n");
 			}),

@@ -2105,3 +2105,55 @@ test("el bloque de hijas de la ficha lleva la cuenta, la barra y en qué punto e
 		await montaje.cerrar();
 	}
 });
+
+test("la ficha enseña la edad de la fase en marcha, la marca «parada» y el botón de liberarla", async () => {
+	// Un umbral de una hora, para no tener que esperar seis.
+	const montaje = montar({ ...CONFIG_PRUEBA, FASE_PARADA_HORAS: 1 });
+	try {
+		const cookie = await entrar(montaje);
+		const terminal = crearTerminalConToken(montaje.db, listarUsuarios(montaje.db)[0]?.id ?? 0, "portatil-ana", "a@b.c");
+		const tarea = crearTareaHumana(montaje.db, {
+			titulo: "Exportar el listado",
+			descripcion: "d",
+			usuarioId: listarUsuarios(montaje.db)[0]?.id ?? 0,
+			analisisModelo: "sonnet",
+			analisisTerminalId: terminal.valor.terminal.id,
+		});
+		const id = formatearId(tarea.codigo);
+		moverTareaHumano(montaje.db, {
+			tareaId: tarea.id,
+			usuarioId: listarUsuarios(montaje.db)[0]?.id ?? 0,
+			estado: "prepared",
+		});
+
+		// Sin fase en marcha no hay nada que liberar.
+		const sinTomar = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		assert.ok(!sinTomar.includes(`/tareas/${id}/liberar`), "el botón de liberar sale sin fase en marcha");
+
+		tomarTarea(montaje.db, { tareaId: tarea.id, fase: "analisis", terminalId: terminal.valor.terminal.id });
+		const enMarcha = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		assert.ok(enMarcha.includes("marca-en-marcha"), "falta la marca de fase en marcha");
+		// La marca lleva su edad al lado, en texto suave.
+		assert.match(enMarcha, /marca-en-marcha[^<]*<\/span><span class="edad"[^>]*>0 min<\/span>/);
+		assert.ok(enMarcha.includes(`/tareas/${id}/liberar`), "falta el botón de liberar");
+		assert.ok(!enMarcha.includes("marca-parada"), "la fase recién tomada no está parada");
+
+		// Pasado el umbral, la marca y el botón que dice desde cuándo.
+		const haceTres = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+		montaje.db.prepare("UPDATE tareas SET en_marcha_desde = ? WHERE id = ?").run(haceTres, tarea.id);
+		const parada = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		assert.ok(parada.includes("marca-parada"), "falta la marca de fase parada");
+		assert.ok(parada.includes("Liberar la fase, parada desde hace 3 h"), "el botón no dice desde cuándo");
+
+		// Liberarla la deja sin fase en marcha y vuelve a la ficha.
+		const soltada = await pedir(montaje, `/tareas/${id}/liberar`, { cookie, formulario: {} });
+		assert.equal(soltada.status, 302);
+		assert.equal(soltada.headers.get("location"), `/tareas/${id}`);
+		assert.equal(exigirTarea(montaje.db, tarea.id).enMarchaTerminalId, null);
+		const despues = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
+		assert.ok(!despues.includes(`/tareas/${id}/liberar`), "el botón sigue tras liberar");
+		assert.equal(actividadDe(montaje.db, "tarea", tarea.id).filter((f) => f.accion === "liberar_fase").length, 1);
+	} finally {
+		await montaje.cerrar();
+	}
+});

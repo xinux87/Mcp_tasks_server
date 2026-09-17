@@ -25,6 +25,7 @@ export type AccionActividad =
 	| "borrar_tarea"
 	| "mover_tarea"
 	| "aprobar_ejecucion"
+	| "liberar_fase"
 	| "responder_pregunta"
 	| "comentario"
 	| "alta_usuario"

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { actividadDe } from "../src/db/actividad.ts";
+import { borrarTerminal } from "../src/db/admin.ts";
 import { revisionActual } from "../src/db/consultas.ts";
 import { registrarConsumo } from "../src/db/consumo.ts";
 import { crearParte } from "../src/db/funcionalidades.ts";
@@ -14,6 +16,7 @@ import {
 	faseQueToca,
 	itemIndiceDe,
 	leerTarea,
+	liberarFase,
 	listarTareas,
 	marcasDe,
 	moverTareaHumano,
@@ -1195,6 +1198,120 @@ test("un presupuesto que no es un entero de cero en adelante no se guarda", () =
 		});
 		assert.equal(cero.presupuesto, 0);
 		assert.deepEqual(marcasDe(cero, 0, 0, 1), ["sobre presupuesto"]);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("tomar una fase apunta desde cuándo, y el comentario que la cierra lo borra", () => {
+	const banco = montar();
+	try {
+		const tarea = tareaPreparada(banco);
+		assert.equal(exigirTarea(banco.db, tarea.id).enMarchaDesde, null);
+
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
+		const analizando = exigirTarea(banco.db, tarea.id);
+		assert.equal(analizando.enMarchaTerminalId, banco.portatil);
+		assert.ok(analizando.enMarchaDesde !== null, "la fase en marcha no apuntó desde cuándo");
+
+		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "Plan." });
+		assert.equal(exigirTarea(banco.db, tarea.id).enMarchaDesde, null);
+
+		// Y lo mismo en la ejecución: la toma la apunta y el resultado la suelta.
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil });
+		assert.ok(exigirTarea(banco.db, tarea.id).enMarchaDesde !== null);
+		comentarResultado(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "Hecho. Commit: a1b2c3d" });
+		assert.equal(exigirTarea(banco.db, tarea.id).enMarchaDesde, null);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("una fase lleva la marca «parada» pasado el umbral, y no antes", () => {
+	const banco = montar();
+	try {
+		const tarea = tareaPreparada(banco);
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
+
+		// Recién tomada no está parada.
+		assert.deepEqual(marcasDe(exigirTarea(banco.db, tarea.id), 0, 0, 0, 6), ["en marcha"]);
+
+		// La fecha se inyecta en vez de esperar: tres horas en marcha.
+		const haceTres = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+		banco.db.prepare("UPDATE tareas SET en_marcha_desde = ? WHERE id = ?").run(haceTres, tarea.id);
+		const tresHoras = exigirTarea(banco.db, tarea.id);
+		assert.deepEqual(marcasDe(tresHoras, 0, 0, 0, 6), ["en marcha"]);
+		assert.deepEqual(marcasDe(tresHoras, 0, 0, 0, 2), ["en marcha", "parada"]);
+		assert.deepEqual(itemIndiceDe(banco.db, tarea.id, 2).marcas, ["en marcha", "parada"]);
+		assert.deepEqual(itemIndiceDe(banco.db, tarea.id, 6).marcas, ["en marcha"]);
+
+		// Sin fecha (lo que dejó la migración) no se marca nada: no se sabe.
+		banco.db.prepare("UPDATE tareas SET en_marcha_desde = NULL WHERE id = ?").run(tarea.id);
+		assert.deepEqual(marcasDe(exigirTarea(banco.db, tarea.id), 0, 0, 0, 1), ["en marcha"]);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("liberar una fase la suelta, lo cuenta en el hilo y deja rastro; sin fase en marcha falla", () => {
+	const banco = montar();
+	try {
+		const tarea = tareaPreparada(banco);
+		assert.equal(
+			codigoDe(() => liberarFase(banco.db, { tareaId: tarea.id, usuarioId: banco.ana })),
+			"sin_fase_en_marcha",
+		);
+
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
+		comentarAnalisis(banco.db, { tareaId: tarea.id, terminalId: banco.portatil, texto: "Plan." });
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil });
+		const enMarcha = exigirTarea(banco.db, tarea.id);
+		const antes = revisionActual(banco.db);
+
+		liberarFase(banco.db, { tareaId: tarea.id, usuarioId: banco.ana });
+		const suelta = exigirTarea(banco.db, tarea.id);
+		assert.equal(suelta.enMarchaTerminalId, null);
+		assert.equal(suelta.enMarchaDesde, null);
+		// No mueve la tarea: una ejecución liberada sigue en curso, y su edad en
+		// columna es la de antes.
+		assert.equal(suelta.estado, "doing");
+		assert.equal(suelta.estadoDesde, enMarcha.estadoDesde);
+		assert.ok(revisionActual(banco.db) > antes, "liberar no subió la revisión");
+
+		const completa = leerTarea(banco.db, tarea.id) ?? assert.fail("sin tarea");
+		const ultimo = completa.comentarios.at(-1) ?? assert.fail("sin comentario");
+		assert.equal(ultimo.tipo, "comentario");
+		assert.equal(ultimo.autor, "servidor");
+		assert.match(ultimo.texto, /^Fase liberada por humano:ana\. La tenía en marcha portatil-ana desde el .+\.$/);
+		assert.deepEqual(marcasDe(suelta, 0), []);
+
+		const rastro = actividadDe(banco.db, "tarea", tarea.id).filter((fila) => fila.accion === "liberar_fase");
+		assert.equal(rastro.length, 1);
+		assert.equal(rastro[0]?.detalle, "ejecucion, portatil-ana");
+
+		// Y se vuelve a tomar como si nunca se hubiera tomado. La asignación de la
+		// fase no se toca al liberar: sigue siendo de su terminal.
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "ejecucion", terminalId: banco.portatil });
+		const retomada = exigirTarea(banco.db, tarea.id);
+		assert.equal(retomada.enMarchaTerminalId, banco.portatil);
+		assert.ok(retomada.enMarchaDesde !== null);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("borrar el terminal que tenía la fase en marcha la suelta entera", () => {
+	const banco = montar();
+	try {
+		const tarea = tareaPreparada(banco);
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
+		assert.ok(exigirTarea(banco.db, tarea.id).enMarchaDesde !== null);
+
+		borrarTerminal(banco.db, banco.portatil, banco.ana);
+		const suelta = exigirTarea(banco.db, tarea.id);
+		assert.equal(suelta.enMarchaTerminalId, null);
+		assert.equal(suelta.enMarchaDesde, null);
+		assert.deepEqual(marcasDe(suelta, 0), ["sin terminal"]);
 	} finally {
 		banco.cerrar();
 	}

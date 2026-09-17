@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { HORAS_PARADA_DEFECTO } from "../config.ts";
 import { ErrorDeRegla } from "../errores.ts";
 import { formatearId, generarCodigo } from "../md/ids.ts";
 import { type Actor, registrarActividad } from "./actividad.ts";
@@ -11,6 +12,7 @@ import {
 	escribirContenido,
 	idInsertado,
 	revisionActual,
+	SOLTAR_FASE,
 	sentencia,
 	texto,
 	textoOpcional,
@@ -32,6 +34,7 @@ import {
 	partesDe,
 } from "./funcionalidades.ts";
 import {
+	AUTOR_SERVIDOR,
 	autorHumano,
 	type Comentario,
 	comentariosDeTarea,
@@ -56,7 +59,14 @@ export type Fase = "analisis" | "ejecucion";
 export type TipoTarea = "tarea" | "pregunta" | "funcionalidad";
 
 /** Etiquetas derivadas del estado de la tarea. No se guardan: se calculan al leer. */
-export type Marca = "bloqueada" | "sin terminal" | "en marcha" | "análisis listo" | "esperando" | "sobre presupuesto";
+export type Marca =
+	| "bloqueada"
+	| "sin terminal"
+	| "en marcha"
+	| "parada"
+	| "análisis listo"
+	| "esperando"
+	| "sobre presupuesto";
 
 const ESTADOS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "finished"];
 
@@ -89,6 +99,8 @@ export type Tarea = {
 	ejecucionModelo: string | null;
 	ejecucionTerminalId: number | null;
 	enMarchaTerminalId: number | null;
+	/** Cuándo se tomó la fase que está en marcha, o `null` si no hay ninguna. */
+	enMarchaDesde: string | null;
 	creadaPorUsuarioId: number | null;
 	creadaPorTerminalId: number | null;
 	creada: string;
@@ -131,6 +143,8 @@ export type ItemIndice = {
 	 * La edad de una tarea bloqueada se cuenta desde aquí, no desde `estadoDesde`.
 	 */
 	bloqueadaDesde: string | null;
+	/** Cuándo se tomó la fase en marcha, si hay alguna: la marca lleva su edad. */
+	enMarchaDesde: string | null;
 	/** Solo en una funcionalidad: cuántas partes tiene y cuántas están cerradas. */
 	partes: number | null;
 	partesCerradas: number | null;
@@ -238,6 +252,7 @@ export function comoTarea(fila: Record<string, unknown>): Tarea {
 		ejecucionModelo: textoOpcional(fila, "ejecucion_modelo"),
 		ejecucionTerminalId: enteroOpcional(fila, "ejecucion_terminal_id"),
 		enMarchaTerminalId: enteroOpcional(fila, "en_marcha_terminal_id"),
+		enMarchaDesde: textoOpcional(fila, "en_marcha_desde"),
 		creadaPorUsuarioId: enteroOpcional(fila, "creada_por_usuario_id"),
 		creadaPorTerminalId: enteroOpcional(fila, "creada_por_terminal_id"),
 		creada: texto(fila, "creada"),
@@ -248,7 +263,7 @@ export function comoTarea(fila: Record<string, unknown>): Tarea {
 }
 
 /** Índice y novedades traen los nombres de terminal y las preguntas abiertas por JOIN. */
-function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
+function comoItemIndice(fila: Record<string, unknown>, horasParada: number): ItemIndice {
 	const tarea = comoTarea(fila);
 	const esFuncionalidad = tarea.tipo === "funcionalidad";
 	const tokensConHijas = entero(fila, "tokens_con_hijas");
@@ -261,9 +276,16 @@ function comoItemIndice(fila: Record<string, unknown>): ItemIndice {
 		titulo: tarea.titulo,
 		padreId: tarea.padreId,
 		padreCodigo: textoOpcional(fila, "padre_codigo"),
-		marcas: marcasDe(tarea, entero(fila, "preguntas_abiertas"), entero(fila, "dependencias_pendientes"), tokensConHijas),
+		marcas: marcasDe(
+			tarea,
+			entero(fila, "preguntas_abiertas"),
+			entero(fila, "dependencias_pendientes"),
+			tokensConHijas,
+			horasParada,
+		),
 		estadoDesde: tarea.estadoDesde,
 		bloqueadaDesde: textoOpcional(fila, "bloqueada_desde"),
+		enMarchaDesde: tarea.enMarchaDesde,
 		// Una parte cerrada es una hija `finished`: en una funcionalidad la
 		// entrega la da por buena el humano, no basta con que esté construida.
 		partes: esFuncionalidad ? entero(fila, "hijas") : null,
@@ -444,6 +466,21 @@ export function faseQueToca(tarea: Tarea): Fase {
 	return tarea.estado === "prepared" && !tarea.analisisHecho ? "analisis" : "ejecucion";
 }
 
+const MS_POR_HORA = 60 * 60 * 1000;
+
+/**
+ * Cuántas horas lleva en marcha la fase. Sin fecha (las tareas que ya estaban
+ * en marcha cuando llegó la columna) o con una fecha ilegible son cero horas:
+ * lo que no se sabe no se marca.
+ */
+function horasEnMarcha(desde: string | null): number {
+	if (desde === null) {
+		return 0;
+	}
+	const transcurrido = Date.now() - new Date(desde).getTime();
+	return Number.isFinite(transcurrido) ? transcurrido / MS_POR_HORA : 0;
+}
+
 /**
  * Marcas activas de la tarea, en el orden en el que se muestran. No se
  * guardan en la base de datos: son consecuencia del estado.
@@ -457,6 +494,7 @@ export function marcasDe(
 	preguntasAbiertas: number,
 	dependenciasPendientes = 0,
 	tokensConHijas = 0,
+	horasParada: number = HORAS_PARADA_DEFECTO,
 ): Marca[] {
 	const marcas: Marca[] = [];
 	if (preguntasAbiertas > 0) {
@@ -477,6 +515,13 @@ export function marcasDe(
 	}
 	if (tarea.enMarchaTerminalId !== null) {
 		marcas.push("en marcha");
+		// Pasado el umbral lo más probable es que el subagente haya muerto sin
+		// cerrar la fase. Es un aviso al humano, que la libera desde la ficha:
+		// nada se suelta solo, porque una ejecución larga de verdad también pasa
+		// del umbral y soltarla lanzaría dos subagentes sobre el mismo trabajo.
+		if (horasEnMarcha(tarea.enMarchaDesde) > horasParada) {
+			marcas.push("parada");
+		}
 	}
 	// En una pregunta no hay ejecución que aprobar: el análisis es la respuesta
 	// y la deja en `done` él solo. En una funcionalidad la aprobación de la
@@ -524,7 +569,11 @@ export function exigirPresupuesto(presupuesto: number | null): number | null {
 }
 
 /** Todo lo que necesita el documento Markdown de la tarea. */
-export function leerTarea(db: DatabaseSync, tareaId: number): TareaCompleta | undefined {
+export function leerTarea(
+	db: DatabaseSync,
+	tareaId: number,
+	horasParada: number = HORAS_PARADA_DEFECTO,
+): TareaCompleta | undefined {
 	const tarea = buscarTarea(db, tareaId);
 	if (tarea === undefined) {
 		return undefined;
@@ -546,6 +595,7 @@ export function leerTarea(db: DatabaseSync, tareaId: number): TareaCompleta | un
 			contarPreguntasAbiertas(db, tareaId),
 			contarDependenciasPendientes(db, tareaId),
 			consumo.totalConHijas,
+			horasParada,
 		),
 		dependeDe: dependenciasDe(db, tareaId),
 		partes: partes === null ? null : partes.total,
@@ -563,12 +613,16 @@ export function leerTarea(db: DatabaseSync, tareaId: number): TareaCompleta | un
  * que escriben (`tomar_tarea`, `comentar_tarea`, `crear_tarea`, `preguntar`):
  * el agente ve en una línea cómo quedó la tarea sin releerla entera.
  */
-export function itemIndiceDe(db: DatabaseSync, tareaId: number): ItemIndice {
+export function itemIndiceDe(
+	db: DatabaseSync,
+	tareaId: number,
+	horasParada: number = HORAS_PARADA_DEFECTO,
+): ItemIndice {
 	const fila = sentencia(db, `${SELECT_INDICE} WHERE t.id = ?`).get(tareaId);
 	if (fila === undefined) {
 		throw new ErrorDeRegla("tarea_inexistente", `No existe la tarea ${tareaId}.`);
 	}
-	return comoItemIndice(fila);
+	return comoItemIndice(fila, horasParada);
 }
 
 /** Los tres conmutadores de un clic de la lista y del kanban. */
@@ -615,7 +669,11 @@ function patronLike(texto: string): string {
 }
 
 /** Índice ligero, ordenado por columna del kanban y por orden dentro de ella. */
-export function listarTareas(db: DatabaseSync, filtro: FiltroIndice = {}): ItemIndice[] {
+export function listarTareas(
+	db: DatabaseSync,
+	filtro: FiltroIndice = {},
+	horasParada: number = HORAS_PARADA_DEFECTO,
+): ItemIndice[] {
 	const condiciones: string[] = [];
 	const parametros: (string | number)[] = [];
 	if (filtro.estado !== undefined) {
@@ -642,7 +700,7 @@ export function listarTareas(db: DatabaseSync, filtro: FiltroIndice = {}): ItemI
 	const sql = `${SELECT_INDICE}${donde} ORDER BY ${ORDEN_COLUMNAS}, t.orden, t.id`;
 	const items = sentencia(db, sql)
 		.all(...parametros)
-		.map(comoItemIndice);
+		.map((fila) => comoItemIndice(fila, horasParada));
 	return filtro.rapido === undefined ? items : items.filter(PASA_RAPIDO[filtro.rapido]);
 }
 
@@ -668,7 +726,11 @@ const PROYECTO_DEL_TERMINAL = "(SELECT proyecto_id FROM terminales WHERE id = ?)
  * `prepared` porque terminar lo empezado es prioritario sobre empezar algo
  * nuevo.
  */
-export function tareasParaTerminalDesde(db: DatabaseSync, { terminalId, revision }: Desde): ItemIndice[] {
+export function tareasParaTerminalDesde(
+	db: DatabaseSync,
+	{ terminalId, revision }: Desde,
+	horasParada: number = HORAS_PARADA_DEFECTO,
+): ItemIndice[] {
 	const sql = `${SELECT_INDICE}
 		WHERE t.estado IN ('prepared', 'doing')
 			AND t.proyecto_id = ${PROYECTO_DEL_TERMINAL}
@@ -681,7 +743,9 @@ export function tareasParaTerminalDesde(db: DatabaseSync, { terminalId, revision
 					ELSE (t.ejecucion_terminal_id IS NULL OR t.ejecucion_terminal_id = ?)
 			END
 		ORDER BY CASE t.estado WHEN 'doing' THEN 0 ELSE 1 END, t.orden, t.id`;
-	return sentencia(db, sql).all(terminalId, revision, terminalId, terminalId).map(comoItemIndice);
+	return sentencia(db, sql)
+		.all(terminalId, revision, terminalId, terminalId)
+		.map((fila) => comoItemIndice(fila, horasParada));
 }
 
 /**
@@ -727,8 +791,9 @@ const INSERTAR_TAREA = `
 		codigo, proyecto_id, titulo, descripcion, tipo, rama, estado, orden, padre_id, autoejecucion, presupuesto,
 		ejecucion_aprobada, analisis_hecho, analisis_agente_id, analisis_modelo, analisis_terminal_id,
 		ejecucion_agente_id, ejecucion_modelo, ejecucion_terminal_id,
-		en_marcha_terminal_id, creada_por_usuario_id, creada_por_terminal_id, creada, actualizada, estado_desde, revision
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+		en_marcha_terminal_id, en_marcha_desde,
+		creada_por_usuario_id, creada_por_terminal_id, creada, actualizada, estado_desde, revision
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /**
  * Cuántas veces se vuelve a sortear si el código ya está cogido. Con 31^6
@@ -796,6 +861,8 @@ export function insertarTarea(conexion: DatabaseSync, revision: number, nueva: F
 		nueva.ejecucionModelo,
 		nueva.ejecucionTerminalId,
 		nueva.enMarchaTerminalId,
+		// Una hija de trabajo nace ya en marcha: su fase arranca al crearla.
+		nueva.enMarchaTerminalId === null ? null : marca,
 		nueva.creadaPorUsuarioId,
 		nueva.creadaPorTerminalId,
 		marca,
@@ -1101,7 +1168,7 @@ export function moverTareaHumano(db: DatabaseSync, datos: MovimientoHumano): Tar
 		}
 		// Al volver a `doing` nadie la tiene tomada todavía: la marca «en
 		// marcha» la vuelve a poner el agente con `tomar_tarea`.
-		cambiarEstado(conexion, revision, tarea.id, datos.estado, ", en_marcha_terminal_id = NULL");
+		cambiarEstado(conexion, revision, tarea.id, datos.estado, SOLTAR_FASE);
 		// Volver a `backlog` es repensar la tarea: la descripción puede cambiar,
 		// así que el análisis y la aprobación se repiten al salir de nuevo. El
 		// comentario de análisis se queda en el hilo, que no se edita nunca.
@@ -1162,6 +1229,53 @@ export function aprobarEjecucion(db: DatabaseSync, datos: Aprobacion): Tarea {
 			objeto: "tarea",
 			objetoId: tarea.id,
 			objetoNombre: tarea.titulo,
+		});
+		return exigirTarea(conexion, tarea.id);
+	});
+}
+
+export type Liberacion = {
+	tareaId: number;
+	usuarioId: number;
+};
+
+/**
+ * Suelta la fase que un terminal tiene en marcha. Es la salida de una fase
+ * parada: el subagente murió a medias y sin esto la tarea se quedaba tomada
+ * para siempre, sin más remedio que borrarla y perder el hilo.
+ *
+ * No toca el estado ni `estado_desde`: una ejecución liberada sigue en `doing`
+ * y la retoma quien la tome. Queda dicho en el hilo con autor `servidor`,
+ * porque el hilo es lo que lee el agente y lo que explica el salto.
+ */
+export function liberarFase(db: DatabaseSync, datos: Liberacion): Tarea {
+	return escribirContenido(db, (conexion, revision) => {
+		const tarea = exigirTarea(conexion, datos.tareaId);
+		if (tarea.enMarchaTerminalId === null) {
+			throw new ErrorDeRegla("sin_fase_en_marcha", "Esta tarea no tiene ninguna fase en marcha que liberar.");
+		}
+		const fase = faseQueToca(tarea);
+		const terminal = nombreTerminal(conexion, tarea.enMarchaTerminalId) ?? "un terminal que ya no existe";
+		const desde = tarea.enMarchaDesde === null ? "" : ` desde el ${tarea.enMarchaDesde}`;
+		sentencia(conexion, `UPDATE tareas SET actualizada = ?, revision = ?${SOLTAR_FASE} WHERE id = ?`).run(
+			ahora(),
+			revision,
+			tarea.id,
+		);
+		insertarComentario(conexion, revision, {
+			tareaId: tarea.id,
+			tipo: "comentario",
+			autor: AUTOR_SERVIDOR,
+			texto: `Fase liberada por ${autorHumano(conexion, datos.usuarioId)}. La tenía en marcha ${terminal}${desde}.`,
+			preguntaId: null,
+		});
+		registrarActividad(conexion, {
+			actor: { usuarioId: datos.usuarioId },
+			accion: "liberar_fase",
+			objeto: "tarea",
+			objetoId: tarea.id,
+			objetoNombre: tarea.titulo,
+			detalle: `${fase}, ${terminal}`,
 		});
 		return exigirTarea(conexion, tarea.id);
 	});
@@ -1384,12 +1498,14 @@ function tomarAnalisis(
 		throw new ErrorDeRegla("fase_tomada", "Otro terminal es el responsable del análisis de esta tarea.");
 	}
 	const analisisModelo = modeloDeLaFase("analisis", tarea.analisisModelo, modelo);
+	const marca = ahora();
 	sentencia(
 		conexion,
 		`UPDATE tareas
-			SET analisis_modelo = ?, analisis_terminal_id = ?, en_marcha_terminal_id = ?, actualizada = ?, revision = ?
+			SET analisis_modelo = ?, analisis_terminal_id = ?, en_marcha_terminal_id = ?, en_marcha_desde = ?,
+				actualizada = ?, revision = ?
 			WHERE id = ?`,
-	).run(analisisModelo, terminalId, terminalId, ahora(), revision, tarea.id);
+	).run(analisisModelo, terminalId, terminalId, marca, marca, revision, tarea.id);
 }
 
 function tomarEjecucion(
@@ -1403,15 +1519,17 @@ function tomarEjecucion(
 		throw new ErrorDeRegla("fase_tomada", "Otro terminal es el responsable de la ejecución de esta tarea.");
 	}
 	const ejecucionModelo = modeloDeLaFase("ejecucion", tarea.ejecucionModelo, modelo);
+	const marca = ahora();
 	// Retomar una tarea ya en marcha, típicamente tras contestarse una
 	// pregunta: no cambia de columna, solo vuelve a ponerse «en marcha».
 	if (tarea.estado === "doing") {
 		sentencia(
 			conexion,
 			`UPDATE tareas
-				SET ejecucion_modelo = ?, ejecucion_terminal_id = ?, en_marcha_terminal_id = ?, actualizada = ?, revision = ?
+				SET ejecucion_modelo = ?, ejecucion_terminal_id = ?, en_marcha_terminal_id = ?, en_marcha_desde = ?,
+					actualizada = ?, revision = ?
 				WHERE id = ?`,
-		).run(ejecucionModelo, terminalId, terminalId, ahora(), revision, tarea.id);
+		).run(ejecucionModelo, terminalId, terminalId, marca, marca, revision, tarea.id);
 		return;
 	}
 	if (tarea.estado !== "prepared") {
@@ -1440,8 +1558,8 @@ function tomarEjecucion(
 		revision,
 		tarea.id,
 		"doing",
-		", ejecucion_modelo = ?, ejecucion_terminal_id = ?, en_marcha_terminal_id = ?",
-		[ejecucionModelo, terminalId, terminalId],
+		", ejecucion_modelo = ?, ejecucion_terminal_id = ?, en_marcha_terminal_id = ?, en_marcha_desde = ?",
+		[ejecucionModelo, terminalId, terminalId, marca],
 	);
 }
 

@@ -14,7 +14,7 @@ export const NOMBRE = "leer_tarea";
  * más cara en contexto de todas, así que solo se hace cuando se va a trabajar
  * la tarea; para mirar el tablero está `listar_tareas`.
  */
-export function registrarHerramientaLeerTarea(server: McpServer, db: DatabaseSync): void {
+export function registrarHerramientaLeerTarea(server: McpServer, db: DatabaseSync, horasParada: number): void {
 	server.registerTool(
 		NOMBRE,
 		{
@@ -27,7 +27,7 @@ export function registrarHerramientaLeerTarea(server: McpServer, db: DatabaseSyn
 		},
 		async ({ id }) =>
 			conErroresDeRegla(() => {
-				const completa = leerTarea(db, idDeCodigo(db, parsearId(id)));
+				const completa = leerTarea(db, idDeCodigo(db, parsearId(id)), horasParada);
 				if (completa === undefined) {
 					throw new ErrorDeRegla("tarea_inexistente", `No existe la tarea ${id}.`);
 				}

@@ -13,6 +13,7 @@ import {
 	etiqueta,
 	type Miga,
 } from "./componentes.ts";
+import { edad } from "./formatos.ts";
 import {
 	NOMBRE_COLUMNA,
 	NOMBRE_ESTADO,
@@ -54,6 +55,7 @@ const CLASE_MARCA: Record<Marca, string> = {
 	bloqueada: "bloqueada",
 	"sin terminal": "sin-terminal",
 	"en marcha": "en-marcha",
+	parada: "parada",
 	"análisis listo": "analisis-listo",
 	esperando: "esperando",
 	"sobre presupuesto": "sobre-presupuesto",
@@ -76,11 +78,19 @@ export function insigniaColumna(estado: Estado): Html {
 	return etiqueta(NOMBRE_COLUMNA[estado], COLOR_ESTADO[estado], `estado-${estado}`);
 }
 
-/** Etiquetas de las marcas activas de una tarea, en su orden. */
-export function insigniasMarcas(marcas: readonly Marca[]): Html {
-	return html`${marcas.map((marca) =>
-		etiqueta(NOMBRE_MARCA[marca], COLOR_MARCA[marca], `marca-${CLASE_MARCA[marca]}`),
-	)}`;
+/**
+ * Etiquetas de las marcas activas de una tarea, en su orden. La de «en marcha»
+ * lleva detrás cuánto lleva la fase tomada (`en marcha 12 min`), que es lo que
+ * distingue un subagente trabajando de uno que murió hace horas.
+ */
+export function insigniasMarcas(marcas: readonly Marca[], enMarchaDesde: string | null = null): Html {
+	return html`${marcas.map((marca) => {
+		const insignia = etiqueta(NOMBRE_MARCA[marca], COLOR_MARCA[marca], `marca-${CLASE_MARCA[marca]}`);
+		if (marca !== "en marcha" || enMarchaDesde === null) {
+			return insignia;
+		}
+		return html`${insignia}<span class="edad" title="${enMarchaDesde}">${edad(enMarchaDesde)}</span>`;
+	})}`;
 }
 
 /**

@@ -57,6 +57,7 @@ export const NOMBRE_MARCA: Record<Marca, string> = {
 	bloqueada: "Pregunta abierta",
 	"sin terminal": "Sin terminal",
 	"en marcha": "Agente trabajando",
+	parada: "Fase parada",
 	"análisis listo": "Por aprobar",
 	esperando: "Espera a otra tarea",
 	"sobre presupuesto": "Sobre presupuesto",

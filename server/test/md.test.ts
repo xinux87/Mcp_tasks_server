@@ -616,3 +616,35 @@ test("el agente va como primera línea del bloque de la fase y entre paréntesis
 		banco.cerrar();
 	}
 });
+
+test("una fase que lleva demasiado en marcha sale como «parada» en el frontmatter y en el índice", () => {
+	const banco = montar();
+	try {
+		const tarea = crearTareaHumana(banco.db, {
+			titulo: "Exportar el listado",
+			descripcion: "d",
+			usuarioId: banco.ana,
+			analisisModelo: "sonnet",
+			analisisTerminalId: banco.portatil,
+		});
+		moverTareaHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, estado: "prepared" });
+		tomarTarea(banco.db, { tareaId: tarea.id, fase: "analisis", terminalId: banco.portatil });
+
+		// Recién tomada es solo «en marcha»; con el umbral pasado, las dos.
+		assert.match(
+			sinFechas(documentoTarea(leerTarea(banco.db, tarea.id, 6) ?? assert.fail())),
+			/^marcas: \[en marcha\]$/m,
+		);
+
+		const haceTres = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+		banco.db.prepare("UPDATE tareas SET en_marcha_desde = ? WHERE id = ?").run(haceTres, tarea.id);
+		assert.match(
+			sinFechas(documentoTarea(leerTarea(banco.db, tarea.id, 2) ?? assert.fail())),
+			/^marcas: \[en marcha, parada\]$/m,
+		);
+		// El MCP no expone edades: la marca va a secas.
+		assert.match(lineaIndice(itemIndiceDe(banco.db, tarea.id, 2)), / · prepared · en marcha · parada · Exportar /);
+	} finally {
+		banco.cerrar();
+	}
+});

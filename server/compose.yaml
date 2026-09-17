@@ -21,6 +21,8 @@ services:
       - DIRECCIONES
       # Igual: sin valor por defecto. Si está, cada aviso va por POST ahí.
       - AVISOS_URL
+      # Horas que una fase puede llevar en marcha antes de salir como parada.
+      - FASE_PARADA_HORAS=${FASE_PARADA_HORAS:-6}
     volumes:
       # Sin DATOS, el volumen `datos` de Docker; con DATOS=/ruta, esa carpeta
       # del anfitrión (tiene que poder escribirla el uid 1000).

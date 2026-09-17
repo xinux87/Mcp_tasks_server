@@ -1,5 +1,14 @@
 import type { DatabaseSync, StatementSync } from "node:sqlite";
 
+/**
+ * Soltar la fase en marcha. Es el fragmento que va detrás de cualquier `UPDATE`
+ * que la cierre —el comentario que la acaba, la vuelta atrás del humano, la
+ * aprobación de una descomposición, la liberación—, para que las dos columnas
+ * caigan siempre juntas y no puedan divergir. El borrado de un terminal escribe
+ * las mismas dos en `admin.ts`, que no pasa por `cambiarEstado`.
+ */
+export const SOLTAR_FASE = ", en_marcha_terminal_id = NULL, en_marcha_desde = NULL";
+
 /** Valor devuelto por `enTransaccionConRevision`: lo que produjo la función y la nueva revisión. */
 export type ConRevision<T> = {
 	valor: T;

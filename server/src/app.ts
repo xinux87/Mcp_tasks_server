@@ -51,7 +51,7 @@ export type App = {
  */
 export function crearApp({ db, config, enviarAviso }: OpcionesApp): App {
 	const avisar = crearAvisador({ url: config.AVISOS_URL, baseUrl: config.BASE_URL, enviar: enviarAviso });
-	const handler = crearHandlerMcp(db, avisar);
+	const handler = crearHandlerMcp(db, avisar, config.FASE_PARADA_HORAS);
 	const app = createMcpHonoApp({ host: HOST_ESCUCHA, allowedHosts: hostsPermitidos(config) });
 
 	// Comprobación de vida para Docker. Sin autenticación.

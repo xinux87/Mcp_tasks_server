@@ -23,6 +23,7 @@ import {
 	idDeCodigo,
 	idDeCodigoONull,
 	leerTarea,
+	liberarFase,
 	listarTareas,
 	type Marca,
 	moverTareaHumano,
@@ -55,6 +56,7 @@ import {
 } from "../componentes.ts";
 import {
 	duracionLegible,
+	edad,
 	faseLegible,
 	fechaLegible,
 	numeroLegible,
@@ -577,7 +579,7 @@ function filaTarea(
 			${conEstado ? html`<td>${insigniaEstado(item.estado)}</td>` : html``}
 			<td>${enlaceTarea(item.codigo)} ${proyecto === undefined ? html`` : chipProyecto(proyecto)}</td>
 			<td>
-				${esperaPorTi(item.estado, item.marcas)}${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas)}${item.titulo} ${progresoDe(item)}
+				${esperaPorTi(item.estado, item.marcas)}${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas, item.enMarchaDesde)}${item.titulo} ${progresoDe(item)}
 				${
 					funcionalidad === undefined || item.padreCodigo === null
 						? html``
@@ -1128,6 +1130,25 @@ function vueltasAtras(completa: TareaCompleta): Html {
 }
 
 /**
+ * La salida de una fase que se quedó tomada. Solo se pinta cuando hay una, y
+ * cuando además está `parada` dice desde cuándo la tiene el terminal: es lo que
+ * distingue un subagente trabajando de uno que murió hace horas.
+ */
+function liberarLaFase(completa: TareaCompleta): Html {
+	const { tarea } = completa;
+	if (tarea.enMarchaTerminalId === null) {
+		return html``;
+	}
+	const desde = completa.marcas.includes("parada") && tarea.enMarchaDesde !== null ? tarea.enMarchaDesde : null;
+	return html`<form class="caja" method="post" action="/tareas/${formatearId(tarea.codigo)}/liberar">
+			<p class="silencio">
+				La fase queda libre y cualquier terminal puede retomarla. No mueve la tarea de columna.
+			</p>
+			<button type="submit">${desde === null ? "Liberar la fase" : `Liberar la fase, parada desde hace ${edad(desde)}`}</button>
+		</form>`;
+}
+
+/**
  * Editar solo en `backlog`: al salir, la descripción y las asignaciones se
  * congelan.
  */
@@ -1219,7 +1240,7 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 
 	// Terminal, proyecto, conmutador y búsqueda los resuelve el índice; aquí
 	// quedan los que son de esta vista.
-	const items = listarTareas(db, filtroDeIndice(db, filtros)).filter((item) => {
+	const items = listarTareas(db, filtroDeIndice(db, filtros), deps.config.FASE_PARADA_HORAS).filter((item) => {
 		if (esEstado(filtros.estado) && item.estado !== filtros.estado) {
 			return false;
 		}
@@ -1334,7 +1355,7 @@ function paginaNueva(c: Context, deps: DependenciasWeb, valores: ValoresTarea, a
 }
 
 function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: string | null): RespuestaHtml {
-	const completa = leerTarea(deps.db, tareaId);
+	const completa = leerTarea(deps.db, tareaId, deps.config.FASE_PARADA_HORAS);
 	if (completa === undefined) {
 		return paginaNoEncontrada(c, deps, NO_ES_UNA_TAREA);
 	}
@@ -1369,7 +1390,11 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 				<div class="acciones acciones-partes">
 					<a class="boton" href="/tareas/nueva?padre=${id}">Nueva parte</a>
 				</div>
-				${tablero(deps.db, { estado: "", terminal: "", marca: "", padre: id, proyecto: "", rapido: "", q: "" })}
+				${tablero(
+					deps.db,
+					{ estado: "", terminal: "", marca: "", padre: id, proyecto: "", rapido: "", q: "" },
+					deps.config.FASE_PARADA_HORAS,
+				)}
 
 				${actividad}`
 			: html`${descripcion}
@@ -1390,6 +1415,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 				: html`<h2>Consumo</h2>
 					${tablaConsumo(completa.consumo, tarea.presupuesto)}`
 		}
+		${liberarLaFase(completa)}
 		${vueltasAtras(completa)}
 		${detallesEditar(deps.db, tarea, completa.padre, completa.dependeDe)}
 		${detallesBorrar(tarea)}
@@ -1423,7 +1449,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 			// La ficha es global, que el identificador lo es; las migas dicen de qué
 			// proyecto es y llevan a sus tableros.
 			migas: migasDeFicha(deps.db, tarea.proyectoId, id),
-			etiquetas: html`${esperaPorTi(tarea.estado, completa.marcas)}${insigniaEstado(tarea.estado)}${insigniaTipoTarea(tarea.tipo)}${insigniasMarcas(completa.marcas)}`,
+			etiquetas: html`${esperaPorTi(tarea.estado, completa.marcas)}${insigniaEstado(tarea.estado)}${insigniaTipoTarea(tarea.tipo)}${insigniasMarcas(completa.marcas, tarea.enMarchaDesde)}`,
 			// La ficha es una vista de incidencia: en ancho, el panel de la derecha
 			// necesita sitio, y el tablero de una funcionalidad, sus cinco columnas.
 			ancho: "completo",
@@ -1649,6 +1675,21 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 		const formulario = await leerFormulario(c);
 		try {
 			aprobarEjecucion(deps.db, { tareaId: cual.id, usuarioId: usuarioActual(c).id });
+			return c.redirect(vuelta(formulario, cual.codigo), 302);
+		} catch (error) {
+			return paginaDeVuelta(c, deps, formulario, cual, error);
+		}
+	});
+
+	// Suelta la fase que un terminal dejó tomada: la salida de una fase parada.
+	app.post("/tareas/:id/liberar", async (c) => {
+		const cual = tareaDeRuta(deps.db, c);
+		if (cual === null) {
+			return paginaNoEncontrada(c, deps, NO_ES_UNA_TAREA);
+		}
+		const formulario = await leerFormulario(c);
+		try {
+			liberarFase(deps.db, { tareaId: cual.id, usuarioId: usuarioActual(c).id });
 			return c.redirect(vuelta(formulario, cual.codigo), 302);
 		} catch (error) {
 			return paginaDeVuelta(c, deps, formulario, cual, error);

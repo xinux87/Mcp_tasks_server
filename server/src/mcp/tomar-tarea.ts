@@ -14,7 +14,12 @@ export const NOMBRE = "tomar_tarea";
  * el que se va a trabajar queda fijado aquí, para que el autor de los
  * comentarios y el consumo cuenten lo mismo.
  */
-export function registrarHerramientaTomarTarea(server: McpServer, db: DatabaseSync, terminalId: number): void {
+export function registrarHerramientaTomarTarea(
+	server: McpServer,
+	db: DatabaseSync,
+	terminalId: number,
+	horasParada: number,
+): void {
 	server.registerTool(
 		NOMBRE,
 		{
@@ -36,7 +41,7 @@ export function registrarHerramientaTomarTarea(server: McpServer, db: DatabaseSy
 		async ({ id, fase, modelo }) =>
 			conErroresDeRegla(() => {
 				const tarea = tomarTarea(db, { tareaId: idDeCodigo(db, parsearId(id)), fase, terminalId, modelo });
-				return [`tomada: ${fase}`, lineaIndice(itemIndiceDe(db, tarea.id))].join("\n");
+				return [`tomada: ${fase}`, lineaIndice(itemIndiceDe(db, tarea.id, horasParada))].join("\n");
 			}),
 	);
 }
