@@ -41,6 +41,7 @@ import {
 	COLOR_ESTADO,
 	chipProyecto,
 	chipUsuario,
+	duenoDeColumna,
 	edadEnColumna,
 	enlaceFuncionalidad,
 	esperaPorTi,
@@ -636,7 +637,7 @@ function grupoColumna(
 	claves: Claves,
 ): Html {
 	const tabla = tablaLista(db, items, creadorDe, deQuien, claves);
-	const rotulo = rotuloColumna(insigniaColumna(estado), estado, items.length);
+	const rotulo = rotuloColumna(insigniaColumna(estado), items.length);
 	// Las cerradas están archivadas: se ven si se piden, no estorban por defecto.
 	if (estado === "finished") {
 		return html`<section class="grupo">
@@ -648,6 +649,7 @@ function grupoColumna(
 	}
 	return html`<section class="grupo">
 			<h2>${rotulo}</h2>
+			${duenoDeColumna(estado)}
 			${tabla}
 		</section>`;
 }
@@ -693,18 +695,19 @@ function proyectoLegible(db: DatabaseSync, proyectoId: number): Html {
 }
 
 /**
- * El estado de la tarea con cuánto lleva en él. La edad se cuenta desde la
- * pregunta abierta más antigua cuando la tarea está bloqueada, que es lo que
- * hace la lista y el kanban: aquí se compone con lo que ya trae la ficha.
+ * En qué vuelta va la tarea y cuánto lleva donde está: «Iteración 2 · desde
+ * hace 3 h», en texto suave y junto a las etiquetas de la cabecera. La edad se
+ * cuenta desde la pregunta abierta más antigua cuando la tarea está bloqueada,
+ * que es lo que hacen la lista y el tablero.
+ *
+ * Iteración 1 es la primera ejecución: decirlo no aporta nada. Se dice desde la
+ * segunda, que es cuando la tarea ha dado alguna vuelta.
  */
 function estadoLegible(completa: TareaCompleta, iteraciones: number): Html {
 	const { tarea } = completa;
-	// Iteración 1 es la primera ejecución: decirlo no aporta nada. Se dice desde
-	// la segunda, que es cuando la tarea ha dado alguna vuelta.
-	const vuelta = iteraciones > 1 ? html` <span class="silencio">Iteración ${iteraciones}</span>` : html``;
-	const insignia = insigniaEstado(tarea.estado);
+	const vuelta = iteraciones > 1 ? html`Iteración ${iteraciones}` : html``;
 	if (!muestraEdad(tarea.estado)) {
-		return html`${insignia}${vuelta}`;
+		return iteraciones > 1 ? html`<span class="silencio">${vuelta}</span>` : html``;
 	}
 	const abiertas = completa.preguntas.filter((pregunta) => pregunta.respuestaOpcion === null);
 	const edad = edadEnColumna({
@@ -713,7 +716,7 @@ function estadoLegible(completa: TareaCompleta, iteraciones: number): Html {
 		estadoDesde: tarea.estadoDesde,
 		bloqueadaDesde: abiertas.map((pregunta) => pregunta.creada).sort()[0] ?? null,
 	});
-	return html`${insignia} <span class="silencio">desde hace ${edad}</span>${vuelta}`;
+	return html`<span class="silencio">${iteraciones > 1 ? html`${vuelta} · ` : html``}desde hace ${edad}</span>`;
 }
 
 /** El tope de tokens de la tarea, o que no tiene ninguno. */
@@ -805,19 +808,17 @@ function faseConPapel(completa: TareaCompleta, cual: "analisis" | "ejecucion"): 
 }
 
 /**
- * Las propiedades de la tarea, en filas de dos columnas. Una pregunta no
- * enseña ejecución ni autoejecución: enseñarlas haría creer que después del
- * análisis viene otra fase.
+ * Las propiedades de la tarea, en filas de dos columnas. No lleva fila Estado:
+ * el estado, la edad y la iteración ya están en la cabecera, junto al título.
+ * Una pregunta no enseña ejecución ni autoejecución: enseñarlas haría creer que
+ * después del análisis viene otra fase.
  */
-function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe: Creador, iteraciones: number): Html {
+function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe: Creador): Html {
 	const { tarea } = completa;
 	if (tarea.tipo === "funcionalidad") {
 		return propiedadesDeFuncionalidad(db, completa, creadorDe);
 	}
-	const filas: Propiedad[] = [
-		{ nombre: "Estado", valor: estadoLegible(completa, iteraciones) },
-		{ nombre: "Proyecto", valor: proyectoLegible(db, tarea.proyectoId) },
-	];
+	const filas: Propiedad[] = [{ nombre: "Proyecto", valor: proyectoLegible(db, tarea.proyectoId) }];
 	if (tarea.tipo === "pregunta") {
 		filas.push({ nombre: "Tipo", valor: insigniaTipoTarea(tarea.tipo) });
 	}
@@ -846,8 +847,6 @@ function propiedadesDeTarea(db: DatabaseSync, completa: TareaCompleta, creadorDe
 function propiedadesDeFuncionalidad(db: DatabaseSync, completa: TareaCompleta, creadorDe: Creador): Html {
 	const { tarea } = completa;
 	const filas: Propiedad[] = [
-		// Una funcionalidad no se ejecuta: no tiene iteraciones que contar.
-		{ nombre: "Estado", valor: estadoLegible(completa, 1) },
 		{ nombre: "Proyecto", valor: proyectoLegible(db, tarea.proyectoId) },
 		{ nombre: "Tipo", valor: insigniaTipoTarea(tarea.tipo) },
 	];
@@ -1408,7 +1407,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 	// scroll; por debajo cae encima de la descripción. Lleva lo que se consulta
 	// (propiedades y consumo) y lo excepcional, que va plegado.
 	const panel = html`<aside class="panel">
-		${propiedadesDeTarea(deps.db, completa, buscadorDeCreador(deps.db), iteraciones.length + 1)}
+		${propiedadesDeTarea(deps.db, completa, buscadorDeCreador(deps.db))}
 		${
 			tarea.tipo === "funcionalidad"
 				? html``
@@ -1449,7 +1448,10 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 			// La ficha es global, que el identificador lo es; las migas dicen de qué
 			// proyecto es y llevan a sus tableros.
 			migas: migasDeFicha(deps.db, tarea.proyectoId, id),
-			etiquetas: html`${esperaPorTi(tarea.estado, completa.marcas)}${insigniaEstado(tarea.estado)}${insigniaTipoTarea(tarea.tipo)}${insigniasMarcas(completa.marcas, tarea.enMarchaDesde)}`,
+			// Estado, de quién es el turno, el tipo y, en texto suave, en qué vuelta
+			// va y cuánto lleva ahí: lo que antes había que ir a buscar a la fila
+			// Estado de las propiedades.
+			etiquetas: html`${insigniaEstado(tarea.estado)}${esperaPorTi(tarea.estado, completa.marcas)}${insigniaTipoTarea(tarea.tipo)}${insigniasMarcas(completa.marcas, tarea.enMarchaDesde)}${estadoLegible(completa, iteraciones.length + 1)}`,
 			// La ficha es una vista de incidencia: en ancho, el panel de la derecha
 			// necesita sitio, y el tablero de una funcionalidad, sus cinco columnas.
 			ancho: "completo",

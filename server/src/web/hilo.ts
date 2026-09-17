@@ -26,16 +26,22 @@ export type OpcionesComentario = {
 /**
  * Un comentario del hilo: cabecera con el chip de quien escribe, la etiqueta
  * de su tipo, el `P<n>` cuando toca y la fecha; debajo, el cuerpo renderizado.
+ *
+ * Lo que escribe una persona lleva la clase `humano`, que es lo que la separa
+ * del agente sin salirse de la misma columna: el hilo es un chat de trabajo, no
+ * una conversación con burbujas a cada lado. Un `comentario` no lleva etiqueta
+ * de tipo: es lo corriente, y decirlo en cada mensaje era ruido.
  */
 export function tarjetaComentario(
 	comentario: Comentario,
 	colorDe: ColorDe,
 	{ numero = null, extra = html`` }: OpcionesComentario = {},
 ): Html {
-	return html`<article class="comentario">
+	const humano = comentario.autor.startsWith("humano:");
+	return html`<article class="comentario${humano ? " humano" : ""}">
 			<header>
 				${chipAutor(comentario.autor, colorDe)}
-				${insigniaTipo(comentario.tipo)}
+				${comentario.tipo === "comentario" ? html`` : insigniaTipo(comentario.tipo)}
 				${numero === null ? html`` : html`<span>P${numero}</span>`}
 				<span>${fechaLegible(comentario.creado)}</span>
 			</header>
@@ -56,15 +62,17 @@ export function separadorIteracion(numero: number, creado: string): Html {
  * El cuadro de comentar, pegado al último mensaje: el hilo es un chat y esto es
  * la caja de escribir. Un solo botón en todos los estados; en `done` ese botón
  * pide otra iteración y el cuadro lo avisa debajo. En `finished` no hay cuadro:
- * una tarea cerrada es de solo lectura. `volver` es la ruta a la que se vuelve
- * al escribir, que es lo que usa la bandeja para no abrir la ficha.
+ * una tarea cerrada es de solo lectura.
+ *
+ * En ancho se queda pegado al fondo de la ventana mientras se recorre el hilo,
+ * para escribir sin volver abajo. La bandeja no lo usa: allí el pie de cada
+ * resultado es una sola fila, con el campo y los dos botones.
  */
-export function cuadroDeComentar(codigo: string, estado: Estado, volver?: string): Html {
+export function cuadroDeComentar(codigo: string, estado: Estado): Html {
 	if (estado === "finished") {
 		return html``;
 	}
 	return html`<form class="comentar" method="post" action="/tareas/${formatearId(codigo)}/comentar">
-			${volver === undefined ? html`` : html`<input type="hidden" name="volver" value="${volver}">`}
 			<textarea name="texto" rows="3" required aria-label="Mensaje para el agente" placeholder="Escribe al agente…"></textarea>
 			<div class="acciones">
 				<button type="submit" class="principal">Comentar</button>

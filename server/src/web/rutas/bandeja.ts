@@ -7,11 +7,11 @@ import { type Comentario, comentariosDeTarea, preguntasDeTarea, type TipoComenta
 import { listarProyectos, type Proyecto } from "../../db/proyectos.ts";
 import { type ItemIndice, listarTareas } from "../../db/tareas.ts";
 import { formatearId } from "../../md/ids.ts";
-import { buscadorDeColor, chipProyecto, edadEnColumna } from "../componentes.ts";
+import { buscadorDeColor, chipAutor, chipProyecto, edadEnColumna } from "../componentes.ts";
 import { edad } from "../formatos.ts";
 import { ESTADO_AVISO } from "../formulario.ts";
-import { type ColorDe, cuadroDeComentar, tarjetaComentario, tarjetaPreguntaAbierta } from "../hilo.ts";
-import { type Html, insigniaEstado, insigniasMarcas, pagina, type RespuestaHtml } from "../plantilla.ts";
+import { type ColorDe, tarjetaComentario, tarjetaPreguntaAbierta } from "../hilo.ts";
+import { type Html, insigniaEstado, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
 import { navProyectos } from "./proyectos.ts";
 
@@ -44,26 +44,37 @@ function ultimo(db: DatabaseSync, tareaId: number, tipo: TipoComentario): Coment
 }
 
 /**
- * La línea de una tarea: su proyecto, su identificador enlazado, su título y
- * cuánto lleva esperando. En `backlog` la edad en columna no se pinta (ahí no
- * significa nada), pero en la bandeja sí: es justo lo que se está mirando.
+ * La cabecera de un pendiente: su proyecto, su identificador enlazado, su
+ * título, quién escribió lo que hay que atender y cuánto lleva esperando. Va
+ * dentro de la misma tarjeta que el cuerpo, separada por un borde: una línea
+ * suelta encima parecía de otra cosa.
+ *
+ * En `backlog` la edad en columna no se pinta (ahí no significa nada), pero en
+ * la bandeja sí: es justo lo que se está mirando.
  */
-function linea(item: ItemIndice, claves: Claves, cuanto?: Html): Html {
+function cabeceraItem(item: ItemIndice, claves: Claves, quien: Html, cuanto?: Html): Html {
 	const id = formatearId(item.codigo);
 	const proyecto = claves.get(item.proyectoId);
-	return html`<p class="linea-bandeja">
+	return html`<div class="cabecera-item">
 			${proyecto === undefined ? html`` : chipProyecto(proyecto)}
 			<a class="id-tarea" href="/tareas/${id}">${id}</a>
-			${insigniasMarcas(item.marcas, item.enMarchaDesde)}
 			<span class="titulo">${item.titulo}</span>
+			${quien}
 			${cuanto ?? edadEnColumna(item)}
-		</p>`;
+		</div>`;
+}
+
+/** Quién escribió lo último de ese tipo. Sin nada escrito, nadie que enseñar. */
+function autorDe(entorno: Entorno, tareaId: number, tipo: TipoComentario): Html {
+	const cual = ultimo(entorno.db, tareaId, tipo);
+	return cual === undefined ? html`` : chipAutor(cual.autor, entorno.colorDe);
 }
 
 /**
  * Un bloque de la bandeja: el verbo que le toca al humano con su contador, una
  * línea que dice qué es, y lo que haya dentro. El título es lo que hay que
- * hacer, no cómo se llama la columna de la que sale.
+ * hacer, no cómo se llama la columna de la que sale. Cada pendiente es una sola
+ * tarjeta, con su cabecera y su cuerpo dentro.
  */
 function bloque(titulo: string, queEs: string, items: ItemIndice[], pintar: (item: ItemIndice) => Html): Html {
 	return html`<section class="grupo bloque-bandeja">
@@ -72,16 +83,18 @@ function bloque(titulo: string, queEs: string, items: ItemIndice[], pintar: (ite
 			${
 				items.length === 0
 					? html`<p class="silencio">Nada pendiente.</p>`
-					: html`${items.map((item) => html`<article class="asunto">${pintar(item)}</article>`)}`
+					: html`${items.map((item) => html`<article class="item">${pintar(item)}</article>`)}`
 			}
 		</section>`;
 }
 
-/** Una tarea bloqueada: su línea y cada pregunta abierta con su formulario. */
+/** Una tarea bloqueada: su cabecera y cada pregunta abierta con su formulario. */
 function preguntasSinContestar(item: ItemIndice, entorno: Entorno): Html {
 	const abiertas = preguntasDeTarea(entorno.db, item.id).filter((pregunta) => pregunta.respuestaOpcion === null);
-	return html`${linea(item, entorno.claves)}
-		${abiertas.map((pregunta) => tarjetaPreguntaAbierta(item, pregunta, { volver: "/" }))}`;
+	return html`${cabeceraItem(item, entorno.claves, autorDe(entorno, item.id, "pregunta"))}
+		<div class="cuerpo-item">
+			${abiertas.map((pregunta) => tarjetaPreguntaAbierta(item, pregunta, { volver: "/" }))}
+		</div>`;
 }
 
 /** Las partes de una funcionalidad, para revisarlas antes de aprobar la descomposición. */
@@ -102,40 +115,50 @@ function partesDeLaFuncionalidad(item: ItemIndice, entorno: Entorno): Html {
 function porAprobar(item: ItemIndice, entorno: Entorno): Html {
 	const analisis = ultimo(entorno.db, item.id, "analisis");
 	const esFuncionalidad = item.tipo === "funcionalidad";
-	return html`${linea(item, entorno.claves)}
-		${
-			analisis === undefined
-				? html`<p class="silencio">Sin análisis en el hilo.</p>`
-				: tarjetaComentario(analisis, entorno.colorDe)
-		}
-		${esFuncionalidad ? partesDeLaFuncionalidad(item, entorno) : html``}
-		<form method="post" action="/tareas/${formatearId(item.codigo)}/aprobar">
-			<input type="hidden" name="volver" value="/">
-			<button type="submit" class="principal">${esFuncionalidad ? "Aprobar descomposición" : "Aprobar ejecución"}</button>
-		</form>`;
+	return html`${cabeceraItem(item, entorno.claves, autorDe(entorno, item.id, "analisis"))}
+		<div class="cuerpo-item">
+			${
+				analisis === undefined
+					? html`<p class="silencio">Sin análisis en el hilo.</p>`
+					: tarjetaComentario(analisis, entorno.colorDe)
+			}
+			${esFuncionalidad ? partesDeLaFuncionalidad(item, entorno) : html``}
+			<form method="post" action="/tareas/${formatearId(item.codigo)}/aprobar">
+				<input type="hidden" name="volver" value="/">
+				<button type="submit" class="principal">${esFuncionalidad ? "Aprobar descomposición" : "Aprobar ejecución"}</button>
+			</form>
+		</div>`;
 }
 
 /**
- * Una tarea en `done`: su resultado, el botón de finalizar y el cuadro de
- * comentar, que es por donde se pide otra iteración sin abrir la ficha.
+ * Una tarea en `done`: su resultado y, en el pie, las dos salidas que tiene el
+ * humano en una sola fila: escribir qué falta y pedir otra iteración, o
+ * finalizarla. El campo es de una línea porque aquí se pide algo corto; lo
+ * largo se escribe en la ficha, que va enlazada.
  */
 function porRevisar(item: ItemIndice, entorno: Entorno): Html {
 	const resultado = ultimo(entorno.db, item.id, "resultado");
 	const id = formatearId(item.codigo);
-	return html`${linea(item, entorno.claves)}
-		${
-			resultado === undefined
-				? html`<p class="silencio">Sin resultado en el hilo.</p>`
-				: tarjetaComentario(resultado, entorno.colorDe)
-		}
-		${cuadroDeComentar(item.codigo, "done", "/")}
-		<div class="acciones">
-			<form method="post" action="/tareas/${id}/mover">
-				<input type="hidden" name="estado" value="finished">
-				<input type="hidden" name="volver" value="/">
-				<button type="submit" class="principal">Finalizar</button>
-			</form>
-			<a href="/tareas/${id}">Abrir la ficha</a>
+	return html`${cabeceraItem(item, entorno.claves, autorDe(entorno, item.id, "resultado"))}
+		<div class="cuerpo-item">
+			${
+				resultado === undefined
+					? html`<p class="silencio">Sin resultado en el hilo.</p>`
+					: tarjetaComentario(resultado, entorno.colorDe)
+			}
+			<div class="pie-item">
+				<form class="iterar" method="post" action="/tareas/${id}/comentar">
+					<input type="hidden" name="volver" value="/">
+					<input type="text" name="texto" required aria-label="Mensaje para el agente" placeholder="Escribe al agente para pedir otra iteración…">
+					<button type="submit" name="iterar" value="1">Pedir otra iteración</button>
+				</form>
+				<form method="post" action="/tareas/${id}/mover">
+					<input type="hidden" name="estado" value="finished">
+					<input type="hidden" name="volver" value="/">
+					<button type="submit" class="principal">Finalizar</button>
+				</form>
+				<a href="/tareas/${id}">Abrir la ficha</a>
+			</div>
 		</div>`;
 }
 
@@ -167,10 +190,12 @@ export function paginaBandeja(c: Context, deps: DependenciasWeb, aviso: string |
 			porRevisar(item, entorno),
 		)}
 		${bloque("Define", "Tareas que llevan más de siete días sin definir.", bandeja.sinDefinir, (item) =>
-			// En backlog la edad en columna no se pinta sola: aquí es el dato.
-			linea(
+			// Solo la cabecera: aquí no hay nada del agente que atender, y la edad
+			// en columna, que en backlog no se pinta sola, es justo el dato.
+			cabeceraItem(
 				item,
 				entorno.claves,
+				html``,
 				html`<span class="edad" title="${item.estadoDesde}">${edad(item.estadoDesde, ahora)}</span>`,
 			),
 		)}`;

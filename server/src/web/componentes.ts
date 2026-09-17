@@ -6,7 +6,7 @@ import type { TipoComentario } from "../db/hilo.ts";
 import { listarProyectos, type Proyecto } from "../db/proyectos.ts";
 import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
 import { formatearId } from "../md/ids.ts";
-import { abreviar, edad, horasDesde, SIN_DATO } from "./formatos.ts";
+import { abreviar, edad, faseLegible, horasDesde, SIN_DATO } from "./formatos.ts";
 import type { Html } from "./plantilla.ts";
 import { DUENO_COLUMNA, FRASE_DUENO_COLUMNA, NOMBRE_ESTADO } from "./vocabulario.ts";
 
@@ -96,7 +96,25 @@ export function etiqueta(texto: string, color: Color, clase?: string): Html {
  * seleccionar lo mismo.
  */
 export function esperaPorElHumano(estado: Estado, marcas: readonly Marca[]): boolean {
-	return estado === "done" || marcas.includes("bloqueada") || marcas.includes("análisis listo");
+	return verboDeTurno(estado, marcas) !== null;
+}
+
+/**
+ * Qué le toca hacer al humano, dicho con el verbo del bloque de la bandeja:
+ * así la tarjeta dice qué hacer sin descifrar marcas, y el tablero y la bandeja
+ * hablan igual. `null` cuando no espera por él.
+ *
+ * Una pregunta sin contestar gana a un análisis por aprobar: hasta que no se
+ * conteste, el análisis no se puede dar por bueno.
+ */
+export function verboDeTurno(estado: Estado, marcas: readonly Marca[]): string | null {
+	if (marcas.includes("bloqueada")) {
+		return "Contesta";
+	}
+	if (marcas.includes("análisis listo")) {
+		return "Aprueba";
+	}
+	return estado === "done" ? "Revisa" : null;
 }
 
 /**
@@ -105,7 +123,8 @@ export function esperaPorElHumano(estado: Estado, marcas: readonly Marca[]): boo
  * nueve: el turno es su propio color.
  */
 export function esperaPorTi(estado: Estado, marcas: readonly Marca[]): Html {
-	return esperaPorElHumano(estado, marcas) ? html`<span class="insignia turno">Espera por ti</span>` : html``;
+	const verbo = verboDeTurno(estado, marcas);
+	return verbo === null ? html`` : html`<span class="insignia turno">${verbo}</span>`;
 }
 
 /** Los cinco pasos del ciclo, en su orden. */
@@ -171,9 +190,11 @@ function duenoDelPaso(estado: Estado, esActual: boolean, deTurno: boolean): stri
 }
 
 /**
- * El ciclo de la tarea: los cinco pasos con su dueño debajo y, en el que toca,
- * qué pasa ahora. El actual va en `--turno` cuando el turno es del humano y en
- * `--acento` cuando es del agente; los pasados, tachados en texto suave.
+ * El ciclo de la tarea: los cinco pasos como una línea de puntos unidos por un
+ * filete, con el nombre de cada columna debajo y, en el que toca, qué pasa
+ * ahora. El dueño va en el `title` del paso, no en pantalla: es un dato de
+ * apoyo y cinco veces en la misma línea era ruido. El punto actual se pinta en
+ * `--turno` cuando el turno es del humano y en `--acento` cuando es del agente.
  */
 export function pasosDelCiclo(tarea: EnElCiclo): Html {
 	const ahora = quePasaAhora(tarea);
@@ -191,9 +212,11 @@ export function pasosDelCiclo(tarea: EnElCiclo): Html {
 				]
 					.filter((clase) => clase !== "")
 					.join(" ");
-				return html`<li${clases === "" ? html`` : html` class="${clases}"`}${esActual ? raw(' aria-current="step"') : ""}>
+				// Un paso que se salta no es de nadie: no lleva dueño ni en el título.
+				const dueno = omitido ? html`` : html` title="${duenoDelPaso(estado, esActual, ahora.deTurno)}"`;
+				return html`<li${clases === "" ? html`` : html` class="${clases}"`}${dueno}${esActual ? raw(' aria-current="step"') : ""}>
+					<span class="punto"></span>
 					<span class="paso-nombre">${NOMBRE_ESTADO[estado]}</span>
-					${omitido ? html`` : html`<span class="paso-dueno">${duenoDelPaso(estado, esActual, ahora.deTurno)}</span>`}
 					${esActual ? html`<span class="paso-ahora">${ahora.frase}</span>` : html``}
 				</li>`;
 			})}
@@ -242,6 +265,37 @@ export function chipAutor(autor: string, colorDe: (nombre: string) => Color | nu
 	}
 	// Un autor con otra forma no se inventa: se enseña tal cual, en gris.
 	return chipUsuario(autor, null);
+}
+
+/** Lo que hace falta para pintar los agentes de una tarea. Un `ItemIndice` lo cumple. */
+export type ConAgentes = {
+	tipo: TipoTarea;
+	analisisModelo: string | null;
+	analisisTerminal: string | null;
+	ejecucionModelo: string | null;
+	ejecucionTerminal: string | null;
+};
+
+/**
+ * Quién trabaja la tarea, en el pie de la tarjeta: un círculo por fase con la
+ * inicial de su modelo, análisis y ejecución en ese orden. Una fase sin modelo
+ * es un círculo hueco con «?»; el terminal no se lee aquí, va en el `title` y
+ * en la ficha. Una pregunta solo tiene análisis, así que enseña un círculo.
+ */
+export function chipsDeAgentes(tarea: ConAgentes): Html {
+	const fases: readonly [string | null, string | null][] =
+		tarea.tipo === "pregunta"
+			? [[tarea.analisisModelo, tarea.analisisTerminal]]
+			: [
+					[tarea.analisisModelo, tarea.analisisTerminal],
+					[tarea.ejecucionModelo, tarea.ejecucionTerminal],
+				];
+	return html`<span class="agentes">
+			${fases.map(
+				([modelo, terminal]) =>
+					html`<span class="agente${modelo === null ? " vacio" : ""}" title="${faseLegible(modelo, terminal)}">${modelo === null ? "?" : inicial(modelo)}</span>`,
+			)}
+		</span>`;
 }
 
 /** Lo que hace falta para pintar el chip de un proyecto. Un `Proyecto` lo cumple. */
@@ -435,19 +489,27 @@ export function selectorDeColor(titulo: string, elegido: Color | null): Html {
 }
 
 /**
- * El rótulo de una columna: su etiqueta con el nombre de la columna, de quién
- * es el turno mientras la tarea está ahí y cuántas hay. Lo comparten la lista,
- * donde encabeza cada grupo, y el tablero, donde encabeza cada columna. El
- * nombre va una sola vez, dentro de la etiqueta: repetirlo al lado no decía
- * nada más. En `finished` no hay turno de nadie y no se escribe.
+ * El rótulo de una columna: su etiqueta con el nombre de la columna y cuántas
+ * hay. Lo comparten la lista, donde encabeza cada grupo, y el tablero, donde
+ * encabeza cada columna. El nombre va una sola vez, dentro de la etiqueta:
+ * repetirlo al lado no decía nada más.
  *
  * Recibe la etiqueta ya pintada en vez de componerla: `insigniaColumna` vive en
  * `plantilla.ts`, que importa este archivo, y pedirla desde aquí cerraría el
  * círculo entre los dos módulos.
  */
-export function rotuloColumna(insignia: Html, estado: Estado, total: number): Html {
-	const dueno = estado === "finished" ? html`` : html`<span class="dueno">${FRASE_DUENO_COLUMNA[estado]}</span> `;
-	return html`${insignia} ${dueno}<span class="contador">${total}</span>`;
+export function rotuloColumna(insignia: Html, total: number): Html {
+	return html`${insignia} <span class="contador">${total}</span>`;
+}
+
+/**
+ * De quién es el turno mientras la tarea está en esa columna, en una línea de
+ * texto suave debajo del rótulo y no dentro de él: el rótulo dice qué columna
+ * es, y esto qué pasa ahí. En `finished` no es el turno de nadie y no se
+ * escribe nada.
+ */
+export function duenoDeColumna(estado: Estado): Html {
+	return estado === "finished" ? html`` : html`<p class="dueno-columna">${FRASE_DUENO_COLUMNA[estado]}</p>`;
 }
 
 /** Las dos vistas de la sección Tareas: las mismas tareas, miradas de dos maneras. */

@@ -26,6 +26,7 @@ export const CSS = `:root {
 	--acento: #0f766e;
 	--turno: #b45309;
 	--turno-fondo: #fff4e5;
+	--sobre-turno: #ffffff;
 	--peligro: #b91c1c;
 
 	/* Medidas: 4 px en controles, 8 px en tarjetas, 15 rem de barra lateral. */
@@ -49,6 +50,7 @@ export const CSS = `:root {
 		--acento: #34b8ab;
 		--turno: #f59e0b;
 		--turno-fondo: rgba(245, 158, 11, 0.14);
+		--sobre-turno: #1a0d00;
 		--peligro: #f87171;
 	}
 }
@@ -66,6 +68,7 @@ export const CSS = `:root {
 	--acento: #34b8ab;
 	--turno: #f59e0b;
 	--turno-fondo: rgba(245, 158, 11, 0.14);
+	--sobre-turno: #1a0d00;
 	--peligro: #f87171;
 }
 
@@ -496,11 +499,12 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 :root[data-tema="oscuro"] .color-rosa { background: #69314c; color: rgba(255, 255, 255, 0.81); }
 :root[data-tema="oscuro"] .color-rojo { background: #6e3630; color: rgba(255, 255, 255, 0.81); }
 
-/* La señal: lo que espera por el humano. Va después de los nueve colores
-   porque no es uno de ellos, es el único color de turno. */
+/* La señal: lo que espera por el humano, con el verbo de lo que le toca. Va
+   después de los nueve colores porque no es uno de ellos, es el único color de
+   turno, y va en macizo: es lo que hay que ver antes que nada. */
 .insignia.turno {
-	background: var(--turno-fondo);
-	color: var(--turno);
+	background: var(--turno);
+	color: var(--sobre-turno);
 	font-weight: 600;
 }
 
@@ -562,9 +566,10 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 	font-variant-numeric: tabular-nums;
 }
 
-/* De quién es el turno mientras la tarea está en esa columna. Es un dato de
-   apoyo del rótulo: se lee si se busca, no compite con el nombre. */
-.dueno {
+/* De quién es el turno mientras la tarea está en esa columna. Va en su propia
+   línea, debajo del rótulo: se lee si se busca, no compite con el nombre. */
+.dueno-columna {
+	margin: -0.4rem 0 0.6rem;
 	color: var(--texto-suave);
 	font-size: 0.8125rem;
 	font-weight: 400;
@@ -872,11 +877,11 @@ button.enlace:hover {
 	margin-bottom: 1.6rem;
 }
 
+/* El hilo se lee como una conversación, sin cajas: cada mensaje se separa del
+   anterior con una regla fina y nada más. */
 .comentario {
-	padding: 0.8rem 1rem;
-	background: var(--fondo);
-	border: 1px solid var(--borde);
-	border-radius: var(--radio-tarjeta);
+	padding: 0.8rem 0 0;
+	border-top: 1px solid var(--borde);
 }
 
 .comentario > header {
@@ -1094,12 +1099,41 @@ button.enlace:hover {
 	margin-left: auto;
 }
 
-/* La última línea: las fases a la izquierda y los tokens al otro extremo, que
-   es la cifra que dice si la tarea se ha ido de madre. */
+/* La última línea: quién la trabaja a la izquierda y los tokens al otro
+   extremo, que es la cifra que dice si la tarea se ha ido de madre. */
 .tarjeta .pie {
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	gap: 0.4rem;
+}
+
+/* Los agentes de la tarjeta: un círculo por fase con la inicial de su modelo.
+   El nombre entero y su terminal van en el título y en la ficha; aquí lo que
+   hace falta es ver de un vistazo si hay alguien puesto. */
+.agentes {
+	display: inline-flex;
+	gap: 0.2rem;
+}
+
+.agentes .agente {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.25rem;
+	height: 1.25rem;
+	border-radius: 50%;
+	background: var(--fondo-hover);
+	color: var(--texto);
+	font-size: 0.7rem;
+	font-weight: 600;
+}
+
+/* Una fase sin modelo es un círculo hueco: se ve el sitio vacío. */
+.agentes .agente.vacio {
+	background: none;
+	border: 1px dashed var(--borde);
+	color: var(--texto-suave);
+	font-weight: 400;
 }
 
 .tarjeta .pie .tokens {
@@ -1874,80 +1908,144 @@ details.caja[open] > summary {
 
 /* --- el ciclo de la tarea ------------------------------------------------ */
 
-/* Los cinco pasos en fila, cada uno con su nombre y su dueño debajo. Es el
-   primer bloque de la ficha: dónde está la tarea y qué pasa ahora. */
+/* Los cinco pasos como una línea de puntos unidos por un filete, con el nombre
+   de cada columna debajo. Es el primer bloque de la ficha: dónde está la tarea
+   y qué pasa ahora. No son cinco cajas: una caja por paso pesaba más que el
+   dato. */
 .ciclo {
+	position: relative;
 	display: flex;
-	flex-wrap: wrap;
-	gap: 0.35rem;
 	max-width: 78rem;
 	margin: 0 0 1.8rem;
 	padding: 0;
 	list-style: none;
 }
 
+/* El filete va del primer punto al último, no de borde a borde: con cinco
+   pasos iguales, sus centros caen en el 10% y en el 90%. */
+.ciclo::before {
+	content: "";
+	position: absolute;
+	top: 7px;
+	left: 10%;
+	right: 10%;
+	border-top: 1px solid var(--borde);
+}
+
 .ciclo li {
-	flex: 1 1 8rem;
-	padding: 0.45rem 0.7rem;
-	border-radius: var(--radio);
-	border: 1px solid var(--borde);
+	position: relative;
+	flex: 1 1 0;
+	min-width: 0;
+	text-align: center;
 	color: var(--texto-suave);
+}
+
+/* El punto de cada paso, por encima del filete que los une. */
+.punto {
+	position: relative;
+	display: block;
+	width: 16px;
+	height: 16px;
+	margin: 0 auto 0.4rem;
+	border: 1px solid var(--borde);
+	border-radius: 50%;
+	background: var(--fondo);
 }
 
 .paso-nombre {
 	display: block;
 	color: var(--texto);
 	font-weight: 600;
-}
-
-.paso-dueno, .paso-ahora {
-	display: block;
-	font-size: 0.8125rem;
+	font-size: 0.85rem;
 }
 
 /* Lo que ya pasó no se borra, pero deja de pedir atención. */
+.ciclo .pasado .punto {
+	background: var(--texto-suave);
+	border-color: var(--texto-suave);
+}
+
 .ciclo .pasado .paso-nombre {
 	color: var(--texto-suave);
 	font-weight: 400;
-	text-decoration: line-through;
 }
 
 /* Una pregunta no se ejecuta: su paso En curso está ahí para que se vea que se
    salta, no para leerlo. */
 .ciclo .omitido {
-	border-style: dashed;
 	opacity: 0.5;
 }
 
-/* El paso actual, en el color de quien tiene el turno. Es la única vez que el
-   color del turno sale fuera de una etiqueta. */
-.ciclo .turno {
-	background: var(--turno-fondo);
-	border-color: var(--turno);
+.ciclo .omitido .punto {
+	border-style: dashed;
 }
 
-.ciclo .turno .paso-nombre, .ciclo .turno .paso-ahora {
+/* El paso actual, en el color de quien tiene el turno, con un halo que lo
+   separa del resto de la línea. Es la única vez que el color del turno sale
+   fuera de una etiqueta. */
+.ciclo .turno .punto {
+	background: var(--turno);
+	border-color: var(--turno);
+	box-shadow: 0 0 0 4px var(--turno-fondo);
+}
+
+.ciclo .turno .paso-nombre {
 	color: var(--turno);
 }
 
-.ciclo .agente {
-	background: var(--fondo-hover);
+.ciclo .agente .punto {
+	background: var(--acento);
 	border-color: var(--acento);
+	box-shadow: 0 0 0 4px var(--fondo-hover);
 }
 
-.ciclo .agente .paso-nombre, .ciclo .agente .paso-ahora {
+.ciclo .agente .paso-nombre {
 	color: var(--acento);
 }
 
-.ciclo .paso-ahora {
-	margin-top: 0.2rem;
+/* Qué pasa ahora, como píldora debajo del nombre del paso actual. */
+.paso-ahora {
+	display: inline-block;
+	margin-top: 0.3rem;
+	padding: 0.05rem 0.5rem;
+	border-radius: 999px;
+	background: var(--turno-fondo);
+	color: var(--turno);
+	font-size: 0.8125rem;
 	font-weight: 600;
 }
 
-/* En estrecho no caben cinco columnas: los pasos van uno debajo de otro. */
+.ciclo .agente .paso-ahora {
+	background: var(--fondo-hover);
+	color: var(--acento);
+}
+
+/* En estrecho no caben cinco columnas: los pasos van uno debajo de otro, y
+   entonces el filete que los unía en fila no une nada. */
 @media (max-width: 48rem) {
 	.ciclo {
 		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.ciclo::before {
+		display: none;
+	}
+
+	.ciclo li {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+		text-align: left;
+	}
+
+	.punto {
+		margin: 0;
+	}
+
+	.paso-ahora {
+		margin-top: 0;
 	}
 }
 
@@ -1998,22 +2096,70 @@ details.caja[open] > summary {
 	font-size: 0.85rem;
 }
 
-/* Cada asunto: su línea y debajo la tarjeta que toca. Van separados entre sí
-   más que dentro, que es lo que deja leer el bloque de un vistazo. */
-.asunto {
-	margin-bottom: 1.6rem;
+/* Cada pendiente es una sola tarjeta: su cabecera y, debajo, lo que hay que
+   hacer. El filete de la izquierda es el mismo de la tarjeta del tablero: todo
+   lo que hay aquí espera por el humano. */
+.item {
+	display: block;
+	margin-bottom: 1.2rem;
+	border: 1px solid var(--borde);
+	border-left: 3px solid var(--turno);
+	border-radius: var(--radio-tarjeta);
+	background: var(--fondo);
 }
 
-.linea-bandeja {
+.cabecera-item {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: baseline;
 	gap: 0.5rem;
-	margin: 0 0 0.5rem;
+	padding: 0.6rem 0.9rem;
+	border-bottom: 1px solid var(--borde);
 }
 
-.linea-bandeja .titulo {
+/* El título se come el hueco que quede: el chip y la edad se van al otro borde. */
+.cabecera-item .titulo {
+	flex: 1;
+	min-width: 8rem;
 	font-weight: 600;
+}
+
+/* Un bloque sin cuerpo —«Define»— no deja un borde suelto debajo del título. */
+.item > .cabecera-item:last-child {
+	border-bottom: none;
+}
+
+.cuerpo-item {
+	padding: 0.2rem 0.9rem 0.9rem;
+}
+
+/* El primer mensaje del cuerpo ya está separado por el borde de la cabecera. */
+.cuerpo-item > .comentario:first-child {
+	border-top: none;
+}
+
+/* Las dos salidas de un resultado, en una sola fila: pedir otra iteración
+   escribiendo qué falta, o finalizar. */
+.pie-item {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.6rem;
+	margin-top: 0.8rem;
+}
+
+/* El campo se lleva el hueco que quede; los botones, lo suyo. */
+.pie-item .iterar {
+	display: flex;
+	flex: 1;
+	min-width: 16rem;
+	gap: 0.4rem;
+	margin: 0;
+}
+
+.pie-item .iterar input {
+	flex: 1;
+	min-width: 0;
 }
 
 /* El número de la bandeja, pegado a la derecha de su entrada. */
@@ -2088,9 +2234,14 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
 
 /* El humano y el agente escriben en la misma columna: esto es un hilo de
    trabajo, no una conversación con burbujas a cada lado. Lo que los distingue
-   es el chip de quien firma —el del agente lleva su terminal detrás— y un
-   fondo más suave en lo que escribe la persona. */
-.comentario:not(:has(.chip .terminal)) {
+   es el chip de quien firma —el del agente lleva su terminal detrás— y una
+   banda suave en lo que escribe la persona, sangrada a los lados para que
+   sobresalga del texto. */
+.comentario.humano {
+	margin: 0 -16px;
+	padding: 0.8rem 16px;
+	border-top: none;
+	border-radius: var(--radio-tarjeta);
 	background: var(--fondo-lateral);
 }
 
@@ -2099,15 +2250,31 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
 	margin-bottom: 0.8rem;
 }
 
+/* Y se queda pegado al fondo de la ventana mientras se recorre el hilo: en una
+   tarea con veinte mensajes, escribir no obliga a volver abajo. */
 .comentar {
+	position: sticky;
+	bottom: 0;
+	z-index: 2;
 	display: flex;
 	flex-direction: column;
 	gap: 0.6rem;
 	margin: 0 0 1.6rem;
+	padding-top: 0.8rem;
+	border-top: 1px solid var(--borde);
+	background: var(--fondo);
 }
 
 .comentar textarea {
 	width: 100%;
+	border: 1px solid var(--borde);
+}
+
+/* En estrecho la pantalla es toda del hilo: un cuadro fijo se comería media. */
+@media (max-width: 48rem) {
+	.comentar {
+		position: static;
+	}
 }
 
 .comentar .acciones {

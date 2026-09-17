@@ -278,6 +278,10 @@ test("el humano comenta en cualquier estado menos finished", () => {
 		const nota = comentarioHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "y además esto" });
 		assert.equal(nota.autor, "humano:ana");
 		assert.equal(exigirTarea(banco.db, tarea.id).revision, revisionActual(banco.db));
+		assert.equal(
+			codigoDe(() => comentarioHumano(banco.db, { tareaId: tarea.id, usuarioId: banco.ana, texto: "  " })),
+			"comentario_vacio",
+		);
 
 		banco.db.prepare("UPDATE tareas SET estado = 'finished' WHERE id = ?").run(tarea.id);
 		assert.equal(

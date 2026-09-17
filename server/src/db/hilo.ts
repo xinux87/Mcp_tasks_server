@@ -505,6 +505,9 @@ export function comentarioHumano(db: DatabaseSync, datos: ComentarioHumano): Com
 		if (tarea.estado === "finished") {
 			throw new ErrorDeRegla("tarea_archivada", "Una tarea finished está archivada y es de solo lectura.");
 		}
+		if (datos.texto.trim() === "") {
+			throw new ErrorDeRegla("comentario_vacio", "Un comentario tiene que decir algo.");
+		}
 		const iterar = tarea.estado === "done";
 		const comentario = insertarComentario(conexion, revision, {
 			tareaId: tarea.id,

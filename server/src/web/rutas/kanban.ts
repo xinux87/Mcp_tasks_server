@@ -25,7 +25,9 @@ import {
 	accionNuevaTarea,
 	barraProgreso,
 	chipProyecto,
+	chipsDeAgentes,
 	conmutadorVistas,
+	duenoDeColumna,
 	edadEnColumna,
 	enlaceFuncionalidad,
 	esperaPorElHumano,
@@ -34,8 +36,9 @@ import {
 	type Miga,
 	type OpcionesFiltro,
 	rotuloColumna,
+	verboDeTurno,
 } from "../componentes.ts";
-import { abreviar, faseLegible, tokensConPresupuesto } from "../formatos.ts";
+import { abreviar, tokensConPresupuesto } from "../formatos.ts";
 import { campo, ESTADO_AVISO, leerFormulario } from "../formulario.ts";
 import {
 	COLUMNAS,
@@ -261,19 +264,24 @@ export function opcionesProyecto(db: DatabaseSync, seleccionado: string): Opcion
 }
 
 /**
- * Las dos fases: «análisis sonnet@portatil, ejecución opus@portatil», o «sin asignar».
- * Una pregunta solo tiene análisis, así que enseña esa sola.
+ * Las marcas que pueden quedarse con la única etiqueta de la tarjeta, en el
+ * orden en que ganan. La de turno va antes que todas: lo que espera por el
+ * humano manda sobre lo que está pasando.
  */
-function fasesLegibles(item: ItemIndice): string {
-	const analisis = faseLegible(item.analisisModelo, item.analisisTerminal);
-	if (item.tipo === "pregunta") {
-		return `análisis ${analisis}`;
+const MARCA_DE_TARJETA: readonly Marca[] = ["parada", "en marcha", "sin terminal", "esperando", "sobre presupuesto"];
+
+/**
+ * La única etiqueta de marca o turno que lleva una tarjeta: el verbo si le toca
+ * al humano y, si no, la primera marca que tenga. Con cinco etiquetas encima
+ * ninguna se leía; con una se lee de lejos. El tipo de la tarea se pinta aparte:
+ * eso no es una marca.
+ */
+function etiquetaDeTarjeta(item: ItemIndice): Html {
+	if (verboDeTurno(item.estado, item.marcas) !== null) {
+		return esperaPorTi(item.estado, item.marcas);
 	}
-	const ejecucion = faseLegible(item.ejecucionModelo, item.ejecucionTerminal);
-	if (analisis === "sin asignar" && ejecucion === "sin asignar") {
-		return "sin asignar";
-	}
-	return `análisis ${analisis}, ejecución ${ejecucion}`;
+	const marca = MARCA_DE_TARJETA.find((cual) => item.marcas.includes(cual));
+	return marca === undefined ? html`` : insigniasMarcas([marca], item.enMarchaDesde);
 }
 
 /**
@@ -349,9 +357,8 @@ function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
 			<div class="linea">
 				<a class="id-tarea" href="/tareas/${id}">${id}</a>
 				${proyecto === undefined ? html`` : chipProyecto(proyecto)}
-				${esperaPorTi(item.estado, item.marcas)}
+				${etiquetaDeTarjeta(item)}
 				${insigniaTipoDeItem(item)}
-				${insigniasMarcas(item.marcas, item.enMarchaDesde)}
 				${edadEnColumna(item)}
 			</div>
 			<p class="titulo">${item.titulo}</p>
@@ -363,7 +370,7 @@ function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
 			}
 			${dependenciasLegibles(vecindad.dependencias.get(item.id))}
 			<p class="pequeno silencio pie">
-				<span>${fasesLegibles(item)}</span>
+				${chipsDeAgentes(item)}
 				${tokens === "" ? html`` : html`<span class="tokens">${tokens}</span>`}
 			</p>
 		</article>`;
@@ -382,7 +389,8 @@ function columna(estado: Estado, items: ItemIndice[], total: number, vecindad: V
 			? html`<p class="pequeno"><a href="/tareas?estado=finished">ver todas (${total})</a></p>`
 			: html``;
 	return html`<section class="columna">
-			<h2>${rotuloColumna(insigniaColumna(estado), estado, total)}</h2>
+			<h2>${rotuloColumna(insigniaColumna(estado), total)}</h2>
+			${duenoDeColumna(estado)}
 			<div class="tarjetas" data-estado="${estado}">${items.map((item) => tarjeta(item, vecindad))}</div>
 			${pie}
 		</section>`;

@@ -23,7 +23,7 @@ import {
 	tomarTarea,
 } from "../src/db/tareas.ts";
 import { formatearId } from "../src/md/ids.ts";
-import { type ConEdad, edadEnColumna } from "../src/web/componentes.ts";
+import { type ConEdad, edadEnColumna, esperaPorTi } from "../src/web/componentes.ts";
 import { edad, tokensAbreviados } from "../src/web/formatos.ts";
 import { tarjetaPreguntaAbierta } from "../src/web/hilo.ts";
 import { renderMarkdown } from "../src/web/markdown.ts";
@@ -101,11 +101,12 @@ async function entrar(montaje: Montaje): Promise<string> {
 
 /**
  * El trozo de la lista que corresponde a un grupo de estado. Se busca por el
- * rótulo de la columna, que es la etiqueta del estado, el título y el contador.
+ * rótulo de la columna, que es la etiqueta del estado y el contador; el dueño
+ * va en su propia línea, debajo.
  */
 function grupo(cuerpo: string, titulo: string): string {
 	const trozos = cuerpo.split('<section class="grupo">');
-	const encontrado = trozos.find((trozo) => trozo.includes(`${titulo}</span> <span class="dueno"`));
+	const encontrado = trozos.find((trozo) => trozo.includes(`${titulo}</span> <span class="contador"`));
 	assert.ok(encontrado !== undefined, `no aparece el grupo «${titulo}»`);
 	return encontrado;
 }
@@ -193,11 +194,13 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		const lista = await pedir(montaje, "/tareas", { cookie });
 		assert.equal(lista.status, 200);
 		const cuerpoLista = await lista.text();
-		// El grupo se encabeza con la etiqueta del estado, el título y el contador.
+		// El grupo se encabeza con la etiqueta del estado y el contador, y debajo,
+		// en su propia línea, de quién es el turno mientras la tarea está ahí.
 		assert.match(
 			cuerpoLista,
-			/<span class="insignia estado-backlog color-gris">Por definir<\/span> <span class="dueno">la defines tú<\/span> <span class="contador">1<\/span>/,
+			/<span class="insignia estado-backlog color-gris">Por definir<\/span> <span class="contador">1<\/span>/,
 		);
+		assert.match(cuerpoLista, /<p class="dueno-columna">la defines tú<\/p>/);
 		const backlog = grupo(cuerpoLista, "Por definir");
 		assert.ok(backlog.includes(id), "la tarea sale en la columna de por definir");
 		// «Creada por» enseña el chip de quien la creó, con su color.
@@ -227,8 +230,9 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		assert.match(cuerpoFicha, /<nav class="migas"[^>]*>\s*<a href="\/p\/DEFAULT\/tareas\/kanban">DEFAULT<\/a>/);
 		assert.match(cuerpoFicha, /<a href="\/p\/DEFAULT\/tareas">Tareas<\/a>/);
 		assert.match(cuerpoFicha, new RegExp(`<span>${id}</span>`));
-		// Las propiedades, y solo la transición hacia delante que toca.
-		assert.match(cuerpoFicha, /<dt>Estado<\/dt>/);
+		// Las propiedades, y solo la transición hacia delante que toca. El estado
+		// no es una de ellas: va en la cabecera, con la edad y la iteración.
+		assert.doesNotMatch(cuerpoFicha, /<dt>Estado<\/dt>/);
 		assert.match(cuerpoFicha, /<dt>Autoejecución<\/dt>\s*<dd>activada<\/dd>/);
 		assert.match(cuerpoFicha, /<dt>Creada<\/dt>/);
 		assert.match(cuerpoFicha, /Pasar a preparadas/);
@@ -340,7 +344,10 @@ test("mover una tarea: a prepared y de vuelta a backlog, que exige nota", async 
 		const cuerpo = await vuelta.text();
 		assert.match(cuerpo, /<span class="insignia estado-backlog color-gris">Por definir<\/span>/);
 		assert.match(cuerpo, /Falta decidir el formato\./);
-		assert.match(cuerpo, /class="insignia tipo-comentario color-gris"/);
+		// Un comentario no lleva etiqueta de tipo: es lo corriente del hilo, y
+		// decirlo en cada mensaje era ruido. Lo que lo firma es el chip del autor.
+		assert.doesNotMatch(cuerpo, /tipo-comentario/);
+		assert.match(cuerpo, /<article class="comentario humano">/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -483,13 +490,13 @@ test("comentar una tarea hecha pidiendo otra iteración la devuelve a En curso",
 		assert.doesNotMatch(cuerpo, /Comentar devuelve la tarea al agente/);
 
 		// La vuelta parte el hilo: el separador abre la iteración 2 justo delante
-		// del comentario que la pidió, y las propiedades la cuentan.
+		// del comentario que la pidió, y la cabecera la cuenta.
 		assert.match(cuerpo, /<div class="iteracion"><span>Iteración 2 · /);
 		assert.ok(
 			cuerpo.indexOf('<div class="iteracion">') < cuerpo.indexOf("Falta el separador."),
 			"el separador no va antes del comentario que pidió la vuelta",
 		);
-		assert.match(cuerpo, /<span class="silencio">Iteración 2<\/span>/);
+		assert.match(cuerpo, /<span class="silencio">Iteración 2 · desde hace /);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -1365,12 +1372,10 @@ test("la lista y el kanban enseñan la edad en columna, y la ficha desde cuándo
 		);
 		assert.match(await (await pedir(montaje, "/tareas/kanban", { cookie })).text(), /<span class="edad" title/);
 
-		// En la ficha va detrás del estado, en texto suave.
+		// En la ficha va en la cabecera, detrás de las etiquetas y en texto suave.
 		const ficha = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
-		assert.match(
-			ficha,
-			/estado-prepared color-azul">Preparada<\/span> <span class="silencio">desde hace <span class="edad"/,
-		);
+		assert.match(ficha, /<span class="silencio">desde hace <span class="edad"/);
+		assert.match(ficha, /<div class="etiquetas">[\s\S]*?estado-prepared color-azul">Preparada<\/span>/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -1827,8 +1832,9 @@ test("la ficha enseña el ciclo con el paso actual, su dueño y qué pasa ahora"
 		moverTareaHumano(montaje.db, { tareaId: estudiando.id, usuarioId: 1, estado: "prepared" });
 		const enAnalisis = await (await pedir(montaje, `/tareas/${formatearId(estudiando.codigo)}`, { cookie })).text();
 		const preparada = paso(enAnalisis, "Preparada");
-		assert.match(preparada, / class="agente" aria-current="step"/);
-		assert.match(preparada, /<span class="paso-dueno">el agente<\/span>/);
+		assert.match(preparada, / class="agente" title="el agente" aria-current="step"/);
+		// Cada paso lleva su punto; el dueño va en el título, no en pantalla.
+		assert.match(preparada, /<span class="punto"><\/span>/);
 		assert.match(preparada, /El agente de análisis la está estudiando/);
 		// Por definir ya pasó; En curso todavía no, así que no dice nada.
 		assert.match(paso(enAnalisis, "Por definir"), / class="pasado"/);
@@ -1848,13 +1854,13 @@ test("la ficha enseña el ciclo con el paso actual, su dueño y qué pasa ahora"
 			recomendacion: "Punto y coma",
 		});
 		const bloqueada = await (await pedir(montaje, `/tareas/${formatearId(estudiando.codigo)}`, { cookie })).text();
-		assert.match(paso(bloqueada, "Preparada"), / class="turno" aria-current="step"/);
+		assert.match(paso(bloqueada, "Preparada"), / class="turno" title="tú" aria-current="step"/);
 		assert.match(paso(bloqueada, "Preparada"), /Espera tu respuesta a P1/);
 		// El paso actual dice de quién es el turno de verdad, no de quién es la
 		// columna: está en la del agente y espera por el humano.
-		assert.match(paso(bloqueada, "Preparada"), /<span class="paso-dueno">tú<\/span>/);
+		assert.match(paso(bloqueada, "Preparada"), / title="tú"/);
 		// Los demás siguen diciendo el dueño de su columna.
-		assert.match(paso(bloqueada, "En curso"), /<span class="paso-dueno">el agente<\/span>/);
+		assert.match(paso(bloqueada, "En curso"), / title="el agente"/);
 
 		// Hecha: el resultado espera por el humano.
 		const hecha = crearTareaHumana(montaje.db, { titulo: "Subir el informe", descripcion: ".", usuarioId: 1 });
@@ -1864,7 +1870,7 @@ test("la ficha enseña el ciclo con el paso actual, su dueño y qué pasa ahora"
 		tomarTarea(montaje.db, { tareaId: hecha.id, fase: "ejecucion", terminalId: 1, modelo: "opus" });
 		comentarResultado(montaje.db, { tareaId: hecha.id, terminalId: 1, texto: "Hecho. Commit: a1b2c3d" });
 		const revisar = await (await pedir(montaje, `/tareas/${formatearId(hecha.codigo)}`, { cookie })).text();
-		assert.match(paso(revisar, "Hecha"), / class="turno" aria-current="step"/);
+		assert.match(paso(revisar, "Hecha"), / class="turno" title="tú" aria-current="step"/);
 		assert.match(paso(revisar, "Hecha"), /Revisa el resultado/);
 
 		// Una pregunta no se ejecuta: su paso En curso se salta y no tiene dueño.
@@ -1877,13 +1883,30 @@ test("la ficha enseña el ciclo con el paso actual, su dueño y qué pasa ahora"
 		const suya = await (await pedir(montaje, `/tareas/${formatearId(duda.codigo)}`, { cookie })).text();
 		const saltado = paso(suya, "En curso");
 		assert.match(saltado, / class="omitido"/);
-		assert.doesNotMatch(saltado, /paso-dueno/);
+		assert.doesNotMatch(saltado, /title=/);
 	} finally {
 		await montaje.cerrar();
 	}
 });
 
-test("«Espera por ti» sale en la lista, el tablero y la ficha, y solo donde toca", async () => {
+test("la etiqueta de turno dice el verbo según lo que le toque al humano", () => {
+	// Ninguna marca y en curso: no espera por nadie.
+	assert.equal(String(esperaPorTi("doing", [])), "");
+	// Una pregunta sin contestar se contesta; un análisis hecho se aprueba; un
+	// resultado se revisa. Y si coinciden las dos primeras, manda contestar: sin
+	// respuesta no hay análisis que aprobar.
+	assert.match(String(esperaPorTi("prepared", ["bloqueada"])), /<span class="insignia turno">Contesta<\/span>/);
+	assert.match(String(esperaPorTi("prepared", ["análisis listo"])), /<span class="insignia turno">Aprueba<\/span>/);
+	assert.match(String(esperaPorTi("done", [])), /<span class="insignia turno">Revisa<\/span>/);
+	assert.match(
+		String(esperaPorTi("prepared", ["bloqueada", "análisis listo"])),
+		/<span class="insignia turno">Contesta<\/span>/,
+	);
+	// Por definir no la lleva: la columna entera es del humano.
+	assert.equal(String(esperaPorTi("backlog", [])), "");
+});
+
+test("la etiqueta de turno sale en la lista, el tablero y la ficha, y solo donde toca", async () => {
 	const montaje = montar();
 	try {
 		const cookie = await entrar(montaje);
@@ -1906,7 +1929,7 @@ test("«Espera por ti» sale en la lista, el tablero y la ficha, y solo donde to
 		// Por definir no lleva la señal: la tarea todavía no bloquea a nadie.
 		crearTareaHumana(montaje.db, { titulo: "Idea suelta", descripcion: ".", usuarioId: 1 });
 
-		const señal = '<span class="insignia turno">Espera por ti</span>';
+		const señal = '<span class="insignia turno">Revisa</span>';
 		for (const ruta of ["/tareas", "/tareas/kanban"]) {
 			const cuerpo = await (await pedir(montaje, ruta, { cookie })).text();
 			assert.equal(cuerpo.split(señal).length - 1, 1, `${ruta}: solo la hecha espera por el humano`);

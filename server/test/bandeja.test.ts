@@ -200,9 +200,12 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 		assert.match(preguntas, /¿Qué separador usamos\?/);
 		assert.match(preguntas, new RegExp(`action="/tareas/${formatearId(tareas.bloqueada.codigo)}/responder/P1"`));
 		assert.match(preguntas, /<input type="hidden" name="volver" value="\/">/);
-		// El chip del proyecto va en la línea de cada tarea, con su color: la
-		// bandeja los cruza.
+		// Cada pendiente es una sola tarjeta con su cabecera: chip de proyecto,
+		// identificador, título, quién escribió lo que hay que atender y la edad.
+		assert.match(preguntas, /<article class="item">\s*<div class="cabecera-item">/);
+		assert.doesNotMatch(cuerpo, /linea-bandeja/);
 		assert.match(preguntas, /<span class="insignia proyecto color-azul">DEFAULT<\/span>/);
+		assert.match(preguntas, /<span class="chip color-gris"><span class="inicial">S<\/span>sonnet/);
 
 		const aprobar = bloque(cuerpo, "Aprueba");
 		assert.match(aprobar, /Plan: una cola\./);
@@ -216,15 +219,15 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 		const revisar = bloque(cuerpo, "Revisa");
 		assert.match(revisar, /Hecho\. Commit: a1b2c3d/);
 		assert.match(revisar, /Finalizar/);
-		// El cuadro de comentar, con su vuelta a la bandeja: otra iteración se
-		// pide desde aquí, sin abrir la ficha.
+		// El pie es una sola fila: escribir qué falta y pedir otra iteración, o
+		// finalizar. Se hace desde aquí, sin abrir la ficha.
 		assert.match(
 			revisar,
-			new RegExp(`<form class="comentar" method="post" action="/tareas/${formatearId(tareas.hecha.codigo)}/comentar">`),
+			new RegExp(`<form class="iterar" method="post" action="/tareas/${formatearId(tareas.hecha.codigo)}/comentar">`),
 		);
 		assert.match(revisar, /<input type="hidden" name="volver" value="\/">/);
-		assert.match(revisar, /<p class="silencio">Comentar devuelve la tarea al agente para otra iteración<\/p>/);
-		assert.doesNotMatch(revisar, /name="iterar"/);
+		assert.match(revisar, /<input type="text" name="texto" required[^>]*placeholder="Escribe al agente/);
+		assert.match(revisar, /<button type="submit" name="iterar" value="1">Pedir otra iteración<\/button>/);
 
 		const backlog = bloque(cuerpo, "Define");
 		assert.match(backlog, /Repensar el cobro/);

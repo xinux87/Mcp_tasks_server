@@ -8,7 +8,7 @@ import { crearTerminalConToken } from "../src/auth/tokens.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
 import { registrarConsumo } from "../src/db/consumo.ts";
-import { comentarAnalisis, comentarResultado } from "../src/db/hilo.ts";
+import { comentarAnalisis, comentarResultado, preguntar } from "../src/db/hilo.ts";
 import { crearProyecto } from "../src/db/proyectos.ts";
 import {
 	buscarTarea,
@@ -135,18 +135,21 @@ test("el kanban pinta las cinco columnas con sus tarjetas", async () => {
 		// El cliente necesita saber qué vista es y de qué revisión parte.
 		assert.match(cuerpo, /data-vista="kanban"/);
 		assert.match(cuerpo, /<body data-vista="kanban" data-revision="\d+">/);
-		assert.match(cuerpo, /sin asignar/);
+		// Sin modelo puesto, el agente es un círculo hueco que lo dice en su título.
+		assert.match(cuerpo, /<span class="agente vacio" title="sin asignar">\?<\/span>/);
 		assert.match(cuerpo, /<script type="module" src="\/static\/app\.js"><\/script>/);
 		// Cabecera de página con su acción, y el tablero a todo lo ancho.
 		assert.match(cuerpo, /<div class="dentro dentro-completo">/);
 		assert.match(cuerpo, /<header class="cabecera-pagina">[\s\S]*?<h1>Tareas<\/h1>/);
 		// El alta lleva al proyecto que se está mirando, que sin cookie es el principal.
 		assert.match(cuerpo, /<a class="boton principal" href="\/p\/DEFAULT\/tareas\/nueva">Nueva tarea<\/a>/);
-		// Cada columna se encabeza con la etiqueta de su estado y el contador.
+		// Cada columna se encabeza con la etiqueta de su estado y el contador, y
+		// debajo, en su propia línea, de quién es el turno mientras está ahí.
 		assert.match(
 			cuerpo,
-			/<span class="insignia estado-backlog color-gris">Por definir<\/span> <span class="dueno">la defines tú<\/span> <span class="contador">2<\/span>/,
+			/<span class="insignia estado-backlog color-gris">Por definir<\/span> <span class="contador">2<\/span>/,
 		);
+		assert.match(cuerpo, /<p class="dueno-columna">la defines tú<\/p>/);
 		// La fila de filtros no lleva desplegables: el proyecto lo acota la URL, el
 		// estado es la columna y el resto no se usaba.
 		assert.match(cuerpo, /<form class="filtros" method="get" action="\/tareas\/kanban">/);
@@ -873,6 +876,63 @@ test("la tarjeta enseña los tokens sobre su presupuesto y avisa al pasarse", as
 		// Y se puede filtrar por la marca, como por cualquier otra.
 		const filtrado = await (await pedir(montaje, "/tareas/kanban?marca=sobre+presupuesto", { cookie })).text();
 		assert.match(filtrado, new RegExp(`data-id="${idFila(montaje, 1)}"`));
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("una tarjeta lleva una etiqueta como máximo, y sus agentes como chips", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const { valor } = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com");
+		const terminalId = valor.terminal.id;
+
+		// Bloqueada y en marcha a la vez: dos marcas y el turno del humano encima.
+		const tarea = crearTareaHumana(montaje.db, {
+			titulo: "Exportar el listado a CSV",
+			descripcion: "Hoy lo copian a mano.",
+			usuarioId: 1,
+		});
+		moverTareaHumano(montaje.db, { tareaId: tarea.id, usuarioId: 1, estado: "prepared" });
+		tomarTarea(montaje.db, { tareaId: tarea.id, fase: "analisis", terminalId, modelo: "sonnet" });
+		preguntar(montaje.db, {
+			tareaId: tarea.id,
+			terminalId,
+			pregunta: "¿Qué separador usamos?",
+			porQueImporta: "La hoja de cálculo está en español.",
+			opciones: [
+				{ texto: "Punto y coma", consecuencia: "Se abre directamente." },
+				{ texto: "No hacer nada", consecuencia: "Siguen copiando a mano." },
+			],
+			recomendacion: "Punto y coma",
+		});
+
+		const cuerpo = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
+		const id = formatearId(tarea.codigo);
+		const tarjeta = cuerpo.slice(cuerpo.indexOf(`data-id="${id}"`), cuerpo.indexOf("</article>", cuerpo.indexOf(id)));
+
+		// Una sola etiqueta de marca o turno, y la que manda es la del turno: lo que
+		// espera por el humano gana a lo que está pasando. El chip del proyecto no
+		// cuenta: eso no es una marca.
+		assert.equal(
+			(tarjeta.match(/class="insignia (?:turno|marca-)/g) ?? []).length,
+			1,
+			"la tarjeta lleva más de una etiqueta de marca o turno",
+		);
+		assert.match(tarjeta, /<span class="insignia turno">Contesta<\/span>/);
+		assert.ok(!tarjeta.includes("marca-en-marcha"), "la marca de agente trabajando no se pinta con el turno encima");
+		// Con el identificador a un lado y la edad al otro.
+		assert.match(tarjeta, new RegExp(`<a class="id-tarea" href="/tareas/${id}">${id}</a>`));
+		assert.match(tarjeta, /<span class="edad" title="[^"]+">0 min<\/span>/);
+
+		// Los agentes van como chips de inicial, con su modelo y su terminal en el
+		// título; el terminal ya no se lee en la tarjeta.
+		const agentes = tarjeta.match(/<span class="agentes">[\s\S]*?<\/span>\s*<\/span>/);
+		assert.ok(agentes !== null, "la tarjeta no lleva los agentes");
+		assert.match(agentes[0], /<span class="agente" title="sonnet@portatil-ana">S<\/span>/);
+		assert.match(agentes[0], /<span class="agente vacio" title="sin asignar">\?<\/span>/);
+		assert.equal((agentes[0].match(/class="agente[ "]/g) ?? []).length, 2, "son dos fases, dos chips");
 	} finally {
 		await montaje.cerrar();
 	}
