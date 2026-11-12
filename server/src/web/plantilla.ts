@@ -303,13 +303,13 @@ function selectorProyecto(proyectos: readonly Proyecto[], proyecto: Proyecto | u
 	const ruta = rutaDeVista(vista);
 	return html`<form class="selector-proyecto" method="get" action="/ir">
 			<label class="solo-lectores" for="ir-proyecto">Proyecto</label>
-			<select id="ir-proyecto" name="destino">
+			<span class="espacio"><select id="ir-proyecto" name="destino">
 				${proyectos.map(
 					(cual) =>
 						html`<option value="/p/${cual.clave}${ruta.acotada}"${cual.id === proyecto?.id ? raw(" selected") : ""}>${cual.clave} — ${cual.nombre}</option>`,
 				)}
 				<option value="${ruta.cruzada}"${proyecto === undefined ? raw(" selected") : ""}>Todos los proyectos</option>
-			</select>
+			</select></span>
 			<button type="submit" class="pequeno">Ir</button>
 		</form>`;
 }

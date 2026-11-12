@@ -17,28 +17,55 @@
 export const CSS = `:root {
 	color-scheme: light;
 
-	/* Los tokens de la tabla de CLAUDE.md. Nada más define color. En claro el
-	   negro es la tinta y los dos vivos se oscurecen donde son texto: el verde
-	   chillón sobre papel no llega a 4,5:1. */
+	/* Los tokens de CLAUDE.md, en tres escalas: superficies, tinta y líneas,
+	   más la señal con sus tintes. Nada más define color. En claro el negro es
+	   la tinta y los dos vivos se oscurecen donde son texto: el verde chillón
+	   sobre papel no llega a 4,5:1. La página es el papel; la barra y las
+	   columnas, el lienzo; las tarjetas, blancas encima. */
 	--fondo: #fbfbf6;
 	--fondo-lateral: #f0f2ea;
-	--fondo-hover: rgba(13, 15, 12, 0.06);
+	--superficie: #ffffff;
+	--hueco: #f4f5ef;
+	--campo: #f2f3ec;
+	--fondo-hover: rgba(13, 15, 12, 0.05);
+	--fondo-hover-2: rgba(13, 15, 12, 0.09);
 	--texto: #0d0f0c;
 	--texto-suave: #5c6357;
-	--borde: #d5d9cf;
+	--texto-terciario: #858b80;
+	--borde: #e2e5db;
+	--borde-fuerte: #d3d7cc;
+	--borde-suave: #ebede5;
 	--acento: #39f26f;
 	--acento-texto: #0a7d37;
+	--acento-tinte: #dcfbe5;
 	--sobre-acento: #0d0f0c;
 	--turno: #c24e00;
 	--turno-fondo: #ffe8d6;
 	--sobre-turno: #fbfbf6;
 	--peligro: #c92626;
+	--peligro-tinte: #fde5e3;
 
-	/* Medidas: 4 px en controles, 8 px en tarjetas, 15 rem de barra lateral. */
-	--radio: 4px;
-	--radio-tarjeta: 8px;
+	/* Sombras en vez de bordes: un anillo de 1 px del color de línea y, según
+	   cuánto se levanta la pieza, una sombra suave en capas. */
+	--sombra-filete: 0 0 0 1px var(--borde);
+	--sombra-boton: 0 0 0 1px var(--borde-fuerte), 0 1px 2px rgba(13, 15, 12, 0.05);
+	--sombra-tarjeta: 0 0 0 1px var(--borde), 0 1px 2px rgba(13, 15, 12, 0.04), 0 4px 12px rgba(13, 15, 12, 0.04);
+	--sombra-elevada: 0 0 0 1px var(--borde), 0 2px 4px rgba(13, 15, 12, 0.05), 0 8px 20px rgba(13, 15, 12, 0.07);
+	--sombra-flotante: 0 0 0 1px var(--borde), 0 6px 12px rgba(13, 15, 12, 0.06), 0 24px 48px rgba(13, 15, 12, 0.14);
+
+	/* Medidas: chip, control, tarjeta y ventana; 15 rem de barra lateral. */
+	--radio-chip: 6px;
+	--radio: 8px;
+	--radio-tarjeta: 10px;
+	--radio-ventana: 14px;
 	--lateral: 15rem;
 	--ancho-contenido: 64rem;
+
+	/* Movimiento: salida rápida y frenada larga, de 100 a 200 ms. */
+	--suave: cubic-bezier(0.23, 1, 0.32, 1);
+	--suave-enlace: cubic-bezier(0.16, 1, 0.3, 1);
+
+	--mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 /* Sin elegir tema se sigue al sistema; con «claro» puesto, no. */
@@ -47,18 +74,32 @@ export const CSS = `:root {
 		color-scheme: dark;
 
 		--fondo: #0d0f0c;
-		--fondo-lateral: #161a15;
-		--fondo-hover: rgba(255, 255, 255, 0.07);
+		--fondo-lateral: #131611;
+		--superficie: #1a1d18;
+		--hueco: #151813;
+		--campo: #1f231d;
+		--fondo-hover: rgba(241, 243, 236, 0.05);
+		--fondo-hover-2: rgba(241, 243, 236, 0.09);
 		--texto: #f1f3ec;
 		--texto-suave: #a9b0a4;
-		--borde: #2a2f28;
+		--texto-terciario: #767d71;
+		--borde: #262a24;
+		--borde-fuerte: #343a32;
+		--borde-suave: #1e221c;
 		--acento: #39f26f;
 		--acento-texto: #39f26f;
+		--acento-tinte: rgba(57, 242, 111, 0.14);
 		--sobre-acento: #0d0f0c;
 		--turno: #ff7a1a;
 		--turno-fondo: rgba(255, 122, 26, 0.16);
 		--sobre-turno: #0d0f0c;
 		--peligro: #ff5c5c;
+		--peligro-tinte: rgba(255, 92, 92, 0.14);
+
+		--sombra-boton: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 1px 2px rgba(0, 0, 0, 0.3);
+		--sombra-tarjeta: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.25), 0 2px 6px rgba(0, 0, 0, 0.25);
+		--sombra-elevada: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 2px 10px rgba(0, 0, 0, 0.35);
+		--sombra-flotante: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 8px 28px rgba(0, 0, 0, 0.5);
 	}
 }
 
@@ -67,18 +108,32 @@ export const CSS = `:root {
 	color-scheme: dark;
 
 	--fondo: #0d0f0c;
-	--fondo-lateral: #161a15;
-	--fondo-hover: rgba(255, 255, 255, 0.07);
+	--fondo-lateral: #131611;
+	--superficie: #1a1d18;
+	--hueco: #151813;
+	--campo: #1f231d;
+	--fondo-hover: rgba(241, 243, 236, 0.05);
+	--fondo-hover-2: rgba(241, 243, 236, 0.09);
 	--texto: #f1f3ec;
 	--texto-suave: #a9b0a4;
-	--borde: #2a2f28;
+	--texto-terciario: #767d71;
+	--borde: #262a24;
+	--borde-fuerte: #343a32;
+	--borde-suave: #1e221c;
 	--acento: #39f26f;
 	--acento-texto: #39f26f;
+	--acento-tinte: rgba(57, 242, 111, 0.14);
 	--sobre-acento: #0d0f0c;
 	--turno: #ff7a1a;
 	--turno-fondo: rgba(255, 122, 26, 0.16);
 	--sobre-turno: #0d0f0c;
 	--peligro: #ff5c5c;
+	--peligro-tinte: rgba(255, 92, 92, 0.14);
+
+	--sombra-boton: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 1px 2px rgba(0, 0, 0, 0.3);
+	--sombra-tarjeta: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.25), 0 2px 6px rgba(0, 0, 0, 0.25);
+	--sombra-elevada: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 2px 10px rgba(0, 0, 0, 0.35);
+	--sombra-flotante: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 8px 28px rgba(0, 0, 0, 0.5);
 }
 
 /* --- base ---------------------------------------------------------------- */
@@ -91,51 +146,81 @@ body {
 	margin: 0;
 	background: var(--fondo);
 	color: var(--texto);
-	font-family: "Avenir Next", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
-	font-size: 15px;
+	/* Inter solo si está instalada: no se sirve ninguna fuente. */
+	font-family: "Inter", -apple-system, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+	font-size: 14px;
 	line-height: 1.5;
+	letter-spacing: -0.01em;
+	font-feature-settings: "cv11", "ss01";
 	-webkit-font-smoothing: antialiased;
 }
 
 a {
 	color: var(--acento-texto);
+	text-underline-offset: 0.15em;
+	transition: color 120ms var(--suave-enlace);
 }
 
 h1, h2, h3 {
 	line-height: 1.25;
 	margin: 0 0 0.6rem;
+	font-weight: 600;
 }
 
 /* El título de página, suelto o dentro de «cabeceraPagina», es el mismo. */
 h1 {
-	font-size: 1.75rem;
-	font-weight: 600;
-	letter-spacing: -0.01em;
+	font-size: 1.375rem;
+	letter-spacing: -0.02em;
 }
 
 h2 {
-	font-size: 1.2rem;
-	font-weight: 600;
+	font-size: 1rem;
 	margin-top: 1.8rem;
 }
 
 h3 {
-	font-size: 1rem;
-	font-weight: 600;
+	font-size: 0.875rem;
 }
 
 /* Las instrucciones de un agente son el texto que lee un modelo: se escriben
    en la misma tipografía en la que se leerán. */
 code, pre, textarea.codigo {
-	font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+	font-family: var(--mono);
 	font-size: 0.88em;
+	letter-spacing: 0;
 }
 
 pre {
-	background: var(--fondo-hover);
+	background: var(--hueco);
+	box-shadow: var(--sombra-filete);
 	border-radius: var(--radio-tarjeta);
 	padding: 0.7rem 0.9rem;
 	overflow-x: auto;
+}
+
+/* Las cifras se alinean por columnas en todo lo que se compara de un vistazo. */
+.edad, .tokens, .uso-cifra, .hora, .numero, .progreso-texto, .contador, .id-tarea {
+	font-variant-numeric: tabular-nums;
+}
+
+/* Ids y contadores, en la monoespaciada: se leen carácter a carácter. */
+.id-tarea, .contador {
+	font-family: var(--mono);
+	font-size: 0.92em;
+	letter-spacing: 0;
+}
+
+a.id-tarea {
+	text-decoration: none;
+}
+
+a.id-tarea:hover {
+	text-decoration: underline;
+}
+
+::placeholder {
+	color: var(--texto-terciario);
+	opacity: 1;
 }
 
 /* El foco se ve siempre, y siempre igual: un anillo de 2 px en el acento. */
@@ -157,6 +242,7 @@ pre {
 	gap: 0.2rem;
 	padding: 0.9rem 0.6rem 0.8rem;
 	background: var(--fondo-lateral);
+	font-size: 0.8125rem;
 	border-right: 1px solid var(--borde);
 	overflow-y: auto;
 	z-index: 20;
@@ -168,6 +254,7 @@ pre {
 	gap: 0.5rem;
 	padding: 0.25rem 0.5rem 1rem;
 	color: var(--texto);
+	font-size: 0.875rem;
 	font-weight: 700;
 	text-decoration: none;
 }
@@ -185,8 +272,8 @@ pre {
 .selector-proyecto,
 .buscador {
 	display: flex;
+	align-items: center;
 	gap: 0.3rem;
-	padding: 0 0.5rem;
 }
 
 .selector-proyecto {
@@ -197,11 +284,49 @@ pre {
 	margin: 0 0 1.1rem;
 }
 
-.selector-proyecto select,
 .buscador input {
 	flex: 1;
 	min-width: 0;
-	font-size: 0.85rem;
+}
+
+/* El selector de proyecto es el control del espacio de trabajo: el «select»
+   nativo, sin su aspecto, con el nombre en negrita y un chevron pintado por el
+   contenedor. Al pasar por encima se le ve el filete de un control. */
+.espacio {
+	position: relative;
+	flex: 1;
+	min-width: 0;
+}
+
+.espacio::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	right: 0.75rem;
+	width: 6px;
+	height: 6px;
+	border-right: 1.5px solid var(--texto-suave);
+	border-bottom: 1.5px solid var(--texto-suave);
+	transform: translateY(-70%) rotate(45deg);
+	pointer-events: none;
+}
+
+.espacio select {
+	appearance: none;
+	max-width: none;
+	padding: 0 1.8rem 0 0.5rem;
+	background: none;
+	box-shadow: none;
+	color: var(--texto);
+	font-size: 0.875rem;
+	font-weight: 600;
+	text-overflow: ellipsis;
+	cursor: pointer;
+}
+
+.espacio select:hover {
+	background: var(--fondo-hover);
+	box-shadow: var(--sombra-filete);
 }
 
 .bloque {
@@ -213,25 +338,32 @@ pre {
 	margin: 0 0 0.2rem;
 	padding: 0 0.5rem;
 	color: var(--texto-suave);
-	font-size: 0.8125rem;
-	font-weight: 600;
+	font-size: 0.75rem;
+	font-weight: 500;
 }
 
+/* Una fila de 32 px por entrada, con el número de la bandeja a la derecha. */
 .enlace-nav {
-	display: block;
-	padding: 0.25rem 0.5rem;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	height: 32px;
+	padding: 0 0.6rem;
 	border-radius: var(--radio);
 	color: var(--texto);
+	font-weight: 500;
 	text-decoration: none;
+	transition: background-color 120ms var(--suave);
 }
 
 .enlace-nav:hover {
 	background: var(--fondo-hover);
 }
 
-/* La entrada activa: mismo fondo que al pasar por encima, y en negrita. */
+/* La entrada activa: un punto más de fondo que al pasar por encima, y en negrita. */
 .enlace-nav[aria-current="page"] {
-	background: var(--fondo-hover);
+	background: var(--fondo-hover-2);
 	font-weight: 600;
 }
 
@@ -250,36 +382,58 @@ pre {
 
 /* --- conmutador de tema -------------------------------------------------- */
 
-/* Tres radios como un grupo de botones segmentado: lo marcado se ve hundido
-   sobre el fondo del papel, y el foco se ve aunque el radio esté escondido. */
+/* Tres radios como un grupo de píldoras: el rótulo encima y, debajo, el grupo
+   sobre un fondo hundido que pinta «::before» detrás de los tres. Lo marcado
+   sale hacia fuera, y el foco se ve aunque el radio esté escondido. */
 fieldset.tema {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 0.3rem;
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 2px;
 	margin: auto 0 0.6rem;
-	padding: 0.2rem;
-	border: 1px solid var(--borde);
+	padding: 0;
+	border: 0;
+	box-shadow: none;
+}
+
+fieldset.tema::before {
+	content: "";
+	grid-row: 2;
+	grid-column: 1 / -1;
+	margin: -2px;
 	border-radius: var(--radio);
+	background: var(--fondo-hover);
 }
 
 fieldset.tema legend {
-	padding: 0;
+	float: left;
+	grid-row: 1;
+	grid-column: 1 / -1;
+	margin: 0 0 0.3rem;
+	padding: 0 0.5rem;
 	color: var(--texto-suave);
-	font-size: 0.8125rem;
+	font-size: 0.75rem;
+	font-weight: 500;
 }
 
 fieldset.tema label {
-	flex: 1 1 auto;
+	position: relative;
+	grid-row: 2;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 26px;
 	margin: 0;
-	padding: 0.1rem 0.4rem;
-	border: 1px solid transparent;
-	border-radius: var(--radio);
+	border-radius: var(--radio-chip);
 	color: var(--texto-suave);
-	font-size: 0.8125rem;
-	text-align: center;
+	font-size: 0.78125rem;
+	font-weight: 500;
 	cursor: pointer;
+	transition: background-color 120ms var(--suave), color 120ms var(--suave);
 }
+
+fieldset.tema label:nth-of-type(1) { grid-column: 1; }
+fieldset.tema label:nth-of-type(2) { grid-column: 2; }
+fieldset.tema label:nth-of-type(3) { grid-column: 3; }
 
 fieldset.tema label:hover {
 	color: var(--texto);
@@ -296,8 +450,8 @@ fieldset.tema input[type="radio"] {
 }
 
 fieldset.tema label:has(input:checked) {
-	background: var(--fondo);
-	border-color: var(--borde);
+	background: var(--superficie);
+	box-shadow: var(--sombra-boton);
 	color: var(--texto);
 	font-weight: 600;
 }
@@ -391,7 +545,7 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 	gap: 0.35rem;
 	margin-bottom: 0.5rem;
 	color: var(--texto-suave);
-	font-size: 0.82rem;
+	font-size: 0.78125rem;
 }
 
 .migas a {
@@ -405,7 +559,7 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 }
 
 .migas .separador {
-	opacity: 0.6;
+	color: var(--texto-terciario);
 }
 
 .titular {
@@ -426,6 +580,7 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 	margin: 0.35rem 0 0;
 	max-width: 46rem;
 	color: var(--texto-suave);
+	font-size: 0.8125rem;
 }
 
 /* El hueco entre etiquetas lo pone el contenedor; la regla del final de la
@@ -443,29 +598,36 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 /* Sin clase de color, la etiqueta es gris: es el color de lo que no tiene. El
    margen separa dos etiquetas seguidas donde no hay un contenedor con hueco. */
 .insignia {
-	display: inline-block;
+	display: inline-flex;
+	align-items: center;
+	height: 22px;
 	margin-right: 0.25rem;
-	padding: 0.05rem 0.45rem;
-	border-radius: var(--radio);
+	padding: 0 0.45rem;
+	border-radius: var(--radio-chip);
 	background: var(--fondo-hover);
 	color: var(--texto-suave);
-	font-size: 0.78rem;
+	font-size: 0.71875rem;
 	font-weight: 500;
-	line-height: 1.55;
+	line-height: 1;
+	letter-spacing: 0;
 	white-space: nowrap;
+	vertical-align: middle;
 }
 
 .chip {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35rem;
-	padding: 0.05rem 0.5rem 0.05rem 0.15rem;
+	height: 22px;
+	padding: 0 0.5rem 0 3px;
 	border-radius: 999px;
 	background: var(--fondo-hover);
 	color: var(--texto-suave);
-	font-size: 0.82rem;
-	line-height: 1.6;
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1;
 	white-space: nowrap;
+	vertical-align: middle;
 }
 
 /* El círculo de la inicial se tiñe del propio texto del chip: así funciona
@@ -474,11 +636,11 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 1.2rem;
-	height: 1.2rem;
+	width: 16px;
+	height: 16px;
 	border-radius: 50%;
 	background: color-mix(in srgb, currentColor 22%, transparent);
-	font-size: 0.66rem;
+	font-size: 0.625rem;
 	font-weight: 700;
 	line-height: 1;
 }
@@ -542,15 +704,16 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 	padding: 0.6rem 0.8rem;
 	border-radius: var(--radio);
 	border-left: 3px solid var(--peligro);
-	background: var(--fondo-hover);
+	background: var(--peligro-tinte);
 	color: var(--texto);
 }
 
 .caja {
 	margin: 0 0 1.4rem;
 	padding: 1rem 1.1rem;
-	border: 1px solid var(--borde);
 	border-radius: var(--radio-tarjeta);
+	background: var(--superficie);
+	box-shadow: var(--sombra-tarjeta);
 }
 
 /* Un título dentro de una caja no necesita separarse de su propio borde. */
@@ -568,8 +731,13 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
  */
 .edad {
 	color: var(--texto-suave);
-	font-size: 0.85rem;
+	font-size: 0.78125rem;
 	white-space: nowrap;
+}
+
+/* Pegada a una etiqueta y delante del título, en la lista: que no se toquen. */
+.insignia + .edad {
+	margin-right: 0.35rem;
 }
 
 .edad-peligro {
@@ -577,7 +745,7 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 }
 
 .pequeno {
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 }
 
 .en-linea {
@@ -588,9 +756,8 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 /* Cuántas cosas hay. En una columna es un dato más y va en texto suave. */
 .contador {
 	color: var(--texto-suave);
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	font-weight: 400;
-	font-variant-numeric: tabular-nums;
 }
 
 /* De quién es el turno mientras la tarea está en esa columna. Va en su propia
@@ -609,10 +776,8 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 	font-weight: 600;
 }
 
-/* Un identificador es una cifra, no código: alineado por columnas y con la
-   misma tipografía que el resto. La monoespaciada es solo para comandos. */
+/* Un identificador no se parte; su tipografía va con las cifras, arriba. */
 .id-tarea {
-	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
 }
 
@@ -650,7 +815,7 @@ body[data-vista="conectar"] .contenido-entrada .dentro {
 
 .propiedad dt {
 	color: var(--texto-suave);
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 }
 
 .propiedad dd {
@@ -670,16 +835,22 @@ table {
 	border-collapse: collapse;
 }
 
+/* Filas de 40 px separadas por la línea suave; la cabecera, pequeña y suave
+   sobre la línea normal. */
 th, td {
+	height: 40px;
 	text-align: left;
-	padding: 0.45rem 0.6rem;
-	border-bottom: 1px solid var(--borde);
-	vertical-align: top;
+	padding: 0.4rem 0.6rem;
+	border-bottom: 1px solid var(--borde-suave);
+	vertical-align: middle;
+	transition: background-color 120ms var(--suave);
 }
 
 thead th {
+	height: 32px;
+	border-bottom-color: var(--borde);
 	color: var(--texto-suave);
-	font-size: 0.8125rem;
+	font-size: 0.75rem;
 	font-weight: 500;
 }
 
@@ -710,17 +881,28 @@ form {
 	margin: 0 0 1.2rem;
 }
 
+/* Un grupo de campos es una caja plana: el filete y nada más. El rótulo va
+   dentro, flotado, para que el filete no tenga que partirse a su paso. */
 fieldset {
 	margin: 0 0 1rem;
 	padding: 0.8rem 1rem 0.3rem;
-	border: 1px solid var(--borde);
+	border: 0;
 	border-radius: var(--radio-tarjeta);
+	box-shadow: var(--sombra-filete);
 }
 
 legend {
-	padding: 0 0.35rem;
+	float: left;
+	width: 100%;
+	margin: 0 0 0.7rem;
+	padding: 0;
 	color: var(--texto-suave);
 	font-size: 0.8125rem;
+	font-weight: 500;
+}
+
+legend + * {
+	clear: both;
 }
 
 label {
@@ -730,34 +912,45 @@ label {
 
 label > span {
 	display: block;
-	margin-bottom: 0.25rem;
+	margin-bottom: 0.3rem;
 	color: var(--texto-suave);
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
+	font-weight: 500;
 }
 
 /* La ayuda de un campo va debajo de su control, no encima como el rótulo. */
 label > span.ayuda {
 	margin: 0.3rem 0 0;
-	font-size: 0.8rem;
+	font-size: 0.75rem;
+	font-weight: 400;
 }
 
 /* Un desplegable de varias opciones se lee como una lista: sitio a los lados
    de cada opción y el alto que pida el atributo «size». */
 select[multiple] {
+	height: auto;
 	padding: 0.3rem;
 }
 
-/* Los controles no llevan borde propio: un fondo suave y ya. El borde
-   transparente reserva el sitio para que el foco no mueva el diseño. */
+/* Los controles no llevan borde: el fondo del campo y su filete. Miden 32 px
+   salvo el texto largo, que pide el alto que haga falta. */
 input[type="text"], input[type="search"], input[type="password"], input[type="number"], textarea, select {
 	width: 100%;
 	max-width: 34rem;
-	padding: 0.4rem 0.6rem;
+	height: 32px;
+	padding: 0 0.65rem;
 	font: inherit;
+	font-size: 0.8125rem;
 	color: var(--texto);
-	background: var(--fondo-hover);
-	border: 1px solid transparent;
+	background: var(--campo);
+	border: 0;
 	border-radius: var(--radio);
+	box-shadow: var(--sombra-filete);
+	transition: box-shadow 120ms var(--suave);
+}
+
+input[type="text"]:hover, input[type="search"]:hover, input[type="password"]:hover, input[type="number"]:hover, textarea:hover, select:hover {
+	box-shadow: 0 0 0 1px var(--borde-fuerte);
 }
 
 /* Un número de una o dos cifras no necesita el ancho de un campo de texto. */
@@ -771,7 +964,10 @@ input[type="text"]:focus, input[type="search"]:focus, input[type="password"]:foc
 }
 
 textarea {
+	height: auto;
 	min-height: 6rem;
+	padding: 0.5rem 0.65rem;
+	line-height: 1.5;
 	resize: vertical;
 }
 
@@ -782,9 +978,10 @@ input[type="checkbox"], input[type="radio"] {
 
 label.opcion {
 	padding: 0.5rem 0.7rem;
-	border: 1px solid var(--borde);
 	border-radius: var(--radio-tarjeta);
+	box-shadow: var(--sombra-filete);
 	cursor: pointer;
+	transition: background-color 120ms var(--suave), box-shadow 120ms var(--suave);
 }
 
 label.opcion:hover {
@@ -792,66 +989,80 @@ label.opcion:hover {
 }
 
 label.opcion:has(input:checked) {
-	border-color: var(--acento);
+	box-shadow: 0 0 0 1.5px var(--acento);
 }
 
 label.opcion .consecuencia {
 	display: block;
 	margin: 0.2rem 0 0 1.4rem;
 	color: var(--texto-suave);
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 }
 
 .recomendada {
 	margin-left: 0.4rem;
 	color: var(--acento-texto);
-	font-size: 0.78rem;
+	font-size: 0.78125rem;
+	font-weight: 500;
 	white-space: nowrap;
 }
 
+/* Botones de 32 px: el secundario es una pieza de la superficie con su sombra
+   de botón; el hover se pinta encima con el fondo de hover. */
 button, .boton {
-	display: inline-block;
-	padding: 0.35rem 0.8rem;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.4rem;
+	height: 32px;
+	padding: 0 0.8rem;
 	font: inherit;
+	font-size: 0.8125rem;
+	font-weight: 500;
 	color: var(--texto);
-	background: var(--fondo);
-	border: 1px solid var(--borde);
+	background-color: var(--superficie);
+	border: 0;
 	border-radius: var(--radio);
+	box-shadow: var(--sombra-boton);
 	text-decoration: none;
 	white-space: nowrap;
 	cursor: pointer;
+	transition: background-color 120ms var(--suave), box-shadow 120ms var(--suave), filter 120ms var(--suave);
 }
 
 button:hover, .boton:hover {
-	background: var(--fondo-hover);
+	background-image: linear-gradient(var(--fondo-hover), var(--fondo-hover));
 }
 
 button.principal, .boton.principal {
-	background: var(--acento);
-	border-color: var(--acento);
+	background-color: var(--acento);
 	color: var(--sobre-acento);
+	font-weight: 600;
 }
 
 button.principal:hover, .boton.principal:hover {
-	filter: brightness(0.93);
+	background-image: none;
+	filter: brightness(0.94);
 }
 
 button.peligro, .boton.peligro {
 	color: var(--peligro);
 	background: none;
-	border-color: transparent;
+	box-shadow: none;
 }
 
 button.peligro:hover, .boton.peligro:hover {
-	background: var(--fondo-hover);
+	background: var(--peligro-tinte);
 }
 
 button.enlace {
+	height: auto;
 	padding: 0;
 	color: var(--texto-suave);
 	background: none;
-	border: none;
-	font-size: 0.85rem;
+	box-shadow: none;
+	font-size: 0.8125rem;
+	font-weight: 400;
 }
 
 button.enlace:hover {
@@ -881,6 +1092,8 @@ button.enlace:hover {
 	margin: 0 0 1.6rem;
 	padding: 0;
 	border: none;
+	background: none;
+	box-shadow: none;
 }
 
 /* Los desplegables encogen antes que desbordar: en móvil se reparten la fila
@@ -908,7 +1121,7 @@ button.enlace:hover {
    anterior con una regla fina y nada más. */
 .comentario {
 	padding: 0.8rem 0 0;
-	border-top: 1px solid var(--borde);
+	border-top: 1px solid var(--borde-suave);
 }
 
 .comentario > header {
@@ -918,7 +1131,7 @@ button.enlace:hover {
 	gap: 0.35rem 0.6rem;
 	margin-bottom: 0.5rem;
 	color: var(--texto-suave);
-	font-size: 0.85rem;
+	font-size: 0.78125rem;
 }
 
 .comentario .autor {
@@ -959,7 +1172,7 @@ button.enlace:hover {
 	margin: 0;
 	padding: 0;
 	list-style: none;
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 }
 
 /* --- tutorial de conexión ------------------------------------------------ */
@@ -1024,8 +1237,11 @@ button.enlace:hover {
 	right: 0;
 	padding: 0 0.2rem;
 	min-width: 1.4rem;
+	height: auto;
 	border: 0;
-	background: var(--fondo-hover);
+	border-radius: var(--radio-chip);
+	background: var(--hueco);
+	box-shadow: none;
 	color: var(--texto-suave);
 	font-size: 0.95em;
 	line-height: inherit;
@@ -1055,10 +1271,13 @@ button.enlace:hover {
 	padding-bottom: 0.6rem;
 }
 
-/* Las columnas no tienen fondo: lo que se ve son las tarjetas. */
+/* Cada columna es un hueco del lienzo: las tarjetas blancas se levantan sobre
+   él con su sombra. */
 .columna {
 	min-width: 0;
-	padding: 0;
+	padding: 0.6rem;
+	border-radius: var(--radio-tarjeta);
+	background: var(--fondo-lateral);
 }
 
 .columna h2 {
@@ -1068,7 +1287,7 @@ button.enlace:hover {
 	gap: 0.4rem;
 	margin: 0 0 0.6rem;
 	padding: 0 0.15rem;
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 	font-weight: 600;
 }
 
@@ -1081,20 +1300,22 @@ button.enlace:hover {
 .tarjetas {
 	display: flex;
 	flex-direction: column;
-	gap: 0.4rem;
+	gap: 0.5rem;
 	min-height: 3rem;
 }
 
 .tarjeta {
-	padding: 0.5rem 0.6rem;
-	background: var(--fondo);
-	border: 1px solid var(--borde);
+	padding: 0.55rem 0.65rem;
+	background: var(--superficie);
 	border-radius: var(--radio-tarjeta);
+	box-shadow: var(--sombra-tarjeta);
+	font-size: 0.8125rem;
 	cursor: grab;
+	transition: box-shadow 150ms var(--suave);
 }
 
 .tarjeta:hover {
-	box-shadow: 0 1px 4px rgb(15 15 15 / 12%);
+	box-shadow: var(--sombra-elevada);
 }
 
 .tarjeta:active {
@@ -1146,45 +1367,51 @@ button.enlace:hover {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 1.25rem;
-	height: 1.25rem;
+	width: 20px;
+	height: 20px;
 	border-radius: 50%;
-	background: var(--fondo-hover);
+	background: var(--fondo-hover-2);
 	color: var(--texto);
-	font-size: 0.7rem;
+	font-size: 0.6875rem;
 	font-weight: 600;
 }
 
 /* Una fase sin modelo es un círculo hueco: se ve el sitio vacío. */
 .agentes .agente.vacio {
 	background: none;
-	border: 1px dashed var(--borde);
+	border: 1px dashed var(--borde-fuerte);
 	color: var(--texto-suave);
 	font-weight: 400;
 }
 
 .tarjeta .pie .tokens {
 	margin-left: auto;
-	font-variant-numeric: tabular-nums;
+	color: var(--texto-suave);
+	font-size: 0.75rem;
 	white-space: nowrap;
 }
 
 /* La misma señal que la etiqueta, pero visible de lejos: de un vistazo se ve
-   cuáles de todo el tablero esperan por el humano. */
+   cuáles de todo el tablero esperan por el humano. Es un filete por dentro,
+   delante de la sombra de la tarjeta. */
 .tarjeta.espera {
-	border-left: 3px solid var(--turno);
+	box-shadow: inset 3px 0 0 var(--turno), var(--sombra-tarjeta);
+}
+
+.tarjeta.espera:hover {
+	box-shadow: inset 3px 0 0 var(--turno), var(--sombra-elevada);
 }
 
 /* El hueco que SortableJS deja donde caería la tarjeta. */
 .tarjeta.arrastrando {
-	border-style: dashed;
+	outline: 1px dashed var(--borde-fuerte);
 	opacity: 0.45;
 	box-shadow: none;
 }
 
-/* La tarjeta que va con el puntero: la única sombra fuerte de la web. */
+/* La tarjeta que va con el puntero: la única que flota. */
 .tarjeta.sortable-chosen, .tarjeta.sortable-drag {
-	box-shadow: 0 6px 16px rgb(15 15 15 / 22%);
+	box-shadow: var(--sombra-flotante);
 }
 
 .aviso-tablero {
@@ -1198,10 +1425,9 @@ button.enlace:hover {
 	left: 50%;
 	transform: translateX(-50%);
 	padding: 0.5rem 0.9rem;
-	background: var(--fondo);
-	border: 1px solid var(--acento);
-	border-top: none;
+	background: var(--superficie);
 	border-radius: 0 0 var(--radio-tarjeta) var(--radio-tarjeta);
+	box-shadow: 0 0 0 1px var(--acento), var(--sombra-flotante);
 	z-index: 30;
 }
 
@@ -1226,7 +1452,7 @@ button.enlace:hover {
 
 .franja-cabecera h2 {
 	margin: 0;
-	font-size: 1rem;
+	font-size: 0.9375rem;
 	font-weight: 600;
 }
 
@@ -1266,8 +1492,8 @@ button.enlace:hover {
 	.lateral {
 		width: min(15rem, 82vw);
 		transform: translateX(-100%);
-		transition: transform 0.15s ease-out;
-		box-shadow: 0 0 24px rgb(15 15 15 / 30%);
+		transition: transform 200ms var(--suave);
+		box-shadow: var(--sombra-flotante);
 	}
 
 	body.lateral-abierta .lateral {
@@ -1330,11 +1556,16 @@ button.enlace:hover {
 .nombre-campo {
 	margin: 0 0 0.3rem;
 	color: var(--texto-suave);
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
+	font-weight: 500;
 }
 
+/* El pequeño es para lo que va dentro de otra pieza: «Copiar» sobre el
+   código, «Ir» y «Buscar» junto a su campo cuando no hay JavaScript. */
 button.pequeno, .boton.pequeno {
-	padding: 0.15rem 0.55rem;
+	height: 28px;
+	padding: 0 0.6rem;
+	font-size: 0.78125rem;
 }
 
 /* La acción de una fila de terminales es un enlace discreto y no un botón: con
@@ -1342,7 +1573,7 @@ button.pequeno, .boton.pequeno {
    que la última columna no quepa. La confirmación que abre sí lleva botón. */
 .accion-fila {
 	color: var(--peligro);
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 	text-decoration: none;
 	white-space: nowrap;
 }
@@ -1415,10 +1646,10 @@ button.pequeno, .boton.pequeno {
 	width: auto;
 	height: auto;
 	padding: 0.05rem 0.55rem;
-	border: 1px dashed var(--borde);
+	border: 1px dashed var(--borde-fuerte);
 	border-radius: 999px;
 	color: var(--texto-suave);
-	font-size: 0.78rem;
+	font-size: 0.75rem;
 }
 
 /* El cambio de color de una fila: muestras y botón en la misma línea. */
@@ -1532,7 +1763,7 @@ button.pequeno, .boton.pequeno {
 
 .uso-reinicio {
 	color: var(--texto-suave);
-	font-size: 0.78rem;
+	font-size: 0.75rem;
 }
 
 /* --- usuarios ------------------------------------------------------------ */
@@ -1546,8 +1777,8 @@ button.pequeno, .boton.pequeno {
 .dia h2 {
 	margin: 1.6rem 0 0.2rem;
 	color: var(--texto-suave);
-	font-size: 0.8125rem;
-	font-weight: 600;
+	font-size: 0.75rem;
+	font-weight: 500;
 	font-variant-numeric: tabular-nums;
 }
 
@@ -1567,7 +1798,7 @@ button.pequeno, .boton.pequeno {
 	align-items: baseline;
 	gap: 0.2rem 0.45rem;
 	padding: 0.4rem 0.15rem;
-	border-bottom: 1px solid var(--borde);
+	border-bottom: 1px solid var(--borde-suave);
 }
 
 .acto:last-child {
@@ -1579,15 +1810,15 @@ button.pequeno, .boton.pequeno {
 }
 
 .acto .detalle {
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 }
 
 /* La hora se va al extremo: la columna que se lee de un vistazo. */
 .acto .hora {
 	margin-left: auto;
 	padding-left: 0.6rem;
-	font-size: 0.82rem;
-	font-variant-numeric: tabular-nums;
+	color: var(--texto-suave);
+	font-size: 0.78125rem;
 }
 
 /* --- pantallas de tareas --------------------------------------------- */
@@ -1613,72 +1844,61 @@ button.pequeno, .boton.pequeno {
 	margin-bottom: 0;
 }
 
-/* Las dos vistas de la sección Tareas, como un solo control segmentado: son
-   la misma cosa mirada de dos maneras, no dos filtros que se suman. */
-.vistas {
-	display: flex;
-	border: 1px solid var(--borde);
-	border-radius: var(--radio);
-	overflow: hidden;
-}
-
-.vistas a {
-	padding: 0.3rem 0.8rem;
-	color: var(--texto-suave);
-	font-size: 0.85rem;
-	text-decoration: none;
-}
-
-.vistas a + a {
-	border-left: 1px solid var(--borde);
-}
-
-.vistas a:hover {
-	background: var(--fondo-hover);
-	color: var(--texto);
-}
-
-.vistas a[aria-current="page"] {
-	background: var(--fondo-hover);
-	color: var(--texto);
-	font-weight: 600;
-}
-
-.filtros-rapidos {
-	display: flex;
+/* Los conmutadores —Lista | Tablero, filtros rápidos, pestañas del proyecto y
+   filtros del hilo— son un grupo de píldoras de 28 px sobre un fondo hundido.
+   La puesta sale hacia fuera: superficie y sombra de botón. */
+.vistas, .filtros-rapidos, .filtro-hilo {
+	display: inline-flex;
 	flex-wrap: wrap;
-	gap: 0.4rem;
-	padding-bottom: 0.1rem;
-}
-
-.boton-filtro {
-	padding: 0.3rem 0.7rem;
-	color: var(--texto);
-	font-size: 0.85rem;
-	text-decoration: none;
-	border: 1px solid var(--borde);
+	gap: 2px;
+	padding: 2px;
 	border-radius: var(--radio);
-}
-
-.boton-filtro:hover {
 	background: var(--fondo-hover);
 }
 
-/* El activo se ve puesto: pulsarlo otra vez lo quita. */
-.boton-filtro[aria-current="true"] {
+.vistas a, .boton-filtro, .filtro-hilo a {
+	display: inline-flex;
+	align-items: center;
+	height: 28px;
+	padding: 0 0.7rem;
+	border-radius: var(--radio-chip);
+	color: var(--texto-suave);
+	font-size: 0.8125rem;
+	font-weight: 500;
+	text-decoration: none;
+	white-space: nowrap;
+	transition: background-color 120ms var(--suave), color 120ms var(--suave);
+}
+
+.vistas a:hover, .boton-filtro:hover, .filtro-hilo a:hover {
 	background: var(--fondo-hover);
-	border-color: var(--acento);
+	color: var(--texto);
+}
+
+/* El puesto: pulsarlo otra vez lo quita en los filtros rápidos. */
+.vistas a[aria-current="page"], .boton-filtro[aria-current="true"], .filtro-hilo a[aria-current="page"] {
+	background: var(--superficie);
+	box-shadow: var(--sombra-boton);
+	color: var(--texto);
 	font-weight: 600;
 }
 
-.filtros button {
-	padding: 0.3rem 0.7rem;
+/* Suelto, fuera de un grupo («Por columnas»), es un botón secundario. */
+:not(.filtros-rapidos) > .boton-filtro {
+	height: 32px;
+	background: var(--superficie);
+	box-shadow: var(--sombra-boton);
+	color: var(--texto);
+}
+
+:not(.filtros-rapidos) > .boton-filtro:hover {
+	background-image: linear-gradient(var(--fondo-hover), var(--fondo-hover));
 }
 
 .filtros .quitar {
-	padding-bottom: 0.35rem;
+	padding-bottom: 0.45rem;
 	color: var(--texto-suave);
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 	text-decoration: none;
 }
 
@@ -1705,7 +1925,7 @@ button.pequeno, .boton.pequeno {
 /* El grupo de las cerradas se pliega; el triángulo no debe empujar el rótulo. */
 .grupo summary {
 	cursor: pointer;
-	font-size: 1.15rem;
+	font-size: 1rem;
 	font-weight: 600;
 	margin-bottom: 0.6rem;
 }
@@ -1731,7 +1951,8 @@ label.casilla .detalle, label.opcion .consecuencia {
 	grid-column: 2;
 	margin: 0.1rem 0 0;
 	color: var(--texto-suave);
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
+	font-weight: 400;
 }
 
 /* Va dentro del texto de la opción, no debajo. */
@@ -1784,7 +2005,7 @@ label.opcion .recomendada {
 	align-items: baseline;
 	gap: 0.35rem;
 	padding: 0.25rem 0;
-	border-bottom: 1px solid var(--borde);
+	border-bottom: 1px solid var(--borde-suave);
 }
 
 .actividad li:last-child {
@@ -1840,8 +2061,7 @@ details.caja[open] > summary {
 .progreso-texto {
 	margin: 0 0.4rem 0 0.5rem;
 	color: var(--texto-suave);
-	font-size: 0.85rem;
-	font-variant-numeric: tabular-nums;
+	font-size: 0.78125rem;
 }
 
 /* De qué funcionalidad es parte una tarea: debajo de su título en la lista y
@@ -1903,7 +2123,7 @@ details.caja[open] > summary {
 	align-items: baseline;
 	gap: 0.5rem 1rem;
 	padding: 0.6rem 0;
-	border-bottom: 1px solid var(--borde);
+	border-bottom: 1px solid var(--borde-suave);
 }
 
 .olas > li:last-child {
@@ -1933,9 +2153,9 @@ details.caja[open] > summary {
 	align-items: baseline;
 	gap: 0.4rem;
 	padding: 0.35rem 0.6rem;
-	border: 1px solid var(--borde);
-	border-radius: 8px;
-	background: var(--fondo);
+	border-radius: var(--radio);
+	background: var(--superficie);
+	box-shadow: var(--sombra-filete);
 }
 
 /* Borrar es excepcional y no compite con «Guardar cambios»: enlace rojo
@@ -1977,7 +2197,7 @@ details.caja[open] > summary {
 
 @media (min-width: 64rem) {
 	.ficha {
-		grid-template-columns: minmax(0, 1fr) 18rem;
+		grid-template-columns: minmax(0, 1fr) 20rem;
 		align-items: start;
 	}
 
@@ -1988,13 +2208,46 @@ details.caja[open] > summary {
 	}
 }
 
-/* En 18 rem no caben las 10 rem del nombre de cada propiedad. */
+/* El panel de la ficha es una tarjeta: lo que se consulta, levantado sobre la
+   página. Lo plegado de dentro es una caja plana, no otra tarjeta. */
+.ficha > .panel {
+	margin-bottom: 1.8rem;
+	padding: 1rem 1.1rem;
+	border-radius: var(--radio-tarjeta);
+	background: var(--superficie);
+	box-shadow: var(--sombra-tarjeta);
+}
+
+.panel > :first-child {
+	margin-top: 0;
+}
+
+.panel > :last-child {
+	margin-bottom: 0;
+}
+
+.panel .caja {
+	padding: 0.7rem 0.9rem;
+	background: none;
+	box-shadow: var(--sombra-filete);
+}
+
+/* En el panel no caben las 10 rem del nombre de cada propiedad. */
 .panel .propiedad {
 	grid-template-columns: 6.5rem 1fr;
 }
 
+/* La tabla de consumo del panel, apretada: cinco columnas en 18 rem. Si aun
+   así no caben, se desplaza su envoltorio, no el panel. */
+.panel th, .panel td {
+	height: 32px;
+	padding: 0.3rem 0.5rem 0.3rem 0;
+	font-size: 0.78125rem;
+	white-space: nowrap;
+}
+
 .panel h2 {
-	font-size: 0.95rem;
+	font-size: 0.875rem;
 }
 
 /* --- el ciclo de la tarea ------------------------------------------------ */
@@ -2038,7 +2291,7 @@ details.caja[open] > summary {
 	width: 16px;
 	height: 16px;
 	margin: 0 auto 0.4rem;
-	border: 1px solid var(--borde);
+	border: 1px solid var(--borde-fuerte);
 	border-radius: 50%;
 	background: var(--fondo);
 }
@@ -2047,7 +2300,7 @@ details.caja[open] > summary {
 	display: block;
 	color: var(--texto);
 	font-weight: 600;
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 }
 
 /* Lo que ya pasó no se borra, pero deja de pedir atención. */
@@ -2102,7 +2355,7 @@ details.caja[open] > summary {
 	border-radius: 999px;
 	background: var(--turno-fondo);
 	color: var(--turno);
-	font-size: 0.8125rem;
+	font-size: 0.75rem;
 	font-weight: 600;
 }
 
@@ -2151,30 +2404,12 @@ details.caja[open] > summary {
 
 .responder-arriba {
 	margin: 0.7rem 0 0;
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 }
 
-/* Los tres filtros del hilo, encima de él y sin caja: son enlaces. */
+/* Los tres filtros del hilo, encima de él: el grupo de píldoras de siempre. */
 .filtro-hilo {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.9rem;
 	margin-bottom: 0.9rem;
-	font-size: 0.85rem;
-}
-
-.filtro-hilo a {
-	color: var(--texto-suave);
-	text-decoration: none;
-}
-
-.filtro-hilo a:hover {
-	color: var(--texto);
-}
-
-.filtro-hilo a[aria-current="page"] {
-	color: var(--texto);
-	font-weight: 600;
 }
 
 /* --- bandeja ------------------------------------------------------------- */
@@ -2184,7 +2419,7 @@ details.caja[open] > summary {
 .que-es {
 	margin: -0.3rem 0 1rem;
 	color: var(--texto-suave);
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 }
 
 /* Cada pendiente es una sola tarjeta: su cabecera y, debajo, lo que hay que
@@ -2192,20 +2427,19 @@ details.caja[open] > summary {
    lo que hay aquí espera por el humano. */
 .item {
 	display: block;
-	margin-bottom: 1.2rem;
-	border: 1px solid var(--borde);
-	border-left: 3px solid var(--turno);
+	margin-bottom: 1rem;
 	border-radius: var(--radio-tarjeta);
-	background: var(--fondo);
+	background: var(--superficie);
+	box-shadow: inset 3px 0 0 var(--turno), var(--sombra-tarjeta);
 }
 
 .cabecera-item {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: baseline;
+	align-items: center;
 	gap: 0.5rem;
-	padding: 0.6rem 0.9rem;
-	border-bottom: 1px solid var(--borde);
+	padding: 0.6rem 0.9rem 0.6rem 1.1rem;
+	border-bottom: 1px solid var(--borde-suave);
 }
 
 /* El título se come el hueco que quede: el chip y la edad se van al otro borde. */
@@ -2221,7 +2455,7 @@ details.caja[open] > summary {
 }
 
 .cuerpo-item {
-	padding: 0.2rem 0.9rem 0.9rem;
+	padding: 0.2rem 0.9rem 0.9rem 1.1rem;
 }
 
 /* El primer mensaje del cuerpo ya está separado por el borde de la cabecera. */
@@ -2253,13 +2487,6 @@ details.caja[open] > summary {
 	min-width: 0;
 }
 
-/* El número de la bandeja, pegado a la derecha de su entrada. */
-.enlace-nav {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: 0.5rem;
-}
 
 /* --- Informes ------------------------------------------------------------ */
 
@@ -2271,7 +2498,7 @@ details.caja[open] > summary {
 
 .informe h2 {
 	margin: 0 0 0.6rem;
-	font-size: 1.05rem;
+	font-size: 1rem;
 	font-weight: 600;
 }
 
@@ -2289,7 +2516,7 @@ details.caja[open] > summary {
 
 .pie-informes {
 	margin-top: 2rem;
-	font-size: 0.85rem;
+	font-size: 0.75rem;
 }
 
 /* --- el tipo manda en el formulario de tarea ------------------------------- */
@@ -2314,7 +2541,8 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
 	align-items: center;
 	gap: 0.6rem;
 	color: var(--texto-suave);
-	font-size: 0.8rem;
+	font-size: 0.75rem;
+	font-weight: 500;
 }
 
 .iteracion::before, .iteracion::after {
@@ -2358,7 +2586,6 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
 
 .comentar textarea {
 	width: 100%;
-	border: 1px solid var(--borde);
 }
 
 /* En estrecho la pantalla es toda del hilo: un cuadro fijo se comería media. */
@@ -2392,10 +2619,10 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
 }
 
 .ahora-terminal {
-	border: 1px solid var(--borde);
-	border-radius: 8px;
-	background: var(--fondo);
-	padding: 0.8rem;
+	padding: 0.8rem 0.9rem;
+	border-radius: var(--radio-tarjeta);
+	background: var(--superficie);
+	box-shadow: var(--sombra-tarjeta);
 }
 
 .ahora-cabecera {
@@ -2437,12 +2664,37 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
 /* El título del bloque es el propio summary: se lee como los rótulos de
    bloque, pequeño y suave, y se pulsa para abrirlo. */
 details.bloque > summary {
-	padding: 0.25rem 0.5rem;
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	height: 32px;
+	padding: 0 0.6rem;
 	border-radius: var(--radio);
 	color: var(--texto-suave);
-	font-size: 0.8125rem;
-	font-weight: 600;
+	font-weight: 500;
 	cursor: pointer;
+	list-style: none;
+	transition: background-color 120ms var(--suave);
+}
+
+details.bloque > summary::-webkit-details-marker {
+	display: none;
+}
+
+/* El triángulo nativo no se deja alinear en una fila flexible: un chevron
+   pintado que gira al abrir. */
+details.bloque > summary::before {
+	content: "";
+	width: 5px;
+	height: 5px;
+	border-right: 1.5px solid currentColor;
+	border-bottom: 1.5px solid currentColor;
+	transform: rotate(-45deg);
+	transition: transform 150ms var(--suave);
+}
+
+details.bloque[open] > summary::before {
+	transform: rotate(45deg);
 }
 
 details.bloque > summary:hover {
