@@ -15,7 +15,7 @@ import { duracion, fechaLegible, SIN_DATO, tokensAbreviados } from "../formatos.
 import { type Html, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
 import { NOMBRE_FASE } from "../vocabulario.ts";
-import { navProyectos, prefijo, proyectoActual } from "./proyectos.ts";
+import { navProyectos, paginaDeProyecto, prefijo, proyectoActual } from "./proyectos.ts";
 
 /** Los periodos que se ofrecen. `todo` no acota: es la única sin días. */
 const PERIODOS: readonly { valor: string; texto: string; dias: number | null }[] = [
@@ -188,15 +188,16 @@ export function registrarRutasInformes(app: Hono, deps: DependenciasWeb): void {
 				}
 			</p>`;
 
+		// Acotados, son una pestaña de la página del proyecto; sin proyecto, la
+		// vista cruzada con su cabecera propia.
+		if (acotado !== undefined) {
+			return paginaDeProyecto(c, deps, acotado, "informes", cuerpo);
+		}
 		return c.html(
 			pagina({
 				...navProyectos(c, deps.db),
 				titulo: "Informes",
 				proposito: "Qué cuesta cada modelo, cuánto interrumpe y dónde se atasca el flujo.",
-				migas:
-					acotado === undefined
-						? undefined
-						: [{ texto: acotado.clave, href: `/p/${acotado.clave}/tareas` }, { texto: "Informes" }],
 				usuario: usuarioActual(c),
 				vista: "informes",
 				cuerpo,

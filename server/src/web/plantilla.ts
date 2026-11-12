@@ -152,7 +152,7 @@ type EntradaNav = {
 	ruta: string;
 	texto: string;
 	vistas: readonly string[];
-	/** Las tres vistas de tareas se acotan al proyecto de la URL; el sistema no. */
+	/** Las vistas de tareas y la del proyecto se acotan al proyecto de la URL; la configuración no. */
 	acotable?: boolean;
 };
 
@@ -164,34 +164,31 @@ type EntradaNav = {
 const BANDEJA: EntradaNav = { ruta: "/", texto: "Bandeja", vistas: ["bandeja"] };
 
 /**
- * Los dos bloques de la navegación. «Tareas» es una sección con dos vistas de
- * lo mismo, la lista y el tablero, y una sola entrada: la ficha y el alta son
- * la misma sección, no otro sitio.
+ * Lo de trabajo, sin rótulo. «Tareas» es una sección con dos vistas de lo
+ * mismo, la lista y el tablero, y una sola entrada: la ficha y el alta son la
+ * misma sección, no otro sitio. «Proyecto» es la página del proyecto, con sus
+ * informes y su actividad dentro; su ruta es el prefijo mismo.
  */
-const BLOQUES: readonly { titulo: string; entradas: readonly EntradaNav[] }[] = [
+const TRABAJO: readonly EntradaNav[] = [
 	{
-		titulo: "Trabajo",
-		entradas: [
-			{
-				ruta: "/tareas",
-				texto: "Tareas",
-				vistas: ["lista", "kanban", "ficha", "tarea", "tarea-nueva"],
-				acotable: true,
-			},
-			{ ruta: "/funcionalidades", texto: "Funcionalidades", vistas: ["funcionalidades"], acotable: true },
-			{ ruta: "/informes", texto: "Informes", vistas: ["informes"], acotable: true },
-			{ ruta: "/actividad", texto: "Actividad", vistas: ["actividad"] },
-		],
+		ruta: "/tareas",
+		texto: "Tareas",
+		vistas: ["lista", "kanban", "ficha", "tarea", "tarea-nueva"],
+		acotable: true,
 	},
-	{
-		titulo: "Configuración",
-		entradas: [
-			{ ruta: "/proyectos", texto: "Proyectos", vistas: ["proyectos"] },
-			{ ruta: "/agentes", texto: "Agentes", vistas: ["agentes"] },
-			{ ruta: "/terminales", texto: "Terminales", vistas: ["terminales", "conectar"] },
-			{ ruta: "/usuarios", texto: "Usuarios", vistas: ["usuarios"] },
-		],
-	},
+	{ ruta: "/funcionalidades", texto: "Funcionalidades", vistas: ["funcionalidades"], acotable: true },
+	{ ruta: "", texto: "Proyecto", vistas: ["proyecto", "proyecto-informes", "proyecto-actividad"], acotable: true },
+];
+
+/**
+ * «Configuración», desplegable: se mira poco, así que se pinta cerrada salvo
+ * cuando se está en una de sus páginas.
+ */
+const CONFIGURACION: readonly EntradaNav[] = [
+	{ ruta: "/proyectos", texto: "Proyectos", vistas: ["proyectos"] },
+	{ ruta: "/agentes", texto: "Agentes", vistas: ["agentes"] },
+	{ ruta: "/terminales", texto: "Terminales", vistas: ["terminales", "conectar"] },
+	{ ruta: "/usuarios", texto: "Usuarios", vistas: ["usuarios"] },
 ];
 
 /** Las tres opciones del tema. El valor viaja al `localStorage` del navegador. */
@@ -221,13 +218,21 @@ function conmutadorTema(): Html {
 /**
  * A qué vista lleva el selector de proyecto: a la misma en la que se está, y a
  * la lista desde cualquier otra página. Es lo que hace que cambiar de proyecto
- * no cambie de pantalla.
+ * no cambie de pantalla. `acotada` va detrás de `/p/WEB`; `cruzada` es la
+ * misma vista con todos los proyectos, que la página del proyecto no tiene.
  */
-function rutaDeVista(vista: string): string {
-	if (vista === "kanban") {
-		return "/tareas/kanban";
-	}
-	return vista === "funcionalidades" ? "/funcionalidades" : "/tareas";
+const RUTA_DE_VISTA: Record<string, { acotada: string; cruzada: string } | undefined> = {
+	kanban: { acotada: "/tareas/kanban", cruzada: "/tareas/kanban" },
+	funcionalidades: { acotada: "/funcionalidades", cruzada: "/funcionalidades" },
+	proyecto: { acotada: "", cruzada: "/tareas" },
+	informes: { acotada: "/informes", cruzada: "/informes" },
+	"proyecto-informes": { acotada: "/informes", cruzada: "/informes" },
+	actividad: { acotada: "/actividad", cruzada: "/actividad" },
+	"proyecto-actividad": { acotada: "/actividad", cruzada: "/actividad" },
+};
+
+function rutaDeVista(vista: string): { acotada: string; cruzada: string } {
+	return RUTA_DE_VISTA[vista] ?? { acotada: "/tareas", cruzada: "/tareas" };
 }
 
 /**
@@ -267,7 +272,7 @@ export type OpcionesPagina = NavProyectos & {
 	/** Con migas, propósito o acciones, la página arranca con `cabeceraPagina`. */
 	migas?: readonly Miga[];
 	/** Para qué sirve esta pantalla, en una frase y desde el punto de vista del humano. */
-	proposito?: string;
+	proposito?: string | Html;
 	/** Etiquetas de estado y marcas, bajo el título. Solo se pintan con cabecera. */
 	etiquetas?: Html;
 	/** Las acciones principales, a la derecha del título. */
@@ -301,9 +306,9 @@ function selectorProyecto(proyectos: readonly Proyecto[], proyecto: Proyecto | u
 			<select id="ir-proyecto" name="destino">
 				${proyectos.map(
 					(cual) =>
-						html`<option value="/p/${cual.clave}${ruta}"${cual.id === proyecto?.id ? raw(" selected") : ""}>${cual.clave} — ${cual.nombre}</option>`,
+						html`<option value="/p/${cual.clave}${ruta.acotada}"${cual.id === proyecto?.id ? raw(" selected") : ""}>${cual.clave} — ${cual.nombre}</option>`,
 				)}
-				<option value="${ruta}"${proyecto === undefined ? raw(" selected") : ""}>Todos los proyectos</option>
+				<option value="${ruta.cruzada}"${proyecto === undefined ? raw(" selected") : ""}>Todos los proyectos</option>
 			</select>
 			<button type="submit" class="pequeno">Ir</button>
 		</form>`;
@@ -324,8 +329,12 @@ function buscador(prefijo: string): Html {
 }
 
 /**
- * La barra lateral: el nombre de la aplicación, el selector de proyecto, los
- * dos bloques de navegación y, abajo, quién está dentro y por dónde se sale.
+ * La barra lateral: el nombre de la aplicación, el selector de proyecto, la
+ * navegación y, abajo, quién está dentro y por dónde se sale.
+ *
+ * «Proyecto» no se pinta con todos los proyectos elegidos: no hay ninguno al
+ * que llevar. «Configuración» es un `<details>` nativo, abierto solo cuando se
+ * está en una de sus páginas; sin JavaScript ni nada guardado.
  */
 function barraLateral(
 	usuario: Usuario,
@@ -338,12 +347,15 @@ function barraLateral(
 			${nav.proyectos.length === 0 ? html`` : selectorProyecto(nav.proyectos, nav.proyecto, vista)}
 			${buscador(prefijo)}
 			<nav class="bloque bloque-suelto">${enlaceNav(BANDEJA, vista, prefijo, nav.pendientes)}</nav>
-			${BLOQUES.map(
-				(bloque) => html`<nav class="bloque">
-					<h2>${bloque.titulo}</h2>
-					${bloque.entradas.map((entrada) => enlaceNav(entrada, vista, prefijo, nav.pendientes))}
-				</nav>`,
-			)}
+			<nav class="bloque">
+				${TRABAJO.filter((entrada) => entrada.ruta !== "" || prefijo !== "").map((entrada) =>
+					enlaceNav(entrada, vista, prefijo, nav.pendientes),
+				)}
+			</nav>
+			<details class="bloque"${CONFIGURACION.some((entrada) => entrada.vistas.includes(vista)) ? raw(" open") : ""}>
+				<summary>Configuración</summary>
+				<nav>${CONFIGURACION.map((entrada) => enlaceNav(entrada, vista, prefijo, nav.pendientes))}</nav>
+			</details>
 			${conmutadorTema()}
 			<div class="pie-lateral">
 				${chipUsuario(usuario.nombre, usuario.color)}

@@ -2370,4 +2370,39 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
 	flex: 1;
 	min-width: 6rem;
 }
+
+/* --- «Configuración», desplegable en la barra lateral ------------------- */
+
+/* El título del bloque es el propio summary: se lee como los rótulos de
+   bloque, pequeño y suave, y se pulsa para abrirlo. */
+details.bloque > summary {
+	padding: 0.25rem 0.5rem;
+	border-radius: var(--radio);
+	color: var(--texto-suave);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+details.bloque > summary:hover {
+	background: var(--fondo-hover);
+}
+
+/* --- la página del proyecto ---------------------------------------------- */
+
+/* Las pestañas Resumen | Informes | Actividad: el mismo control segmentado de
+   Lista | Tablero, solo tan ancho como sus tres enlaces. */
+.pestanas {
+	width: fit-content;
+	margin: 0 0 1.6rem;
+}
+
+/* La descripción renderizada como frase de propósito trae sus párrafos. */
+.proposito > :first-child {
+	margin-top: 0;
+}
+
+.proposito > :last-child {
+	margin-bottom: 0;
+}
 `;

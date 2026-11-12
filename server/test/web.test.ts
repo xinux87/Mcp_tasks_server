@@ -227,7 +227,7 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		assert.match(cuerpoFicha, /<strong>negrita<\/strong>/);
 		assert.match(cuerpoFicha, /sin asignar/);
 		// Migas «DEFAULT › Tareas › T-K7M3XQ», con la última sin enlace.
-		assert.match(cuerpoFicha, /<nav class="migas"[^>]*>\s*<a href="\/p\/DEFAULT\/tareas\/kanban">DEFAULT<\/a>/);
+		assert.match(cuerpoFicha, /<nav class="migas"[^>]*>\s*<a href="\/p\/DEFAULT">DEFAULT<\/a>/);
 		assert.match(cuerpoFicha, /<a href="\/p\/DEFAULT\/tareas">Tareas<\/a>/);
 		assert.match(cuerpoFicha, new RegExp(`<span>${id}</span>`));
 		// Las propiedades, y solo la transición hacia delante que toca. El estado
@@ -744,6 +744,11 @@ test("las páginas con sesión son HTML en español", async () => {
 	}
 });
 
+/** La barra lateral de una página, sin el resto. */
+function barraDe(cuerpo: string): string {
+	return cuerpo.slice(cuerpo.indexOf('<aside class="lateral"'), cuerpo.indexOf("</aside>"));
+}
+
 test("la barra lateral enseña al usuario de la sesión con su color y marca dónde está", async () => {
 	const montaje = montar();
 	try {
@@ -751,18 +756,49 @@ test("la barra lateral enseña al usuario de la sesión con su color y marca dó
 		// El primer usuario se lleva el primer color de la lista: azul.
 		assert.equal(listarUsuarios(montaje.db)[0]?.color, "azul");
 
-		const sistema: readonly { ruta: string; vista: string }[] = [
-			{ ruta: "/terminales", vista: "terminales" },
-			{ ruta: "/usuarios", vista: "usuarios" },
-			{ ruta: "/actividad", vista: "actividad" },
+		// Las páginas de «Configuración»: cada una marca su entrada y abre el bloque.
+		const configuracion: readonly { ruta: string; vista: string; entrada: string }[] = [
+			{ ruta: "/proyectos", vista: "proyectos", entrada: "/proyectos" },
+			{ ruta: "/agentes", vista: "agentes", entrada: "/agentes" },
+			{ ruta: "/terminales", vista: "terminales", entrada: "/terminales" },
+			{ ruta: "/terminales/conectar", vista: "conectar", entrada: "/terminales" },
+			{ ruta: "/usuarios", vista: "usuarios", entrada: "/usuarios" },
 		];
-		for (const { ruta, vista } of sistema) {
+		for (const { ruta, vista, entrada } of configuracion) {
 			const cuerpo = await (await pedir(montaje, ruta, { cookie })).text();
 			assert.match(cuerpo, /<span class="chip color-azul"><span class="inicial">A<\/span>ana<\/span>/, ruta);
 			assert.match(cuerpo, new RegExp(`data-vista="${vista}"`), ruta);
-			// Las tres son del bloque «Sistema» y cada una marca su entrada.
-			assert.match(cuerpo, new RegExp(`<a class="enlace-nav" href="${ruta}" aria-current="page">`), ruta);
+			assert.match(cuerpo, new RegExp(`<a class="enlace-nav" href="${entrada}" aria-current="page">`), ruta);
+			assert.match(barraDe(cuerpo), /<details class="bloque" open>\s*<summary>Configuración<\/summary>/, ruta);
 		}
+
+		// Fuera de ellas, el bloque se pinta cerrado.
+		for (const ruta of ["/", "/p/DEFAULT/tareas"]) {
+			const barra = barraDe(await (await pedir(montaje, ruta, { cookie })).text());
+			assert.match(barra, /<details class="bloque">\s*<summary>Configuración<\/summary>/, ruta);
+		}
+
+		// El orden: Bandeja, Tareas, Funcionalidades, Proyecto y, dentro de
+		// Configuración, Proyectos, Agentes, Terminales y Usuarios. Sin el rótulo
+		// «Trabajo» y sin Informes ni Actividad, que viven en el proyecto.
+		const cuerpo = await (await pedir(montaje, "/actividad", { cookie })).text();
+		assert.match(cuerpo, /data-vista="actividad"/);
+		const barra = barraDe(cuerpo);
+		const textos = [...barra.matchAll(/<a class="enlace-nav" href="[^"]*"[^>]*>([^<]+)/g)].map((m) => m[1]);
+		assert.deepEqual(textos, [
+			"Bandeja",
+			"Tareas",
+			"Funcionalidades",
+			"Proyecto",
+			"Proyectos",
+			"Agentes",
+			"Terminales",
+			"Usuarios",
+		]);
+		assert.ok(barra.indexOf(">Proyecto<") < barra.indexOf("<summary>Configuración</summary>"));
+		assert.doesNotMatch(barra, /Trabajo/);
+		assert.doesNotMatch(barra, /href="[^"]*\/(informes|actividad)"/);
+		assert.match(barra, /<a class="enlace-nav" href="\/p\/DEFAULT">Proyecto<\/a>/);
 	} finally {
 		await montaje.cerrar();
 	}

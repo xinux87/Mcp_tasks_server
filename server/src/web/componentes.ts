@@ -1,6 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 import { html, raw } from "hono/html";
-import { listarTerminales, listarUsuarios } from "../db/admin.ts";
+import {
+	type FaseEnMarcha,
+	fasesEnMarcha,
+	listarTerminales,
+	listarUsuarios,
+	type TerminalListado,
+} from "../db/admin.ts";
 import { COLORES_USUARIO } from "../db/colores.ts";
 import type { TipoComentario } from "../db/hilo.ts";
 import { listarProyectos, type Proyecto } from "../db/proyectos.ts";
@@ -8,7 +14,7 @@ import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
 import { formatearId } from "../md/ids.ts";
 import { abreviar, edad, faseLegible, horasDesde, SIN_DATO } from "./formatos.ts";
 import type { Html } from "./plantilla.ts";
-import { DUENO_COLUMNA, FRASE_DUENO_COLUMNA, NOMBRE_ESTADO } from "./vocabulario.ts";
+import { DUENO_COLUMNA, FRASE_DUENO_COLUMNA, NOMBRE_ESTADO, NOMBRE_FASE, NOMBRE_MARCA } from "./vocabulario.ts";
 
 /**
  * Los componentes reutilizables de la web: etiquetas, chips, cabecera de
@@ -403,8 +409,12 @@ export type OpcionesCabecera = {
 	/** El camino hasta aquí: `Tareas › T-0042`. Vacío en las páginas de primer nivel. */
 	migas?: readonly Miga[];
 	titulo: string;
-	/** Para qué sirve la pantalla, en una frase y justo debajo del título. */
-	proposito?: string;
+	/**
+	 * Para qué sirve la pantalla, en una frase y justo debajo del título. Como
+	 * `Html` es un texto ya renderizado (la descripción de un proyecto), que
+	 * trae sus propios párrafos y no cabe dentro de un `<p>`.
+	 */
+	proposito?: string | Html;
 	/** Estado y marcas, debajo del título. */
 	etiquetas?: Html;
 	/** Las acciones principales, a la derecha del título. */
@@ -431,7 +441,13 @@ export function cabeceraPagina({ migas, titulo, proposito, etiquetas, acciones }
 				<h1>${titulo}</h1>
 				${acciones === undefined ? html`` : html`<div class="acciones">${acciones}</div>`}
 			</div>
-			${proposito === undefined ? html`` : html`<p class="proposito">${proposito}</p>`}
+			${
+				proposito === undefined
+					? html``
+					: typeof proposito === "string"
+						? html`<p class="proposito">${proposito}</p>`
+						: html`<div class="proposito">${proposito}</div>`
+			}
 			${etiquetas === undefined ? html`` : html`<div class="etiquetas">${etiquetas}</div>`}
 		</header>`;
 }
@@ -724,4 +740,84 @@ export function buscadorDeCreador(db: DatabaseSync): (quien: QuienCreo) => Html 
 		}
 		return null;
 	};
+}
+
+/**
+ * Una fase tomada, en una línea: qué tarea, qué fase, con qué modelo y desde
+ * hace cuánto. Parada, la edad duele y la línea lo dice con su etiqueta.
+ */
+function lineaEnMarcha(fase: FaseEnMarcha): Html {
+	const id = formatearId(fase.codigo);
+	const cuanto = fase.desde === null ? "en marcha" : `en marcha ${edad(fase.desde)}`;
+	return html`<li>
+			<a href="/tareas/${id}">${id}</a>
+			<span class="ahora-titulo">${fase.titulo}</span>
+			<span class="pequeno silencio">${NOMBRE_FASE[fase.fase]}${fase.modelo === null ? "" : ` · ${fase.modelo}`}</span>
+			<span class="edad${fase.parada ? " edad-peligro" : ""}" title="${fase.desde ?? ""}">${cuanto}</span>
+			${fase.parada ? etiqueta(NOMBRE_MARCA.parada, COLOR_MARCA.parada, "marca-parada") : html``}
+		</li>`;
+}
+
+/** Qué trabaja un terminal ahora mismo, o desde cuándo está en reposo. */
+function tarjetaEnMarcha(terminal: TerminalListado, fases: readonly FaseEnMarcha[], proyectoDe: BuscaProyecto): Html {
+	const proyecto = proyectoDe(terminal.proyectoId);
+	const conexion = terminal.conectadoEn === null ? "Sin conectar" : `Conectado desde hace ${edad(terminal.conectadoEn)}`;
+	return html`<article class="ahora-terminal">
+			<p class="ahora-cabecera">
+				<strong>${terminal.nombre}</strong>
+				${proyecto === undefined ? html`` : chipProyecto(proyecto)}
+				<span class="pequeno silencio" title="${terminal.conectadoEn ?? ""}">${conexion}</span>
+			</p>
+			${
+				fases.length === 0
+					? html`<p class="silencio">En reposo.</p>`
+					: html`<ul class="ahora-fases">${fases.map(lineaEnMarcha)}</ul>`
+			}
+		</article>`;
+}
+
+/**
+ * «Ahora mismo»: qué está trabajando cada terminal y desde cuándo. Contesta de
+ * un vistazo si está pasando algo o si el bucle se ha muerto, que mirando solo
+ * la columna «Conectado» de la tabla había que adivinar. La pintan Terminales,
+ * con todos, y la página de un proyecto, con los suyos.
+ *
+ * Los revocados quedan fuera: no van a tomar nada. Sin ninguno vivo se pinta
+ * `vacio`, que en Terminales es nada (la tabla ya lo dice). Las fases salen de
+ * una sola consulta para toda la franja, nunca una por terminal.
+ */
+export function franjaEnMarcha(
+	db: DatabaseSync,
+	horasParada: number,
+	terminales: readonly TerminalListado[],
+	proyectoDe: BuscaProyecto,
+	vacio: Html = html``,
+): Html {
+	const activos = terminales.filter((terminal) => terminal.revocadoEn === null);
+	if (activos.length === 0) {
+		return vacio;
+	}
+	const porTerminal = new Map<number, FaseEnMarcha[]>();
+	for (const fase of fasesEnMarcha(db, horasParada)) {
+		const suyas = porTerminal.get(fase.terminalId);
+		if (suyas === undefined) {
+			porTerminal.set(fase.terminalId, [fase]);
+		} else {
+			suyas.push(fase);
+		}
+	}
+	return html`<section class="ahora">
+			<h2>Ahora mismo</h2>
+			<div class="ahora-rejilla">
+				${activos.map((terminal) => tarjetaEnMarcha(terminal, porTerminal.get(terminal.id) ?? [], proyectoDe))}
+			</div>
+		</section>`;
+}
+
+/**
+ * La primera miga de toda página acotada: la clave del proyecto, que lleva a
+ * su página.
+ */
+export function migaDeProyecto(proyecto: { clave: string }): Miga {
+	return { texto: proyecto.clave, href: `/p/${proyecto.clave}` };
 }

@@ -1,9 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Context, Hono, MiddlewareHandler } from "hono";
-import { html } from "hono/html";
+import { html, raw } from "hono/html";
 import { altaPor } from "../../db/actividad.ts";
 import { listarTerminales } from "../../db/admin.ts";
-import { contarPendientes } from "../../db/bandeja.ts";
+import { bandejaDelHumano, contarPendientes } from "../../db/bandeja.ts";
 import { type ColorUsuario, esColorUsuario } from "../../db/colores.ts";
 import {
 	borrarProyecto,
@@ -16,9 +16,25 @@ import {
 	type Proyecto,
 } from "../../db/proyectos.ts";
 import { listarTareas } from "../../db/tareas.ts";
-import { buscadorDeColor, type Color, chipDeAlta, chipProyecto, type Miga, selectorDeColor } from "../componentes.ts";
+import { formatearId } from "../../md/ids.ts";
+import {
+	accionNuevaTarea,
+	barraProgreso,
+	buscadorDeColor,
+	buscadorDeProyecto,
+	type Color,
+	chipDeAlta,
+	chipProyecto,
+	etiqueta,
+	franjaEnMarcha,
+	type Miga,
+	migaDeProyecto,
+	propiedades,
+	selectorDeColor,
+} from "../componentes.ts";
 import { SIN_DATO } from "../formatos.ts";
 import { campo, campoOpcional, ESTADO_AVISO, type Formulario, leerFormulario, mensajeDeRegla } from "../formulario.ts";
+import { renderMarkdown } from "../markdown.ts";
 import { type Html, type NavProyectos, pagina, type RespuestaHtml } from "../plantilla.ts";
 import {
 	claveRecordada,
@@ -88,7 +104,7 @@ export function proyectoDeTrabajo(c: Context, db: DatabaseSync): Proyecto | unde
  * una sola vez y no en cada ruta.
  *
  * El proyecto de la barra es el de la URL cuando la página está acotada y el
- * recordado cuando no: así los enlaces de Tareas, Funcionalidades e Informes
+ * recordado cuando no: así los enlaces de Tareas, Funcionalidades y Proyecto
  * llevan al proyecto en el que se estaba desde cualquier pantalla.
  */
 export function navProyectos(c: Context, db: DatabaseSync): NavProyectos {
@@ -174,7 +190,7 @@ function filaProyecto(db: DatabaseSync, fila: Fila, colorDe: ColorDe): Html {
 	return html`<tr>
 			<td>${chipProyecto(proyecto)}</td>
 			<td>
-				<a href="${`/p/${proyecto.clave}/tareas`}">${proyecto.nombre}</a>
+				<a href="/p/${proyecto.clave}">${proyecto.nombre}</a>
 				${proyecto.descripcion === "" ? html`` : html`<span class="pequeno silencio">${proyecto.descripcion}</span>`}
 			</td>
 			<td class="pequeno">${textoOpcionalLegible(proyecto.repositorio)}</td>
@@ -314,7 +330,9 @@ function paginaProyectos(c: Context, deps: DependenciasWeb, aviso: string | null
 			usuario: usuarioActual(c),
 			vista: "proyectos",
 			aviso,
-			acciones: html`<a class="boton principal" href="/proyectos/nuevo">Nuevo proyecto</a>`,
+			acciones: html`<a class="boton" href="/informes">Informes de todos los proyectos</a>
+				<a class="boton" href="/actividad">Actividad de todo</a>
+				<a class="boton principal" href="/proyectos/nuevo">Nuevo proyecto</a>`,
 			cuerpo,
 		}),
 		aviso === null ? 200 : ESTADO_AVISO,
@@ -382,8 +400,132 @@ function colorElegido(formulario: Formulario): { color?: string } {
 	return color === null ? {} : { color };
 }
 
+// --- la página del proyecto --------------------------------------------------
+
+/** Las tres pestañas de la página del proyecto. */
+export type PestanaProyecto = "resumen" | "informes" | "actividad";
+
+/** Cada pestaña: su texto, su ruta tras `/p/WEB` y la vista que marca en la barra. */
+const PESTANAS: Record<PestanaProyecto, { texto: string; ruta: string; vista: string }> = {
+	resumen: { texto: "Resumen", ruta: "", vista: "proyecto" },
+	informes: { texto: "Informes", ruta: "/informes", vista: "proyecto-informes" },
+	actividad: { texto: "Actividad", ruta: "/actividad", vista: "proyecto-actividad" },
+};
+
+const ORDEN_PESTANAS: readonly PestanaProyecto[] = ["resumen", "informes", "actividad"];
+
+/** Lo que dice la página de un proyecto que no tiene descripción. */
+const PROPOSITO_PROYECTO = "Un repositorio, sus terminales y sus tareas.";
+
+/**
+ * La página de un proyecto con la pestaña que toque: las tres comparten
+ * cabecera, migas y pestañas, y cada una pone su cuerpo debajo. Las pestañas
+ * son el mismo `nav.vistas` que Lista | Tablero.
+ */
+export function paginaDeProyecto(
+	c: Context,
+	deps: DependenciasWeb,
+	proyecto: Proyecto,
+	activa: PestanaProyecto,
+	cuerpo: Html,
+): RespuestaHtml {
+	const base = `/p/${proyecto.clave}`;
+	const pestanas = html`<nav class="vistas pestanas" aria-label="Secciones del proyecto">
+			${ORDEN_PESTANAS.map(
+				(cual) =>
+					html`<a href="${base}${PESTANAS[cual].ruta}"${cual === activa ? raw(' aria-current="page"') : ""}>${PESTANAS[cual].texto}</a>`,
+			)}
+		</nav>`;
+	return c.html(
+		pagina({
+			...navProyectos(c, deps.db),
+			titulo: proyecto.nombre,
+			// La descripción la escribe una persona: markdown-it sin HTML crudo,
+			// como el hilo.
+			proposito:
+				proyecto.descripcion.trim() === "" ? PROPOSITO_PROYECTO : html`${raw(renderMarkdown(proyecto.descripcion))}`,
+			migas: [migaDeProyecto(proyecto), { texto: "Proyecto" }],
+			acciones: html`<a class="boton" href="/proyectos/${proyecto.id}/editar">Editar</a>${accionNuevaTarea(base)}`,
+			usuario: usuarioActual(c),
+			vista: PESTANAS[activa].vista,
+			cuerpo: html`${pestanas}${cuerpo}`,
+		}),
+	);
+}
+
+/**
+ * El resumen: cómo está configurado, qué se trabaja ahora mismo, qué
+ * funcionalidades están en curso y qué espera por el humano. Los recuentos
+ * salen de la consulta de la bandeja acotada a este proyecto.
+ */
+function resumenProyecto(deps: DependenciasWeb, proyecto: Proyecto): Html {
+	const { db } = deps;
+	const horas = deps.config.FASE_PARADA_HORAS;
+	const base = `/p/${proyecto.clave}`;
+	const terminales = listarTerminales(db).filter((terminal) => terminal.proyectoId === proyecto.id);
+	const enCurso = listarTareas(db, { proyectoId: proyecto.id, estado: "doing" }, horas).filter(
+		(item) => item.tipo === "funcionalidad",
+	);
+	const bandeja = bandejaDelHumano(db, new Date(), horas, proyecto.id);
+	const espera = `${base}/tareas?rapido=espera`;
+	const pendientes: readonly { texto: string; cuantas: number }[] = [
+		{ texto: "Preguntas sin contestar", cuantas: bandeja.bloqueadas.length },
+		{ texto: "Análisis por aprobar", cuantas: bandeja.porAprobar.length },
+		{ texto: "Resultados por revisar", cuantas: bandeja.porRevisar.length },
+	];
+
+	return html`${propiedades([
+		{ nombre: "Repositorio", valor: textoOpcionalLegible(proyecto.repositorio) },
+		{ nombre: "Rama principal", valor: html`<code>${proyecto.ramaPrincipal}</code>` },
+		{ nombre: "Verificación", valor: textoOpcionalLegible(proyecto.verificacion) },
+		{ nombre: "Color", valor: etiqueta(proyecto.color, proyecto.color) },
+		{ nombre: "Creado por", valor: chipDeAlta(altaPor(db, "proyecto", proyecto.id), buscadorDeColor(db)) },
+	])}
+		${franjaEnMarcha(
+			db,
+			horas,
+			terminales,
+			buscadorDeProyecto(db),
+			html`<section class="ahora"><h2>Ahora mismo</h2><p class="silencio">Sin terminales en este proyecto.</p></section>`,
+		)}
+		<section class="informe">
+			<h2>Funcionalidades en curso</h2>
+			${
+				enCurso.length === 0
+					? html`<p class="silencio">Ninguna en curso.</p>`
+					: html`<ul class="hijas">
+						${enCurso.map((item) => {
+							const id = formatearId(item.codigo);
+							return html`<li>
+								<a class="id-tarea" href="/tareas/${id}">${id}</a> ${item.titulo}
+								${barraProgreso(item.partesCerradas ?? 0, item.partes ?? 0, "")}
+							</li>`;
+						})}
+					</ul>`
+			}
+		</section>
+		<section class="informe">
+			<h2>Espera por ti</h2>
+			<ul class="hijas">
+				${pendientes.map(
+					(cual) => html`<li><a href="${espera}">${cual.texto}</a> <span class="contador">${cual.cuantas}</span></li>`,
+				)}
+			</ul>
+		</section>`;
+}
+
 /** Rutas de proyectos: la lista, el alta, la edición, el borrado y el salto de vista. */
 export function registrarRutasProyectos(app: Hono, deps: DependenciasWeb): void {
+	// La página del proyecto. `exigeProyecto` ya dejó el proyecto en el
+	// contexto, o respondió el 404.
+	app.get("/p/:clave", (c) => {
+		const proyecto = proyectoActual(c);
+		if (proyecto === undefined) {
+			return paginaSinProyecto(c, deps.db, c.req.param("clave"));
+		}
+		return paginaDeProyecto(c, deps, proyecto, "resumen", resumenProyecto(deps, proyecto));
+	});
+
 	app.get("/proyectos", (c) => paginaProyectos(c, deps, null));
 
 	app.get("/proyectos/nuevo", (c) => paginaNuevoProyecto(c, deps, PROYECTO_EN_BLANCO, null));

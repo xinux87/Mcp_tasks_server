@@ -34,6 +34,7 @@ import {
 	esperaPorTi,
 	filtrosRapidos,
 	type Miga,
+	migaDeProyecto,
 	type OpcionesFiltro,
 	rotuloColumna,
 	verboDeTurno,
@@ -71,9 +72,7 @@ export const PROPOSITO_TAREAS = "Las tareas del proyecto, agrupadas por funciona
 
 /** `DEFAULT › Tareas` cuando la vista está acotada; sin proyecto no hay camino que contar. */
 export function migasDeTareas(acotado: Proyecto | undefined): Miga[] | undefined {
-	return acotado === undefined
-		? undefined
-		: [{ texto: acotado.clave, href: `/p/${acotado.clave}/tareas` }, { texto: "Tareas" }];
+	return acotado === undefined ? undefined : [migaDeProyecto(acotado), { texto: "Tareas" }];
 }
 
 function esMarca(valor: string): valor is Marca {

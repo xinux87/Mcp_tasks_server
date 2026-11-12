@@ -189,6 +189,32 @@ export function actividadReciente(db: DatabaseSync, limite: number): Actividad[]
 }
 
 /**
+ * Lo último que ha pasado en un proyecto, de lo más nuevo a lo más antiguo:
+ * las acciones sobre sus tareas, sus terminales y el proyecto mismo. Usuarios
+ * y agentes son globales y se quedan fuera. Una tarea o un terminal ya
+ * borrados no se pueden atribuir a ningún proyecto: solo salen en
+ * `actividadReciente`.
+ *
+ * Los ids de terminal y de proyecto se reciclan, así que de esos dos solo
+ * cuenta lo que viene desde su última alta, como en `actividadDe`: lo anterior
+ * era de otro objeto con el mismo número.
+ */
+export function actividadDeProyecto(db: DatabaseSync, proyectoId: number, limite: number): Actividad[] {
+	return sentencia(
+		db,
+		`SELECT ${COLUMNAS} ${DE_ACTIVIDAD}
+			LEFT JOIN terminales m ON a.objeto = 'terminal' AND m.id = a.objeto_id
+			WHERE (t.proyecto_id = ? OR m.proyecto_id = ? OR (a.objeto = 'proyecto' AND a.objeto_id = ?))
+				AND (a.objeto = 'tarea' OR a.id >= (
+					SELECT COALESCE(MAX(x.id), 0) FROM actividad x
+					WHERE x.objeto = a.objeto AND x.objeto_id = a.objeto_id AND ${ES_UN_ALTA}))
+			ORDER BY a.id DESC LIMIT ?`,
+	)
+		.all(proyectoId, proyectoId, proyectoId, Math.max(0, Math.trunc(limite)))
+		.map(comoActividad);
+}
+
+/**
  * Quién dio de alta el objeto, o `null` si no consta. El `_` de un `LIKE` es un
  * comodín de un carácter, pero ninguna acción empieza por «alta» o «crear» sin
  * guion, así que el filtro solo deja pasar las de creación.

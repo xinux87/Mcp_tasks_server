@@ -12,6 +12,7 @@ import {
 	chipProyecto,
 	etiqueta,
 	filtroSelect,
+	migaDeProyecto,
 	type QuienCreo,
 } from "../componentes.ts";
 import { fechaLegible, numeroLegible, SIN_DATO } from "../formatos.ts";
@@ -183,10 +184,7 @@ export function registrarRutasFuncionalidades(app: Hono, deps: DependenciasWeb):
 				...navProyectos(c, deps.db),
 				titulo: "Funcionalidades",
 				proposito: "Lo que has pedido en lenguaje de negocio, y cuánto de cada cosa está hecho.",
-				migas:
-					acotado === undefined
-						? undefined
-						: [{ texto: acotado.clave, href: `/p/${acotado.clave}/tareas` }, { texto: "Funcionalidades" }],
+				migas: acotado === undefined ? undefined : [migaDeProyecto(acotado), { texto: "Funcionalidades" }],
 				usuario: usuarioActual(c),
 				vista: "funcionalidades",
 				revision: revisionActual(deps.db),

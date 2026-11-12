@@ -32,8 +32,17 @@ function porEdad(items: ItemIndice[], desde: (item: ItemIndice) => string): Item
 	return items.sort((uno, otro) => desde(uno).localeCompare(desde(otro)));
 }
 
-export function bandejaDelHumano(db: DatabaseSync, ahora: Date = new Date(), horasParada?: number): Bandeja {
-	const items = listarTareas(db, {}, horasParada);
+/**
+ * Con `proyectoId`, lo de un solo proyecto: es lo que cuenta el resumen de la
+ * página del proyecto, con la misma consulta que la bandeja.
+ */
+export function bandejaDelHumano(
+	db: DatabaseSync,
+	ahora: Date = new Date(),
+	horasParada?: number,
+	proyectoId?: number,
+): Bandeja {
+	const items = listarTareas(db, { proyectoId }, horasParada);
 	const limite = HORAS_BACKLOG * 60 * 60 * 1000;
 	return {
 		// En una bloqueada lo que espera es la pregunta, no la columna.

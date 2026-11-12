@@ -1,13 +1,13 @@
 import type { Hono } from "hono";
 import { html } from "hono/html";
-import { type Actividad, actividadReciente } from "../../db/actividad.ts";
+import { type Actividad, actividadDeProyecto, actividadReciente } from "../../db/actividad.ts";
 import { listarAgentes } from "../../db/agentes.ts";
 import { formatearId } from "../../md/ids.ts";
 import { buscadorDeColor, type Color, chipUsuario, fraseDeAccion } from "../componentes.ts";
 import { fechaLegible } from "../formatos.ts";
 import { type Html, pagina } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
-import { navProyectos } from "./proyectos.ts";
+import { navProyectos, paginaDeProyecto, proyectoActual } from "./proyectos.ts";
 
 /** Cuántas acciones se enseñan. Es una lista para mirar, no un archivo. */
 const CUANTAS = 100;
@@ -99,27 +99,42 @@ function seccionDia(dia: Dia, colorDe: ColorDe, agentes: Agentes): Html {
 		</section>`;
 }
 
-/** `GET /actividad`: las últimas cien acciones humanas, con quién hizo cada una. */
-export function registrarRutasActividad(app: Hono, deps: DependenciasWeb): void {
-	app.get("/actividad", (c) => {
-		const filas = actividadReciente(deps.db, CUANTAS);
-		const colorDe = buscadorDeColor(deps.db);
-		const agentes: Agentes = new Map(listarAgentes(deps.db).map((agente) => [agente.id, agente.nombre]));
-		const dias = porDia(filas);
-		const lista =
-			dias.length === 0
-				? html`<p class="silencio">Todavía no hay nada.</p>`
-				: html`${dias.map((dia) => seccionDia(dia, colorDe, agentes))}`;
+/** Las acciones agrupadas por día, o el hueco cuando todavía no hay ninguna. */
+function listaPorDias(deps: DependenciasWeb, filas: readonly Actividad[]): Html {
+	const colorDe = buscadorDeColor(deps.db);
+	const agentes: Agentes = new Map(listarAgentes(deps.db).map((agente) => [agente.id, agente.nombre]));
+	const dias = porDia(filas);
+	return dias.length === 0
+		? html`<p class="silencio">Todavía no hay nada.</p>`
+		: html`${dias.map((dia) => seccionDia(dia, colorDe, agentes))}`;
+}
 
-		return c.html(
+/**
+ * `GET /actividad`: las últimas cien acciones humanas, con quién hizo cada una.
+ * `GET /p/:clave/actividad`: lo mismo acotado a un proyecto, como pestaña de
+ * su página.
+ */
+export function registrarRutasActividad(app: Hono, deps: DependenciasWeb): void {
+	app.get("/actividad", (c) =>
+		c.html(
 			pagina({
 				...navProyectos(c, deps.db),
 				titulo: "Actividad",
 				proposito: "Quién hizo qué, de más reciente a más antiguo.",
 				usuario: usuarioActual(c),
 				vista: "actividad",
-				cuerpo: lista,
+				cuerpo: listaPorDias(deps, actividadReciente(deps.db, CUANTAS)),
 			}),
-		);
+		),
+	);
+
+	app.get("/p/:clave/actividad", (c) => {
+		// `exigeProyecto` ya respondió el 404 si la clave no es de ninguno.
+		const proyecto = proyectoActual(c);
+		if (proyecto === undefined) {
+			return c.notFound();
+		}
+		const filas = actividadDeProyecto(deps.db, proyecto.id, CUANTAS);
+		return paginaDeProyecto(c, deps, proyecto, "actividad", listaPorDias(deps, filas));
 	});
 }

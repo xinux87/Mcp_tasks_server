@@ -5,7 +5,7 @@ import type { Hono } from "hono";
 import { crearApp } from "../src/app.ts";
 import { hashPassword } from "../src/auth/passwords.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
-import { actividadDe, actividadReciente, altaPor } from "../src/db/actividad.ts";
+import { actividadDe, actividadDeProyecto, actividadReciente, altaPor } from "../src/db/actividad.ts";
 import {
 	altaTerminal,
 	borrarTerminal,
@@ -20,6 +20,7 @@ import { COLORES_USUARIO } from "../src/db/colores.ts";
 import { buscarUsuarioPorNombre, crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { editarTareaBacklog } from "../src/db/edicion.ts";
 import { comentarAnalisis, comentarioHumano, preguntar, responder } from "../src/db/hilo.ts";
+import { borrarProyecto, crearProyecto } from "../src/db/proyectos.ts";
 import {
 	aprobarEjecucion,
 	crearTareaHumana,
@@ -471,6 +472,46 @@ test("el rastro de un terminal empieza en su alta aunque otro haya usado antes e
 				.filter((fila) => fila.objetoNombre === "el-de-antes")
 				.map((fila) => fila.accion),
 			["baja_terminal", "revocar_terminal", "alta_terminal"],
+		);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("la actividad de un proyecto trae sus tareas, sus terminales y el proyecto, y nada más", () => {
+	const banco = montar();
+	try {
+		const actor = { usuarioId: banco.ana };
+		const web = crearProyecto(banco.db, { clave: "WEB", nombre: "La web", actor });
+		crearTareaHumana(banco.db, { titulo: "Del principal", descripcion: "d", usuarioId: banco.ana });
+		crearTareaHumana(banco.db, { titulo: "De la web", descripcion: "d", usuarioId: banco.ana, proyectoId: web.id });
+		altaTerminal(banco.db, { usuarioId: banco.ana, nombre: "web-ana", cuenta: "ana@ejemplo.com", proyectoId: web.id });
+		// Un usuario es global: no es de ningún proyecto.
+		cambiarColor(banco.db, { usuarioId: banco.ana, color: "verde", actorId: banco.ana });
+
+		const filas = actividadDeProyecto(banco.db, web.id, 100);
+		assert.deepEqual(
+			filas.map((fila) => `${fila.accion} ${fila.objetoNombre}`),
+			["alta_terminal web-ana", "crear_tarea De la web", "alta_proyecto La web"],
+		);
+		// Y el límite corta por lo más antiguo.
+		assert.equal(actividadDeProyecto(banco.db, web.id, 1)[0]?.accion, "alta_terminal");
+		// Lo de otro proyecto y lo de los usuarios sigue en la actividad de todo.
+		const todo = actividadReciente(banco.db, 100).map((fila) => fila.accion);
+		assert.ok(todo.includes("cambiar_color"));
+		assert.ok(
+			actividadDeProyecto(banco.db, 1, 100).some((fila) => fila.objetoNombre === "Del principal"),
+			"el principal no trae su tarea",
+		);
+
+		// Un id de proyecto reciclado no hereda el rastro del que se borró.
+		const viejo = crearProyecto(banco.db, { clave: "VIEJO", nombre: "Viejo", actor });
+		borrarProyecto(banco.db, viejo.id, actor);
+		const nuevo = crearProyecto(banco.db, { clave: "NUEVO", nombre: "Nuevo", actor });
+		assert.equal(nuevo.id, viejo.id, "el montaje necesita que el id se recicle");
+		assert.deepEqual(
+			actividadDeProyecto(banco.db, nuevo.id, 100).map((fila) => fila.accion),
+			["alta_proyecto"],
 		);
 	} finally {
 		banco.cerrar();

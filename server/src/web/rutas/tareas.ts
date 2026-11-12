@@ -48,6 +48,7 @@ import {
 	etiqueta,
 	fraseDeAccion,
 	type Miga,
+	migaDeProyecto,
 	muestraEdad,
 	type Propiedad,
 	pasosDelCiclo,
@@ -691,7 +692,7 @@ function proyectoLegible(db: DatabaseSync, proyectoId: number): Html {
 	if (proyecto === undefined) {
 		return html`<span class="silencio">${SIN_DATO}</span>`;
 	}
-	return html`<a href="/p/${proyecto.clave}/tareas">${chipProyecto(proyecto)}</a> ${proyecto.nombre}`;
+	return html`<a href="/p/${proyecto.clave}">${chipProyecto(proyecto)}</a> ${proyecto.nombre}`;
 }
 
 /**
@@ -1203,12 +1204,12 @@ function detallesBorrar(tarea: Tarea): Html {
 
 /**
  * Las migas de la ficha y de lo que cuelga de ella: `WEB › Tareas › T-0042`.
- * La clave lleva al kanban del proyecto y «Tareas», a su lista.
+ * La clave lleva a la página del proyecto y «Tareas», a su lista.
  */
 function migasDeFicha(db: DatabaseSync, proyectoId: number, ...donde: string[]): Miga[] {
 	const proyecto = buscarProyectoPorId(db, proyectoId);
 	const base = proyecto === undefined ? "" : `/p/${proyecto.clave}`;
-	const migas: Miga[] = proyecto === undefined ? [] : [{ texto: proyecto.clave, href: `${base}/tareas/kanban` }];
+	const migas: Miga[] = proyecto === undefined ? [] : [migaDeProyecto(proyecto)];
 	migas.push({ texto: "Tareas", href: `${base}/tareas` });
 	for (const [indice, texto] of donde.entries()) {
 		// El último es donde se está: no enlaza. Los de en medio, a la ficha.

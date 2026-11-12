@@ -5,7 +5,7 @@ import type { Hono } from "hono";
 import { crearApp } from "../src/app.ts";
 import { hashPassword } from "../src/auth/passwords.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
-import { listarTerminales } from "../src/db/admin.ts";
+import { altaTerminal, cambiarColor, listarTerminales } from "../src/db/admin.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
 import { crearProyecto, listarProyectos } from "../src/db/proyectos.ts";
 import { borrarTarea, buscarTarea, crearTareaHumana, exigirTarea } from "../src/db/tareas.ts";
@@ -228,7 +228,7 @@ test("la web recuerda el proyecto que se está mirando, y la vista cruzada se el
 		const conWeb = conProyecto(cookie, "WEB");
 		const actividad = await (await pedir(montaje, "/actividad", { cookie: conWeb })).text();
 		assert.match(actividad, /<a class="enlace-nav" href="\/p\/WEB\/tareas">Tareas<\/a>/);
-		assert.match(actividad, /<a class="enlace-nav" href="\/p\/WEB\/informes">Informes<\/a>/);
+		assert.match(actividad, /<a class="enlace-nav" href="\/p\/WEB">Proyecto<\/a>/);
 		const todas = await (await pedir(montaje, "/tareas", { cookie: conWeb })).text();
 		assert.match(todas, /Tarea del principal/);
 		assert.match(todas, /Tarea de la web/);
@@ -245,7 +245,12 @@ test("la web recuerda el proyecto que se está mirando, y la vista cruzada se el
 		assert.equal(recordado(salto), "todos");
 		const cruzada = await (await pedir(montaje, "/actividad", { cookie: conProyecto(cookie, "todos") })).text();
 		assert.match(cruzada, /<a class="enlace-nav" href="\/tareas">Tareas<\/a>/);
-		assert.match(cruzada, /<option value="\/tareas" selected>Todos los proyectos<\/option>/);
+		// Desde la actividad, el selector se queda en la actividad: la de todo o
+		// la pestaña del proyecto elegido.
+		assert.match(cruzada, /<option value="\/actividad" selected>Todos los proyectos<\/option>/);
+		assert.match(cruzada, /<option value="\/p\/WEB\/actividad">WEB — La web nueva<\/option>/);
+		// Con todos los proyectos elegidos no hay página de proyecto a la que llevar.
+		assert.doesNotMatch(cruzada, />Proyecto<\/a>/);
 	} finally {
 		await montaje.cerrar();
 	}
@@ -444,7 +449,7 @@ test("la ficha enseña el proyecto y el alta acotada crea la tarea en él", asyn
 
 		const ficha = await (await pedir(montaje, `/tareas/${idFila(montaje, 2)}`, { cookie })).text();
 		assert.match(ficha, /<dt>Proyecto<\/dt>/);
-		assert.match(ficha, /<dd><a href="\/p\/WEB\/tareas">.*?WEB<\/span><\/a> La web nueva<\/dd>/);
+		assert.match(ficha, /<dd><a href="\/p\/WEB">.*?WEB<\/span><\/a> La web nueva<\/dd>/);
 
 		// Desde el tablero de un proyecto, el alta ni pregunta: nace en él.
 		const alta = await (await pedir(montaje, "/p/WEB/tareas/nueva", { cookie })).text();
@@ -563,6 +568,175 @@ test("las funcionalidades se acotan al proyecto y llevan su chip en la vista cru
 		assert.match(acotada, /Evolutivo de la web/);
 		assert.ok(!acotada.includes("Evolutivo del principal"));
 		assert.match(acotada, /href="\/p\/WEB\/tareas\/nueva\?tipo=funcionalidad"/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+/** La barra lateral de una página, sin el resto. */
+function barraDe(cuerpo: string): string {
+	return cuerpo.slice(cuerpo.indexOf('<aside class="lateral"'), cuerpo.indexOf("</aside>"));
+}
+
+test("la página del proyecto resume su configuración, sus terminales, lo que está en curso y lo que espera", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const { db } = montaje;
+		const web = crearProyecto(db, {
+			clave: "WEB",
+			nombre: "La web nueva",
+			descripcion: "El **frontal** de clientes.",
+			verificacion: "npm test",
+		});
+		altaTerminal(db, { usuarioId: 1, nombre: "portatil-web", cuenta: "ana@ejemplo.com", proyectoId: web.id });
+		// Una funcionalidad en curso con una parte de dos cerrada.
+		const portal = crearTareaHumana(db, {
+			titulo: "Portal de clientes",
+			descripcion: "d",
+			usuarioId: 1,
+			proyectoId: web.id,
+			tipo: "funcionalidad",
+		});
+		const parte = crearTareaHumana(db, { titulo: "La pantalla", descripcion: "d", usuarioId: 1, padreId: portal.id });
+		crearTareaHumana(db, { titulo: "El servicio", descripcion: "d", usuarioId: 1, padreId: portal.id });
+		db.prepare("UPDATE tareas SET estado = 'finished' WHERE id = ?").run(parte.id);
+		db.prepare("UPDATE tareas SET estado = 'doing' WHERE id = ?").run(portal.id);
+		// Un resultado por revisar en cada proyecto: solo cuenta el suyo.
+		for (const proyectoId of [web.id, 1]) {
+			const hecha = crearTareaHumana(db, { titulo: "Hecha", descripcion: "d", usuarioId: 1, proyectoId });
+			db.prepare("UPDATE tareas SET estado = 'done' WHERE id = ?").run(hecha.id);
+		}
+
+		const respuesta = await pedir(montaje, "/p/WEB", { cookie });
+		assert.equal(respuesta.status, 200);
+		assert.equal(recordado(respuesta), "WEB");
+		const cuerpo = await respuesta.text();
+		assert.match(cuerpo, /data-vista="proyecto"/);
+		assert.match(
+			cuerpo,
+			/<nav class="migas"[^>]*>\s*<a href="\/p\/WEB">WEB<\/a>\s*<span class="separador"[^>]*>›<\/span><span>Proyecto<\/span>/,
+		);
+		assert.match(cuerpo, /<h1>La web nueva<\/h1>/);
+		assert.match(cuerpo, /<div class="proposito"><p>El <strong>frontal<\/strong> de clientes\.<\/p>/);
+		assert.match(cuerpo, new RegExp(`<a class="boton" href="/proyectos/${web.id}/editar">Editar</a>`));
+		assert.match(cuerpo, /<a class="boton principal" href="\/p\/WEB\/tareas\/nueva">Nueva tarea<\/a>/);
+		assert.match(
+			cuerpo,
+			/<nav class="vistas pestanas"[^>]*>\s*<a href="\/p\/WEB" aria-current="page">Resumen<\/a><a href="\/p\/WEB\/informes">Informes<\/a><a href="\/p\/WEB\/actividad">Actividad<\/a>/,
+		);
+
+		// Resumen, en su orden: propiedades, ahora mismo, en curso, espera por ti.
+		const orden = [
+			"<dt>Repositorio</dt>",
+			"<h2>Ahora mismo</h2>",
+			"<h2>Funcionalidades en curso</h2>",
+			"<h2>Espera por ti</h2>",
+		];
+		const posiciones = orden.map((trozo) => cuerpo.indexOf(trozo));
+		assert.ok(
+			posiciones.every((posicion) => posicion >= 0),
+			`falta algún bloque: ${posiciones.join(", ")}`,
+		);
+		assert.deepEqual(
+			[...posiciones].sort((a, b) => a - b),
+			posiciones,
+		);
+		assert.match(cuerpo, /<dt>Verificación<\/dt>\s*<dd><code>npm test<\/code><\/dd>/);
+		assert.match(cuerpo, /<dt>Rama principal<\/dt>\s*<dd><code>main<\/code><\/dd>/);
+		assert.match(cuerpo, /<dt>Color<\/dt>/);
+		assert.match(cuerpo, /<dt>Creado por<\/dt>/);
+		assert.match(cuerpo, /<strong>portatil-web<\/strong>/);
+		assert.match(
+			cuerpo,
+			new RegExp(`href="/tareas/${formatearId(portal.codigo)}">${formatearId(portal.codigo)}</a> Portal de clientes`),
+		);
+		assert.match(
+			cuerpo,
+			/<progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto"> 1\/2<\/span>/,
+		);
+		for (const [texto, cuantas] of [
+			["Preguntas sin contestar", 0],
+			["Análisis por aprobar", 0],
+			["Resultados por revisar", 1],
+		] as const) {
+			assert.match(
+				cuerpo,
+				new RegExp(`<a href="/p/WEB/tareas\\?rapido=espera">${texto}</a> <span class="contador">${cuantas}</span>`),
+				texto,
+			);
+		}
+		// «Proyecto» está activa en la barra; Configuración, cerrada.
+		assert.match(barraDe(cuerpo), /<a class="enlace-nav" href="\/p\/WEB" aria-current="page">Proyecto<\/a>/);
+		assert.match(barraDe(cuerpo), /<details class="bloque">/);
+
+		// El principal, sin descripción ni terminales vivos ni nada en curso.
+		for (const terminal of listarTerminales(db)) {
+			assert.equal(terminal.proyectoId === 1, false, "el montaje no debería tener terminales en el principal");
+		}
+		const principal = await (await pedir(montaje, "/p/DEFAULT", { cookie })).text();
+		assert.match(principal, /<p class="proposito">Un repositorio, sus terminales y sus tareas\.<\/p>/);
+		assert.match(principal, /Sin terminales en este proyecto\./);
+		assert.match(principal, /Ninguna en curso\./);
+		assert.doesNotMatch(principal, /portatil-web/);
+
+		assert.equal((await pedir(montaje, "/p/NOEXISTE", { cookie })).status, 404);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("los informes y la actividad del proyecto son pestañas de su página; las vistas cruzadas siguen", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		conDosProyectos(montaje);
+		// Una acción sobre un usuario: es global, no de ningún proyecto.
+		cambiarColor(montaje.db, { usuarioId: 1, color: "verde", actorId: 1 });
+
+		const informes = await (await pedir(montaje, "/p/WEB/informes", { cookie })).text();
+		assert.match(informes, /data-vista="proyecto-informes"/);
+		assert.match(informes, /<h1>La web nueva<\/h1>/);
+		assert.match(informes, /<nav class="migas"[^>]*>\s*<a href="\/p\/WEB">WEB<\/a>/);
+		assert.match(informes, /<a href="\/p\/WEB\/informes" aria-current="page">Informes<\/a>/);
+		assert.match(informes, /¿Qué cuesta cada modelo\?/);
+		assert.match(barraDe(informes), /<a class="enlace-nav" href="\/p\/WEB" aria-current="page">Proyecto<\/a>/);
+
+		const cruzados = await (await pedir(montaje, "/informes", { cookie })).text();
+		assert.match(cruzados, /<h1>Informes<\/h1>/);
+		assert.doesNotMatch(cruzados, /class="vistas pestanas"/);
+		assert.doesNotMatch(barraDe(cruzados), /aria-current="page">Proyecto/);
+
+		const respuesta = await pedir(montaje, "/p/WEB/actividad", { cookie });
+		assert.equal(respuesta.status, 200);
+		const actividad = await respuesta.text();
+		assert.match(actividad, /data-vista="proyecto-actividad"/);
+		assert.match(actividad, /<a href="\/p\/WEB\/actividad" aria-current="page">Actividad<\/a>/);
+		assert.match(barraDe(actividad), /<a class="enlace-nav" href="\/p\/WEB" aria-current="page">Proyecto<\/a>/);
+		assert.match(actividad, /<section class="dia">/);
+		assert.match(actividad, /Tarea de la web/);
+		assert.doesNotMatch(actividad, /Tarea del principal/);
+		assert.doesNotMatch(actividad, /cambió el color de/);
+
+		const todo = await (await pedir(montaje, "/actividad", { cookie })).text();
+		assert.match(todo, /Tarea de la web/);
+		assert.match(todo, /Tarea del principal/);
+		assert.match(todo, /cambió el color de/);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("la lista de proyectos enlaza a la página de cada uno y a las vistas cruzadas", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		conDosProyectos(montaje);
+		const lista = await (await pedir(montaje, "/proyectos", { cookie })).text();
+		assert.match(lista, /<a href="\/p\/WEB">La web nueva<\/a>/);
+		assert.match(lista, /<a href="\/p\/DEFAULT">Default<\/a>/);
+		assert.match(lista, /<a class="boton" href="\/informes">Informes de todos los proyectos<\/a>/);
+		assert.match(lista, /<a class="boton" href="\/actividad">Actividad de todo<\/a>/);
 	} finally {
 		await montaje.cerrar();
 	}
