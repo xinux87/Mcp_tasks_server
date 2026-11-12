@@ -303,10 +303,12 @@ test("el CLI crea una funcionalidad con rama y dependencias, la aprueba y borra 
 		bien(dataDir, "crear-tarea", "ana", "Una parte a mano", "d", "--padre", idFila(dataDir, 1));
 		assert.match(bien(dataDir, "ver-tarea", idFila(dataDir, 4)), new RegExp(`^padre: ${idFila(dataDir, 1)}$`, "m"));
 
-		// Solo una funcionalidad puede ser padre.
-		const padreMalo = cli(dataDir, "crear-tarea", "ana", "Otra", "d", "--padre", idFila(dataDir, 2));
+		// Cualquier tarea abierta puede ser madre, salvo una pregunta: se cierra
+		// con su respuesta y no tiene subtareas.
+		bien(dataDir, "crear-tarea", "ana", "¿Por qué?", "d", "--pregunta");
+		const padreMalo = cli(dataDir, "crear-tarea", "ana", "Otra", "d", "--padre", idFila(dataDir, 5));
 		assert.equal(padreMalo.codigo, 1);
-		assert.match(padreMalo.salida, /^padre_no_es_funcionalidad: /m);
+		assert.match(padreMalo.salida, /^padre_invalido: /m);
 
 		// Borrar: lo que permite podar la descomposición.
 		const aMano = idFila(dataDir, 4);
@@ -341,17 +343,18 @@ test("el CLI crea una funcionalidad con rama y dependencias, la aprueba y borra 
 		);
 		const tras = bien(dataDir, "listar");
 		// La parte sale del backlog, y con ella la de integrar la rama, que ya
-		// cuenta en el progreso de la funcionalidad. Los identificadores empiezan
-		// en T-0005: el T-0004 se borró y ese número no se vuelve a repartir.
+		// cuenta en el progreso de la funcionalidad. Las filas nuevas empiezan en
+		// la 6: la 4 se borró y ese número no se vuelve a repartir, y la 5 es la
+		// pregunta.
 		assert.match(tras, new RegExp(`^- ${idFila(dataDir, 1)} · doing · funcionalidad 0\\/2 · `, "m"));
 		assert.match(
 			tras,
-			new RegExp(`^- ${idFila(dataDir, 5)} · prepared · Sacar los datos · .+ · padre: ${idFila(dataDir, 1)}$`, "m"),
+			new RegExp(`^- ${idFila(dataDir, 6)} · prepared · Sacar los datos · .+ · padre: ${idFila(dataDir, 1)}$`, "m"),
 		);
 		assert.match(
 			tras,
 			new RegExp(
-				`^- ${idFila(dataDir, 6)} · prepared · esperando · Integrar la rama \`evolutivo\\/csv\` en la principal · `,
+				`^- ${idFila(dataDir, 7)} · prepared · esperando · Integrar la rama \`evolutivo\\/csv\` en la principal · `,
 				"m",
 			),
 		);

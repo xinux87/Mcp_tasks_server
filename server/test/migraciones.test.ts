@@ -773,3 +773,53 @@ test("la migración de la fase en marcha deja sin fecha lo que ya estaba tomado"
 		rmSync(carpeta, { recursive: true, force: true });
 	}
 });
+
+test("la migración de la clase marca partes las hijas de una funcionalidad e hijas de trabajo el resto", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-clase.sql"));
+		assert.ok(cual > 0, "no está la migración de la clase");
+
+		// Una funcionalidad con dos partes, una tarea con una hija de trabajo
+		// y una tarea suelta: lo que hay en una base en marcha.
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		const filas: [number, string, string, number | null][] = [
+			[1, "FUNCI1", "funcionalidad", null],
+			[2, "PARTE2", "tarea", 1],
+			[3, "PARTE3", "tarea", 1],
+			[4, "MADRE4", "tarea", null],
+			[5, "HIJA55", "tarea", 4],
+			[6, "SUELTA", "tarea", null],
+		];
+		for (const [id, codigo, tipo, padre] of filas) {
+			db
+				.prepare(
+					`INSERT INTO tareas (id, codigo, titulo, descripcion, tipo, estado, orden, padre_id,
+						creada, actualizada, estado_desde, revision)
+					VALUES (?, ?, 'De antes', 'd', ?, 'backlog', ?, ?, ?, ?, ?, 3)`,
+				)
+				.run(id, codigo, tipo, id, padre, FECHA, FECHA, FECHA);
+		}
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		assert.deepEqual(
+			db
+				.prepare("SELECT id, clase FROM tareas ORDER BY id")
+				.all()
+				.map((fila) => `${String(fila.id)} ${String(fila.clase)}`),
+			["1 null", "2 parte", "3 parte", "4 null", "5 hija", "6 null"],
+		);
+		// Y no admite otra clase que esas dos.
+		assert.throws(() => {
+			db.prepare("UPDATE tareas SET clase = 'otra' WHERE id = 6").run();
+		});
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});

@@ -3,15 +3,18 @@ import { ErrorDeRegla } from "../errores.ts";
 import { formatearId } from "../md/ids.ts";
 import { entero, escribirContenido, SOLTAR_FASE, sentencia, texto } from "./base.ts";
 import { escribirDependencias } from "./dependencias.ts";
+import { exigirTitulo } from "./edicion.ts";
 import { AUTOR_SERVIDOR, insertarComentario } from "./hilo.ts";
-import { cambiarEstado, comoTarea, exigirTarea, insertarTarea, type Tarea } from "./tareas.ts";
+import { cambiarEstado, comoTarea, crearTareaHumana, exigirTarea, insertarTarea, type Tarea } from "./tareas.ts";
 
 /**
- * Funcionalidades: lo que pide el humano en lenguaje de negocio. Su
- * «ejecución» son sus partes, que crea el análisis al descomponerla y que el
- * humano aprueba antes de que ningún agente las trabaje.
+ * Tareas descompuestas: una funcionalidad, que es lo que pide el humano en
+ * lenguaje de negocio, o cualquier tarea cuyo análisis la partió en partes
+ * (ver `ES_DESCOMPUESTA` en `tareas.ts`). Su «ejecución» son sus partes, que
+ * crea el análisis al descomponerla o el humano, y que el humano aprueba antes
+ * de que ningún agente las trabaje.
  *
- * Aquí vive todo lo que solo pasa en una funcionalidad: crear una parte,
+ * Aquí vive todo lo que solo pasa en una descompuesta: crear una parte,
  * aprobar la descomposición y cerrarla sola cuando la última parte se cierra.
  */
 
@@ -21,22 +24,27 @@ export type PartesDeFuncionalidad = {
 	cerradas: number;
 };
 
-/** Cuántas partes tiene la funcionalidad y cuántas están cerradas. */
-export function partesDe(db: DatabaseSync, funcionalidadId: number): PartesDeFuncionalidad {
+/**
+ * Cuántas partes tiene la madre y cuántas están cerradas. Solo cuentan las de
+ * clase `parte`: una hija de trabajo no es un trozo del plan.
+ */
+export function partesDe(db: DatabaseSync, madreId: number): PartesDeFuncionalidad {
 	const fila = sentencia(
 		db,
 		`SELECT COUNT(*) AS total, COUNT(CASE WHEN estado = 'finished' THEN 1 END) AS cerradas
-			FROM tareas WHERE padre_id = ?`,
-	).get(funcionalidadId);
+			FROM tareas WHERE padre_id = ? AND clase = 'parte'`,
+	).get(madreId);
 	if (fila === undefined) {
 		throw new Error("el recuento de partes no devolvió ninguna fila");
 	}
 	return { total: entero(fila, "total"), cerradas: entero(fila, "cerradas") };
 }
 
-/** Las hijas directas de una tarea, en orden de id. */
-function hijasDirectas(conexion: DatabaseSync, padreId: number): Tarea[] {
-	return sentencia(conexion, "SELECT * FROM tareas WHERE padre_id = ? ORDER BY id").all(padreId).map(comoTarea);
+/** Las partes de una tarea (sus hijas de clase `parte`), en orden de id. */
+function partesDirectas(conexion: DatabaseSync, madreId: number): Tarea[] {
+	return sentencia(conexion, "SELECT * FROM tareas WHERE padre_id = ? AND clase = 'parte' ORDER BY id")
+		.all(madreId)
+		.map(comoTarea);
 }
 
 export type NuevaParte = {
@@ -44,22 +52,23 @@ export type NuevaParte = {
 	descripcion: string;
 	padreId: number;
 	terminalId: number;
-	/** Otras partes de la misma funcionalidad que tienen que ir antes. */
+	/** Otras partes de la misma madre que tienen que ir antes. */
 	dependeDe?: number[];
 };
 
 /**
- * Parte de una funcionalidad: la crea su análisis al descomponerla. Nace en
- * `backlog` colgando de la funcionalidad y hereda su rama, sus modelos y sus
- * terminales; el humano la revisa antes de aprobar la descomposición.
+ * Parte de una funcionalidad o de una tarea: la crea su análisis al
+ * descomponerla. Nace en `backlog` colgando de la madre y hereda su rama, sus
+ * modelos y sus terminales; el humano la revisa antes de aprobar la
+ * descomposición.
  */
 export function crearParte(db: DatabaseSync, datos: NuevaParte): Tarea {
 	return escribirContenido(db, (conexion, revision) => {
 		const padre = exigirTarea(conexion, datos.padreId);
 		exigirDescomposicionEnMarcha(padre, datos.terminalId);
 		const parte = insertarTarea(conexion, revision, {
-			// Una parte vive en el proyecto de su funcionalidad: lo hereda, como la
-			// rama y las asignaciones.
+			// Una parte vive en el proyecto de su madre: lo hereda, como la rama y
+			// las asignaciones.
 			proyectoId: padre.proyectoId,
 			titulo: datos.titulo,
 			descripcion: datos.descripcion,
@@ -67,10 +76,11 @@ export function crearParte(db: DatabaseSync, datos: NuevaParte): Tarea {
 			rama: padre.rama,
 			estado: "backlog",
 			padreId: padre.id,
+			clase: "parte",
 			autoejecucion: padre.autoejecucion,
 			analisisHecho: false,
 			// Una parte hereda también el papel de cada fase, no solo el modelo
-			// y el terminal: es el mismo reparto de la funcionalidad.
+			// y el terminal: es el mismo reparto de la madre.
 			analisisAgenteId: padre.analisisAgenteId,
 			analisisModelo: padre.analisisModelo,
 			analisisTerminalId: padre.analisisTerminalId,
@@ -90,36 +100,37 @@ export function crearParte(db: DatabaseSync, datos: NuevaParte): Tarea {
 	});
 }
 
-/** Una parte solo se crea desde el análisis de su funcionalidad, y por su terminal. */
+/**
+ * Una parte solo se crea desde el análisis de su madre, y por su terminal. La
+ * madre es una funcionalidad o una tarea; una pregunta se cierra con su
+ * respuesta y no se descompone.
+ */
 function exigirDescomposicionEnMarcha(padre: Tarea, terminalId: number): void {
-	if (padre.tipo !== "funcionalidad") {
+	if (padre.tipo === "pregunta") {
 		throw new ErrorDeRegla(
 			"solo_desde_descomposicion",
-			`La tarea ${formatearId(padre.codigo)} no es una funcionalidad: las partes solo cuelgan de una funcionalidad.`,
+			`La tarea ${formatearId(padre.codigo)} es una pregunta: se contesta, no se descompone en partes.`,
 		);
 	}
 	if (padre.estado !== "prepared") {
 		throw new ErrorDeRegla(
 			"solo_desde_descomposicion",
-			`La funcionalidad está en ${padre.estado}: sus partes se crean mientras se descompone, en prepared.`,
+			`La tarea está en ${padre.estado}: sus partes se crean mientras se analiza, en prepared.`,
 		);
 	}
 	if (padre.analisisTerminalId !== terminalId) {
-		throw new ErrorDeRegla(
-			"solo_desde_descomposicion",
-			"Este terminal no es el responsable del análisis de esa funcionalidad.",
-		);
+		throw new ErrorDeRegla("solo_desde_descomposicion", "Este terminal no es el responsable del análisis de esa tarea.");
 	}
 }
 
-/** Una parte solo puede depender de otras partes de su misma funcionalidad. */
+/** Una parte solo puede depender de otras partes de su misma madre. */
 function exigirPartesDelMismoPadre(conexion: DatabaseSync, padreId: number, dependeDe: readonly number[]): void {
 	for (const otra of dependeDe) {
 		const candidata = exigirTarea(conexion, otra);
 		if (candidata.padreId !== padreId) {
 			throw new ErrorDeRegla(
 				"dependencia_fuera_de_la_funcionalidad",
-				`La tarea ${formatearId(candidata.codigo)} no es una parte de esta funcionalidad: una parte solo depende de sus hermanas.`,
+				`La tarea ${formatearId(candidata.codigo)} no es una parte de esta misma tarea: una parte solo depende de sus hermanas.`,
 			);
 		}
 	}
@@ -136,47 +147,48 @@ export function exigirPartes(conexion: DatabaseSync, funcionalidad: Tarea): void
 }
 
 /**
- * Aprobar la descomposición: la funcionalidad pasa a `doing` y sus partes en
- * `backlog` pasan a `prepared` conservando el orden en el que están. Si la
- * funcionalidad tiene rama, se crea además la parte que integra esa rama en la
- * principal, que depende de todas las demás.
+ * Aprobar la descomposición: la madre pasa a `doing` y sus partes en `backlog`
+ * pasan a `prepared` conservando el orden en el que están. Si la madre tiene
+ * rama y no cuelga de nadie, se crea además la parte que integra esa rama en
+ * la principal, que depende de todas las demás. Una madre que es a su vez
+ * parte de otra trabaja en la rama heredada, y la integra quien la fijó.
  *
  * Corre dentro de la escritura que abre `aprobarEjecucion`.
  */
-export function aprobarDescomposicion(conexion: DatabaseSync, revision: number, funcionalidad: Tarea): void {
-	if (funcionalidad.estado !== "prepared") {
+export function aprobarDescomposicion(conexion: DatabaseSync, revision: number, madre: Tarea): void {
+	if (madre.estado !== "prepared") {
 		throw new ErrorDeRegla(
 			"estado_no_permite_aprobar",
-			`La funcionalidad está en ${funcionalidad.estado}: la descomposición se aprueba en prepared.`,
+			`La tarea está en ${madre.estado}: la descomposición se aprueba en prepared.`,
 		);
 	}
-	if (!funcionalidad.analisisHecho) {
+	if (!madre.analisisHecho) {
 		throw new ErrorDeRegla("analisis_no_hecho", "Todavía no hay descomposición que aprobar.");
 	}
 	const abiertas = sentencia(
 		conexion,
 		"SELECT COUNT(*) AS total FROM preguntas WHERE tarea_id = ? AND respuesta_opcion IS NULL",
-	).get(funcionalidad.id);
+	).get(madre.id);
 	if (abiertas !== undefined && entero(abiertas, "total") > 0) {
 		throw new ErrorDeRegla(
 			"tarea_bloqueada",
-			"La funcionalidad tiene preguntas sin contestar: contéstalas antes de aprobar la descomposición.",
+			"La tarea tiene preguntas sin contestar: contéstalas antes de aprobar la descomposición.",
 		);
 	}
 
-	cambiarEstado(conexion, revision, funcionalidad.id, "doing", `, ejecucion_aprobada = 1${SOLTAR_FASE}`);
+	cambiarEstado(conexion, revision, madre.id, "doing", `, ejecucion_aprobada = 1${SOLTAR_FASE}`);
 
 	// Las partes salen a `prepared` en el orden que traían, detrás de lo que ya
 	// hubiera en esa columna: cada una entra al final, que es lo que hace
 	// `cambiarEstado`, y así conservan su orden relativo.
-	const enBacklog = hijasDirectas(conexion, funcionalidad.id).filter((parte) => parte.estado === "backlog");
+	const enBacklog = partesDirectas(conexion, madre.id).filter((parte) => parte.estado === "backlog");
 	const ordenados = [...enBacklog].sort((uno, otro) => uno.orden - otro.orden || uno.id - otro.id);
 	for (const parte of ordenados) {
 		cambiarEstado(conexion, revision, parte.id, "prepared");
 	}
 
-	if (funcionalidad.rama !== null) {
-		crearParteDeIntegracion(conexion, revision, funcionalidad);
+	if (madre.rama !== null && madre.padreId === null) {
+		crearParteDeIntegracion(conexion, revision, madre);
 	}
 }
 
@@ -194,29 +206,30 @@ function descripcionDeIntegracion(rama: string): string {
  * principal. Depende de todas las demás partes, así que no se puede tomar
  * hasta que estén cerradas. La crea el servidor al aprobar, no el análisis.
  */
-function crearParteDeIntegracion(conexion: DatabaseSync, revision: number, funcionalidad: Tarea): Tarea {
-	const rama = funcionalidad.rama ?? "";
+function crearParteDeIntegracion(conexion: DatabaseSync, revision: number, madre: Tarea): Tarea {
+	const rama = madre.rama ?? "";
 	const parte = insertarTarea(conexion, revision, {
-		proyectoId: funcionalidad.proyectoId,
+		proyectoId: madre.proyectoId,
 		titulo: `Integrar la rama \`${rama}\` en la principal`,
 		descripcion: descripcionDeIntegracion(rama),
 		tipo: "tarea",
-		rama: funcionalidad.rama,
+		rama: madre.rama,
 		estado: "prepared",
-		padreId: funcionalidad.id,
-		autoejecucion: funcionalidad.autoejecucion,
+		padreId: madre.id,
+		clase: "parte",
+		autoejecucion: madre.autoejecucion,
 		analisisHecho: false,
-		analisisAgenteId: funcionalidad.analisisAgenteId,
-		analisisModelo: funcionalidad.analisisModelo,
-		analisisTerminalId: funcionalidad.analisisTerminalId,
-		ejecucionAgenteId: funcionalidad.ejecucionAgenteId,
-		ejecucionModelo: funcionalidad.ejecucionModelo,
-		ejecucionTerminalId: funcionalidad.ejecucionTerminalId,
+		analisisAgenteId: madre.analisisAgenteId,
+		analisisModelo: madre.analisisModelo,
+		analisisTerminalId: madre.analisisTerminalId,
+		ejecucionAgenteId: madre.ejecucionAgenteId,
+		ejecucionModelo: madre.ejecucionModelo,
+		ejecucionTerminalId: madre.ejecucionTerminalId,
 		enMarchaTerminalId: null,
 		creadaPorUsuarioId: null,
 		creadaPorTerminalId: null,
 	});
-	const hermanas = hijasDirectas(conexion, funcionalidad.id)
+	const hermanas = partesDirectas(conexion, madre.id)
 		.filter((hermana) => hermana.id !== parte.id)
 		.map((hermana) => hermana.id);
 	if (hermanas.length > 0) {
@@ -242,10 +255,10 @@ function commitDe(conexion: DatabaseSync, parteId: number): string {
 }
 
 /**
- * Cierra la funcionalidad cuando su última parte se acepta: pasa a `done` y
- * deja un comentario `resultado` firmado por el servidor con cada parte y su
- * commit. Las hijas de trabajo de una parte cuelgan de la parte, no de la
- * funcionalidad, así que no cuentan.
+ * Cierra la madre descompuesta cuando su última parte se acepta: pasa a
+ * `done` y deja un comentario `resultado` firmado por el servidor con cada
+ * parte y su commit. Las hijas de trabajo cuelgan de la parte que se ejecuta y
+ * no son partes de nadie, así que no cuentan.
  *
  * Corre dentro de la escritura que mueve la parte a `finished`.
  */
@@ -261,16 +274,18 @@ export function cerrarPadreSiProcede(conexion: DatabaseSync, revision: number, p
 	if (padreId === null) {
 		return;
 	}
-	const funcionalidad = exigirTarea(conexion, padreId);
-	if (funcionalidad.tipo !== "funcionalidad" || funcionalidad.estado !== "doing") {
+	const madre = exigirTarea(conexion, padreId);
+	if (madre.estado !== "doing") {
 		return;
 	}
-	const partes = hijasDirectas(conexion, funcionalidad.id);
+	// Sin partes la madre no está descompuesta (o es una funcionalidad vacía):
+	// no hay nada que cierre por ella.
+	const partes = partesDirectas(conexion, madre.id);
 	if (partes.length === 0 || partes.some((hermana) => hermana.estado !== "finished")) {
 		return;
 	}
 	insertarComentario(conexion, revision, {
-		tareaId: funcionalidad.id,
+		tareaId: madre.id,
 		tipo: "resultado",
 		autor: AUTOR_SERVIDOR,
 		texto: partes
@@ -278,5 +293,39 @@ export function cerrarPadreSiProcede(conexion: DatabaseSync, revision: number, p
 			.join("\n"),
 		preguntaId: null,
 	});
-	cambiarEstado(conexion, revision, funcionalidad.id, "done");
+	cambiarEstado(conexion, revision, madre.id, "done");
+}
+
+export type NuevaSubtarea = {
+	madreId: number;
+	titulo: string;
+	usuarioId: number;
+};
+
+/**
+ * «Añadir subtarea» desde la ficha: el humano cuelga una parte con solo el
+ * título. Nace en `backlog` con la descripción vacía y hereda de la madre la
+ * rama y las asignaciones, como la que crea el análisis. Vale con la madre por
+ * definir, preparada o en curso; en curso, solo si ningún terminal tiene una
+ * fase en marcha, porque una parte nueva dejaría sin ejecutor a la tarea que un
+ * subagente está ejecutando.
+ */
+export function crearSubtarea(db: DatabaseSync, datos: NuevaSubtarea): Tarea {
+	const titulo = exigirTitulo(datos.titulo);
+	const madre = exigirTarea(db, datos.madreId);
+	if (madre.estado === "done" || madre.estado === "finished") {
+		throw new ErrorDeRegla(
+			"padre_invalido",
+			`La tarea ${formatearId(madre.codigo)} ya está hecha: las subtareas se añaden mientras se define, se prepara o se trabaja.`,
+		);
+	}
+	if (madre.estado === "doing" && madre.enMarchaTerminalId !== null) {
+		throw new ErrorDeRegla(
+			"en_ejecucion",
+			"Un agente está trabajando esta tarea ahora mismo: espera a que termine su fase para añadirle subtareas.",
+		);
+	}
+	// La pregunta y la cerrada las rechaza `exigirPadre`, el mismo sitio que en
+	// el alta y la edición.
+	return crearTareaHumana(db, { titulo, descripcion: "", usuarioId: datos.usuarioId, padreId: madre.id });
 }

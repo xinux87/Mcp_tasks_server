@@ -72,6 +72,13 @@ const ESTADOS: readonly Estado[] = ["backlog", "prepared", "doing", "done", "fin
 
 const TIPOS: readonly TipoTarea[] = ["tarea", "pregunta", "funcionalidad"];
 
+/**
+ * Por qué cuelga una tarea de su padre. Una `parte` es un trozo del plan de la
+ * madre (la crea su análisis al descomponerla, o el humano); una `hija` es una
+ * hija de trabajo que un ejecutor cuelga sobre la marcha. Sin padre, nula.
+ */
+export type Clase = "parte" | "hija";
+
 export type Tarea = {
 	id: number;
 	/** Identificador visible, sin el prefijo: `K7M3XQ`, o `0042` en las de antes. */
@@ -86,6 +93,8 @@ export type Tarea = {
 	estado: Estado;
 	orden: number;
 	padreId: number | null;
+	/** Por qué cuelga de su padre, o `null` si no cuelga de nadie. */
+	clase: Clase | null;
 	autoejecucion: boolean;
 	/** Tope de tokens, o `null` si no tiene. Pasarlo pone la marca `sobre presupuesto`. */
 	presupuesto: number | null;
@@ -117,6 +126,8 @@ export type HijaDeTarea = {
 	codigo: string;
 	estado: Estado;
 	titulo: string;
+	/** Parte del plan o hija de trabajo: el orden de ejecución solo pinta las partes. */
+	clase: Clase | null;
 	/** Códigos de las hermanas que tienen que ir antes que ella. Vacío si no depende de ninguna. */
 	dependeDe: string[];
 	/** Si tiene alguna pregunta sin contestar: la marca `bloqueada`, para el desglose de la ficha. */
@@ -133,6 +144,7 @@ export type ItemIndice = {
 	estado: Estado;
 	titulo: string;
 	padreId: number | null;
+	clase: Clase | null;
 	/** Código del padre, para enlazarlo sin volver a consultarlo. */
 	padreCodigo: string | null;
 	marcas: Marca[];
@@ -145,7 +157,10 @@ export type ItemIndice = {
 	bloqueadaDesde: string | null;
 	/** Cuándo se tomó la fase en marcha, si hay alguna: la marca lleva su edad. */
 	enMarchaDesde: string | null;
-	/** Solo en una funcionalidad: cuántas partes tiene y cuántas están cerradas. */
+	/**
+	 * Solo en una tarea descompuesta (ver `ES_DESCOMPUESTA`): cuántas partes
+	 * tiene y cuántas están cerradas. `null` en las demás.
+	 */
 	partes: number | null;
 	partesCerradas: number | null;
 	/** Hijas directas y cuántas de ellas están `done` o `finished`: el progreso de la tarjeta. */
@@ -187,7 +202,7 @@ export type TareaCompleta = {
 	marcas: Marca[];
 	/** Códigos de las tareas que tienen que estar `done` o `finished` antes que esta. */
 	dependeDe: string[];
-	/** Solo en una funcionalidad: cuántas partes tiene y cuántas están cerradas. */
+	/** Solo en una tarea descompuesta: cuántas partes tiene y cuántas están cerradas. */
 	partes: number | null;
 	partesCerradas: number | null;
 	hijas: HijaDeTarea[];
@@ -221,6 +236,14 @@ function comoTipo(fila: Record<string, unknown>): TipoTarea {
 	return valor;
 }
 
+function comoClase(fila: Record<string, unknown>): Clase | null {
+	const valor = textoOpcional(fila, "clase");
+	if (valor === null || valor === "parte" || valor === "hija") {
+		return valor;
+	}
+	throw new Error(`clase de tarea desconocida en la base de datos: ${valor}`);
+}
+
 function comoEstado(fila: Record<string, unknown>, columna: string): Estado {
 	const valor = texto(fila, columna);
 	if (!esEstado(valor)) {
@@ -241,6 +264,7 @@ export function comoTarea(fila: Record<string, unknown>): Tarea {
 		estado: comoEstado(fila, "estado"),
 		orden: entero(fila, "orden"),
 		padreId: enteroOpcional(fila, "padre_id"),
+		clase: comoClase(fila),
 		autoejecucion: booleano(fila, "autoejecucion"),
 		presupuesto: enteroOpcional(fila, "presupuesto"),
 		ejecucionAprobada: booleano(fila, "ejecucion_aprobada"),
@@ -265,7 +289,7 @@ export function comoTarea(fila: Record<string, unknown>): Tarea {
 /** Índice y novedades traen los nombres de terminal y las preguntas abiertas por JOIN. */
 function comoItemIndice(fila: Record<string, unknown>, horasParada: number): ItemIndice {
 	const tarea = comoTarea(fila);
-	const esFuncionalidad = tarea.tipo === "funcionalidad";
+	const descompuesta = booleano(fila, "descompuesta");
 	const tokensConHijas = entero(fila, "tokens_con_hijas");
 	return {
 		id: tarea.id,
@@ -275,6 +299,7 @@ function comoItemIndice(fila: Record<string, unknown>, horasParada: number): Ite
 		estado: tarea.estado,
 		titulo: tarea.titulo,
 		padreId: tarea.padreId,
+		clase: tarea.clase,
 		padreCodigo: textoOpcional(fila, "padre_codigo"),
 		marcas: marcasDe(
 			tarea,
@@ -282,14 +307,15 @@ function comoItemIndice(fila: Record<string, unknown>, horasParada: number): Ite
 			entero(fila, "dependencias_pendientes"),
 			tokensConHijas,
 			horasParada,
+			descompuesta,
 		),
 		estadoDesde: tarea.estadoDesde,
 		bloqueadaDesde: textoOpcional(fila, "bloqueada_desde"),
 		enMarchaDesde: tarea.enMarchaDesde,
-		// Una parte cerrada es una hija `finished`: en una funcionalidad la
+		// Una parte cerrada es una parte `finished`: en una tarea descompuesta la
 		// entrega la da por buena el humano, no basta con que esté construida.
-		partes: esFuncionalidad ? entero(fila, "hijas") : null,
-		partesCerradas: esFuncionalidad ? entero(fila, "partes_cerradas") : null,
+		partes: descompuesta ? entero(fila, "partes") : null,
+		partesCerradas: descompuesta ? entero(fila, "partes_cerradas") : null,
 		hijas: entero(fila, "hijas"),
 		hijasCerradas: entero(fila, "hijas_cerradas"),
 		tokensConHijas,
@@ -301,6 +327,22 @@ function comoItemIndice(fila: Record<string, unknown>, horasParada: number): Ite
 		ejecucionModelo: tarea.ejecucionModelo,
 		ejecucionTerminal: textoOpcional(fila, "ejecucion_terminal"),
 	};
+}
+
+/**
+ * Una tarea está descompuesta cuando es una funcionalidad o tiene al menos una
+ * parte colgando. Es el predicado que manda en toda regla de ejecución: una
+ * descompuesta no se ejecuta, se ejecutan sus partes, y se cierra sola cuando
+ * se cierra la última. Se escribe una sola vez, aquí, sobre el alias `t`; el
+ * índice lo trae como columna y `estaDescompuesta` lo pregunta suelto.
+ */
+const ES_DESCOMPUESTA =
+	"(t.tipo = 'funcionalidad' OR EXISTS (SELECT 1 FROM tareas h WHERE h.padre_id = t.id AND h.clase = 'parte'))";
+
+/** Si la tarea está descompuesta (ver `ES_DESCOMPUESTA`). */
+export function estaDescompuesta(db: DatabaseSync, tareaId: number): boolean {
+	const fila = sentencia(db, `SELECT ${ES_DESCOMPUESTA} AS descompuesta FROM tareas t WHERE t.id = ?`).get(tareaId);
+	return fila !== undefined && booleano(fila, "descompuesta");
 }
 
 /**
@@ -331,7 +373,9 @@ const SELECT_INDICE = `
 		${CUENTA_DEPENDENCIAS_PENDIENTES} AS dependencias_pendientes,
 		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id) AS hijas,
 		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id AND h.estado IN ${CERRADAS}) AS hijas_cerradas,
-		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id AND h.estado = 'finished') AS partes_cerradas,
+		${ES_DESCOMPUESTA} AS descompuesta,
+		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id AND h.clase = 'parte') AS partes,
+		(SELECT COUNT(*) FROM tareas h WHERE h.padre_id = t.id AND h.clase = 'parte' AND h.estado = 'finished') AS partes_cerradas,
 		COALESCE(tk.tokens, 0) AS tokens_con_hijas
 	FROM tareas t
 	LEFT JOIN tareas p ON p.id = t.padre_id
@@ -433,7 +477,7 @@ export function contarPreguntasAbiertas(db: DatabaseSync, tareaId: number): numb
 function hijasDe(db: DatabaseSync, tareaId: number): HijaDeTarea[] {
 	const hijas = sentencia(
 		db,
-		`SELECT id, codigo, estado, titulo,
+		`SELECT id, codigo, estado, titulo, clase,
 			EXISTS (SELECT 1 FROM preguntas p WHERE p.tarea_id = tareas.id AND p.respuesta_opcion IS NULL) AS bloqueada
 			FROM tareas WHERE padre_id = ? ORDER BY id`,
 	)
@@ -443,6 +487,7 @@ function hijasDe(db: DatabaseSync, tareaId: number): HijaDeTarea[] {
 			codigo: texto(fila, "codigo"),
 			estado: comoEstado(fila, "estado"),
 			titulo: texto(fila, "titulo"),
+			clase: comoClase(fila),
 			dependeDe: [] as string[],
 			bloqueada: entero(fila, "bloqueada") > 0,
 		}));
@@ -502,6 +547,9 @@ export function faseParada(tarea: Tarea, horasParada: number): boolean {
  * `tokensConHijas` es lo gastado en el árbol entero, que es con lo que se
  * compara el presupuesto: el índice ya lo trae y `leerTarea` ya lo calcula
  * para la ficha.
+ *
+ * `descompuesta` es `ES_DESCOMPUESTA` ya calculado: el índice lo trae en la
+ * fila y `leerTarea` lo pregunta. Sin decirlo, solo lo está una funcionalidad.
  */
 export function marcasDe(
 	tarea: Tarea,
@@ -509,6 +557,7 @@ export function marcasDe(
 	dependenciasPendientes = 0,
 	tokensConHijas = 0,
 	horasParada: number = HORAS_PARADA_DEFECTO,
+	descompuesta: boolean = tarea.tipo === "funcionalidad",
 ): Marca[] {
 	const marcas: Marca[] = [];
 	if (preguntasAbiertas > 0) {
@@ -518,10 +567,10 @@ export function marcasDe(
 	// la tarea todavía no la ve el agente, y en `done` y `finished` ya no la
 	// trabaja nadie, así que ahí la marca no diría nada.
 	if (tarea.estado === "prepared" || tarea.estado === "doing") {
-		// Ni una pregunta ni una funcionalidad tienen fase de ejecución: la
-		// única fase que se puede tomar es el análisis, así que la marca mira
-		// solo ese terminal.
-		const esAnalisis = tarea.tipo !== "tarea" || faseQueToca(tarea) === "analisis";
+		// Ni una pregunta ni una tarea descompuesta tienen fase de ejecución:
+		// la única fase que se puede tomar es el análisis, así que la marca
+		// mira solo ese terminal.
+		const esAnalisis = tarea.tipo === "pregunta" || descompuesta || faseQueToca(tarea) === "analisis";
 		const terminalDeLaFase = esAnalisis ? tarea.analisisTerminalId : tarea.ejecucionTerminalId;
 		if (terminalDeLaFase === null) {
 			marcas.push("sin terminal");
@@ -534,15 +583,15 @@ export function marcasDe(
 		}
 	}
 	// En una pregunta no hay ejecución que aprobar: el análisis es la respuesta
-	// y la deja en `done` él solo. En una funcionalidad la aprobación de la
-	// descomposición es siempre del humano, tenga o no autoejecución: es la
+	// y la deja en `done` él solo. En una tarea descompuesta la aprobación de
+	// la descomposición es siempre del humano, tenga o no autoejecución: es la
 	// decisión que más dinero gobierna.
 	if (
 		tarea.tipo !== "pregunta" &&
 		tarea.estado === "prepared" &&
 		tarea.analisisHecho &&
 		preguntasAbiertas === 0 &&
-		(tarea.tipo === "funcionalidad" || !tarea.autoejecucion) &&
+		(descompuesta || !tarea.autoejecucion) &&
 		!tarea.ejecucionAprobada
 	) {
 		marcas.push("análisis listo");
@@ -588,7 +637,8 @@ export function leerTarea(
 	if (tarea === undefined) {
 		return undefined;
 	}
-	const partes = tarea.tipo === "funcionalidad" ? partesDe(db, tareaId) : null;
+	const descompuesta = estaDescompuesta(db, tareaId);
+	const partes = descompuesta ? partesDe(db, tareaId) : null;
 	// El consumo se lee antes que las marcas: de él sale el total con hijas con
 	// el que se compara el presupuesto, y la ficha ya lo necesitaba entero.
 	const consumo = consumoDeTarea(db, tareaId);
@@ -606,6 +656,7 @@ export function leerTarea(
 			contarDependenciasPendientes(db, tareaId),
 			consumo.totalConHijas,
 			horasParada,
+			descompuesta,
 		),
 		dependeDe: dependenciasDe(db, tareaId),
 		partes: partes === null ? null : partes.total,
@@ -731,7 +782,7 @@ const PROYECTO_DEL_TERMINAL = "(SELECT proyecto_id FROM terminales WHERE id = ?)
  * cambiado desde esa revisión, y solo aquello en lo que este terminal puede
  * trabajar, es decir, la fase que toca es suya o no tiene terminal. Las de
  * `backlog`, `done` y `finished` nunca salen, ni las que esperan a una
- * dependencia, ni una funcionalidad en `doing`: esa no tiene nada que un
+ * dependencia, ni una tarea descompuesta en `doing`: esa no tiene nada que un
  * agente pueda hacer, su trabajo son sus partes. `doing` va antes que
  * `prepared` porque terminar lo empezado es prioritario sobre empezar algo
  * nuevo.
@@ -746,7 +797,7 @@ export function tareasParaTerminalDesde(
 			AND t.proyecto_id = ${PROYECTO_DEL_TERMINAL}
 			AND t.revision > ?
 			AND ${CUENTA_DEPENDENCIAS_PENDIENTES} = 0
-			AND NOT (t.tipo = 'funcionalidad' AND t.estado = 'doing')
+			AND NOT (t.estado = 'doing' AND ${ES_DESCOMPUESTA})
 			AND CASE
 				WHEN t.estado = 'prepared' AND t.analisis_hecho = 0
 					THEN (t.analisis_terminal_id IS NULL OR t.analisis_terminal_id = ?)
@@ -798,12 +849,12 @@ export function siguienteOrden(db: DatabaseSync, estado: Estado): number {
 
 const INSERTAR_TAREA = `
 	INSERT INTO tareas (
-		codigo, proyecto_id, titulo, descripcion, tipo, rama, estado, orden, padre_id, autoejecucion, presupuesto,
+		codigo, proyecto_id, titulo, descripcion, tipo, rama, estado, orden, padre_id, clase, autoejecucion, presupuesto,
 		ejecucion_aprobada, analisis_hecho, analisis_agente_id, analisis_modelo, analisis_terminal_id,
 		ejecucion_agente_id, ejecucion_modelo, ejecucion_terminal_id,
 		en_marcha_terminal_id, en_marcha_desde,
 		creada_por_usuario_id, creada_por_terminal_id, creada, actualizada, estado_desde, revision
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /**
  * Cuántas veces se vuelve a sortear si el código ya está cogido. Con 31^6
@@ -832,6 +883,8 @@ export type FilaNueva = {
 	rama: string | null;
 	estado: Estado;
 	padreId: number | null;
+	/** Por qué cuelga del padre; sin padre, nula. */
+	clase: Clase | null;
 	autoejecucion: boolean;
 	/** Solo lo pone el humano al crearla: una hija, una propuesta y una parte nacen sin tope. */
 	presupuesto?: number | null;
@@ -860,6 +913,7 @@ export function insertarTarea(conexion: DatabaseSync, revision: number, nueva: F
 		nueva.estado,
 		siguienteOrden(conexion, nueva.estado),
 		nueva.padreId,
+		nueva.clase,
 		nueva.autoejecucion ? 1 : 0,
 		nueva.presupuesto ?? null,
 		0,
@@ -950,7 +1004,11 @@ export type NuevaTareaHumana = {
 	tipo?: TipoTarea;
 	/** Rama de git en la que se trabaja. Sus partes la heredan si es una funcionalidad. */
 	rama?: string | null;
-	/** Solo una funcionalidad puede ser padre: una parte cuelga de ella. */
+	/**
+	 * La madre de la que esta tarea es una parte (ver `exigirPadre`). La parte
+	 * hereda de ella lo que no se diga: rama, autoejecución, papeles, modelos y
+	 * terminales.
+	 */
 	padreId?: number | null;
 	/** Tareas que tienen que estar `done` o `finished` antes que esta. */
 	dependeDe?: number[];
@@ -966,50 +1024,89 @@ export type NuevaTareaHumana = {
 	ejecucionTerminalId?: number | null;
 };
 
+/** Dónde se quiere colgar una tarea: lo que hace falta para no cerrar un ciclo ni cruzar proyectos. */
+export type ParaColgar = {
+	/** La tarea que se cuelga, si ya existe: no puede colgar de sí misma ni de una descendiente suya. */
+	tareaId?: number;
+	/** El proyecto de la tarea que se cuelga, si ya lo tiene: la madre tiene que ser del mismo. */
+	proyectoId?: number;
+};
+
 /**
- * Colgar una tarea de otra solo tiene sentido bajo una funcionalidad: es una
- * de sus partes. Las hijas de trabajo las cuelga el agente por su cuenta.
+ * La madre de una parte que cuelga el humano: cualquier tarea abierta del
+ * mismo proyecto que no sea una pregunta (una pregunta se cierra con su
+ * respuesta, no tiene partes) ni la propia tarea. Las hijas de trabajo las
+ * cuelga el agente por su cuenta.
  */
-export function exigirPadreFuncionalidad(conexion: DatabaseSync, padreId: number): Tarea {
+export function exigirPadre(conexion: DatabaseSync, padreId: number, para: ParaColgar = {}): Tarea {
 	const padre = exigirTarea(conexion, padreId);
-	if (padre.tipo !== "funcionalidad") {
-		throw new ErrorDeRegla(
-			"padre_no_es_funcionalidad",
-			`La tarea ${formatearId(padre.codigo)} no es una funcionalidad: solo una funcionalidad tiene partes colgando.`,
-		);
+	const nombre = formatearId(padre.codigo);
+	if (padre.tipo === "pregunta") {
+		throw new ErrorDeRegla("padre_invalido", `La tarea ${nombre} es una pregunta: una pregunta no tiene subtareas.`);
+	}
+	if (padre.estado === "finished") {
+		throw new ErrorDeRegla("padre_invalido", `La tarea ${nombre} está cerrada: ya no admite subtareas.`);
+	}
+	if (para.proyectoId !== undefined && padre.proyectoId !== para.proyectoId) {
+		throw new ErrorDeRegla("padre_invalido", `La tarea ${nombre} es de otro proyecto: una subtarea vive con su madre.`);
+	}
+	if (para.tareaId !== undefined && esDescendiente(conexion, para.tareaId, padre.id)) {
+		throw new ErrorDeRegla("padre_invalido", `Una tarea no puede ser subtarea de sí misma ni de una de sus subtareas.`);
 	}
 	return padre;
+}
+
+/** Si `otraId` es la propia tarea o cuelga de ella a cualquier profundidad. */
+function esDescendiente(conexion: DatabaseSync, tareaId: number, otraId: number): boolean {
+	const fila = sentencia(
+		conexion,
+		`WITH RECURSIVE debajo(id) AS (
+			SELECT ?
+			UNION
+			SELECT t.id FROM tareas t JOIN debajo d ON t.padre_id = d.id
+		)
+		SELECT 1 AS hay FROM debajo WHERE id = ?`,
+	).get(tareaId, otraId);
+	return fila !== undefined;
 }
 
 /** Tarea escrita por el humano en la web. Nace en `backlog`, que es su columna. */
 export function crearTareaHumana(db: DatabaseSync, datos: NuevaTareaHumana): Tarea {
 	return escribirContenido(db, (conexion, revision) => {
 		const padreId = datos.padreId ?? null;
-		const padre = padreId === null ? null : exigirPadreFuncionalidad(conexion, padreId);
+		const padre = padreId === null ? null : exigirPadre(conexion, padreId);
+		// Lo que no se dice se hereda de la madre, como en una parte que crea el
+		// análisis; sin madre, se queda vacío. Lo que se dice, aunque sea nulo,
+		// manda: es lo que el humano eligió en el formulario.
+		const deMadre = <T>(dicho: T | null | undefined, heredado: T | null | undefined): T | null =>
+			dicho === undefined ? (heredado ?? null) : dicho;
 		// Asignar un agente a una fase copia su modelo y su terminal: lo que
 		// llegue en esos dos campos se ignora.
-		const analisis = faseConAgente(conexion, datos.analisisAgenteId ?? null, {
-			modelo: datos.analisisModelo ?? null,
-			terminalId: datos.analisisTerminalId ?? null,
+		const analisis = faseConAgente(conexion, deMadre(datos.analisisAgenteId, padre?.analisisAgenteId), {
+			modelo: deMadre(datos.analisisModelo, padre?.analisisModelo),
+			terminalId: deMadre(datos.analisisTerminalId, padre?.analisisTerminalId),
 		});
-		const ejecucion = faseConAgente(conexion, datos.ejecucionAgenteId ?? null, {
-			modelo: datos.ejecucionModelo ?? null,
-			terminalId: datos.ejecucionTerminalId ?? null,
+		const ejecucion = faseConAgente(conexion, deMadre(datos.ejecucionAgenteId, padre?.ejecucionAgenteId), {
+			modelo: deMadre(datos.ejecucionModelo, padre?.ejecucionModelo),
+			terminalId: deMadre(datos.ejecucionTerminalId, padre?.ejecucionTerminalId),
 		});
 		const tarea = insertarTarea(conexion, revision, {
-			// Una parte cuelga de su funcionalidad: vive donde ella, aunque el
-			// formulario venga de otro tablero.
+			// Una parte cuelga de su madre: vive donde ella, aunque el formulario
+			// venga de otro tablero.
 			proyectoId: padre?.proyectoId ?? datos.proyectoId ?? PROYECTO_PRINCIPAL,
 			titulo: datos.titulo,
 			descripcion: datos.descripcion,
 			tipo: datos.tipo ?? "tarea",
-			// Una parte que crea el humano hereda la rama de su funcionalidad,
-			// igual que las que crea el análisis: se trabaja donde se trabaja el
-			// evolutivo, salvo que él escriba otra rama.
+			// Una parte que crea el humano hereda la rama de su madre, igual que
+			// las que crea el análisis: se trabaja donde se trabaja la madre,
+			// salvo que él escriba otra rama.
 			rama: datos.rama ?? padre?.rama ?? null,
 			estado: "backlog",
 			padreId,
-			autoejecucion: datos.autoejecucion ?? true,
+			// Lo que cuelga el humano es siempre un trozo del plan, nunca una
+			// hija de trabajo: esas las cuelga el ejecutor.
+			clase: padre === null ? null : "parte",
+			autoejecucion: datos.autoejecucion ?? padre?.autoejecucion ?? true,
 			presupuesto: exigirPresupuesto(datos.presupuesto ?? null),
 			analisisHecho: false,
 			analisisAgenteId: analisis.agenteId,
@@ -1060,6 +1157,7 @@ export function crearPropuesta(db: DatabaseSync, datos: NuevaPropuesta): Tarea {
 			rama: null,
 			estado: "backlog",
 			padreId: null,
+			clase: null,
 			autoejecucion: true,
 			analisisHecho: false,
 			analisisModelo: null,
@@ -1100,12 +1198,12 @@ export function crearHija(db: DatabaseSync, datos: NuevaHija): Tarea {
 				"Solo el terminal que ejecuta la tarea padre puede colgarle hijas.",
 			);
 		}
-		// De una funcionalidad solo cuelgan partes, y las crea su análisis: una
-		// hija de trabajo aquí se contaría como parte y no dejaría cerrarla.
-		if (padre.tipo === "funcionalidad") {
+		// De una tarea descompuesta solo cuelgan partes: lo que se ejecuta son
+		// ellas, y el trabajo se cuelga de la parte que se está ejecutando.
+		if (estaDescompuesta(conexion, padre.id)) {
 			throw new ErrorDeRegla(
-				"funcionalidad_sin_ejecucion",
-				"Una funcionalidad no tiene ejecución propia: cuelga tu trabajo de la parte que estás ejecutando.",
+				"sin_ejecucion_propia",
+				"Esa tarea está descompuesta y no tiene ejecución propia: cuelga tu trabajo de la parte que estás ejecutando.",
 			);
 		}
 		return insertarTarea(conexion, revision, {
@@ -1118,6 +1216,7 @@ export function crearHija(db: DatabaseSync, datos: NuevaHija): Tarea {
 			rama: padre.rama,
 			estado: "doing",
 			padreId: padre.id,
+			clase: "hija",
 			autoejecucion: padre.autoejecucion,
 			analisisHecho: true,
 			analisisModelo: padre.analisisModelo,
@@ -1202,7 +1301,7 @@ export function moverTareaHumano(db: DatabaseSync, datos: MovimientoHumano): Tar
 			objetoNombre: tarea.titulo,
 			detalle: `${tarea.estado} → ${datos.estado}`,
 		});
-		// Aceptar la última parte de una funcionalidad la cierra a ella también,
+		// Aceptar la última parte de una tarea descompuesta la cierra a ella también,
 		// en esta misma transacción: la mueve el servidor, no el humano.
 		if (datos.estado === "finished") {
 			cerrarFuncionalidadSiProcede(conexion, revision, tarea.id);
@@ -1220,15 +1319,15 @@ export type Aprobacion = {
  * Con `autoejecucion` desactivada la tarea espera en `prepared` a que el
  * humano dé el análisis por bueno. Esto es lo que desbloquea la ejecución.
  *
- * En una funcionalidad es lo mismo pero se llama descomposición: aprobarla la
- * pasa a `doing` y saca sus partes del backlog.
+ * En una tarea descompuesta es lo mismo pero se llama descomposición:
+ * aprobarla la pasa a `doing` y saca sus partes del backlog.
  */
 export function aprobarEjecucion(db: DatabaseSync, datos: Aprobacion): Tarea {
 	return escribirContenido(db, (conexion, revision) => {
 		const tarea = exigirTarea(conexion, datos.tareaId);
 		// Comprobar el usuario deja constancia de que la aprobación es humana.
 		autorHumano(conexion, datos.usuarioId);
-		if (tarea.tipo === "funcionalidad") {
+		if (estaDescompuesta(conexion, tarea.id)) {
 			aprobarDescomposicion(conexion, revision, tarea);
 		} else {
 			aprobarTareaNormal(conexion, revision, tarea);
@@ -1442,11 +1541,11 @@ export function tomarTarea(db: DatabaseSync, datos: Toma): Tarea {
 				`La tarea ${formatearId(tarea.codigo)} es de otro proyecto: este terminal no trabaja en él.`,
 			);
 		}
-		// Una funcionalidad no se ejecuta: lo que se ejecuta son sus partes.
-		if (tarea.tipo === "funcionalidad" && datos.fase === "ejecucion") {
+		// Una tarea descompuesta no se ejecuta: lo que se ejecuta son sus partes.
+		if (datos.fase === "ejecucion" && estaDescompuesta(conexion, tarea.id)) {
 			throw new ErrorDeRegla(
-				"funcionalidad_sin_ejecucion",
-				"Una funcionalidad no tiene fase de ejecución: se ejecutan sus partes, una a una.",
+				"sin_ejecucion_propia",
+				"Esta tarea está descompuesta y no tiene fase de ejecución: se ejecutan sus partes, una a una.",
 			);
 		}
 		// Analizar algo antes de que exista aquello de lo que depende es
@@ -1614,8 +1713,8 @@ export function borrarTarea(db: DatabaseSync, datos: BorradoDeTarea): Tarea {
 		sentencia(conexion, "DELETE FROM transiciones WHERE tarea_id = ?").run(tarea.id);
 		borrarDependenciasDe(conexion, tarea.id);
 		sentencia(conexion, "DELETE FROM tareas WHERE id = ?").run(tarea.id);
-		// Si era la última parte pendiente de una funcionalidad, con ella fuera
-		// la funcionalidad ya está entera: nadie más va a pasar por el cierre.
+		// Si era la última parte pendiente de una tarea descompuesta, con ella
+		// fuera la madre ya está entera: nadie más va a pasar por el cierre.
 		cerrarPadreSiProcede(conexion, revision, tarea.padreId);
 		return tarea;
 	});

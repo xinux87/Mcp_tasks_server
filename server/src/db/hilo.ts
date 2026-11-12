@@ -15,7 +15,15 @@ import {
 } from "./base.ts";
 import { buscarTerminalPorId, buscarUsuarioPorId } from "./consultas.ts";
 import { exigirPartes } from "./funcionalidades.ts";
-import { cambiarEstado, contarPreguntasAbiertas, exigirTarea, faseQueToca, type Tarea, tocarTarea } from "./tareas.ts";
+import {
+	cambiarEstado,
+	contarPreguntasAbiertas,
+	estaDescompuesta,
+	exigirTarea,
+	faseQueToca,
+	type Tarea,
+	tocarTarea,
+} from "./tareas.ts";
 
 /**
  * Los cinco tipos de comentario del hilo. Se añaden, nunca se editan ni se
@@ -244,7 +252,10 @@ const CERRAR_PREGUNTA = `, analisis_hecho = 1${SOLTAR_FASE}`;
  * de tipo `pregunta` ese comentario es la respuesta al humano y cierra la
  * tarea: pasa directamente a `done`, al final de esa columna. En una
  * funcionalidad es el resumen de la descomposición, y exige que las partes ya
- * estén creadas.
+ * estén creadas. En una tarea con partes es el plan de conjunto: la tarea se
+ * queda en `prepared` con la marca «análisis listo» aunque tenga autoejecución,
+ * porque no tiene ejecución propia (`tomar_tarea` lo rechaza) y la
+ * descomposición la aprueba siempre el humano.
  */
 export function comentarAnalisis(db: DatabaseSync, datos: ComentarioDeAgente): Comentario {
 	return escribirContenido(db, (conexion, revision) => {
@@ -313,10 +324,18 @@ export function comentarioDeAgente(db: DatabaseSync, datos: ComentarioDeAgente):
 
 /**
  * Comentario `resultado`: qué se construyó y el commit. Es lo que pasa la
- * tarea a `done` y cierra la fase de ejecución.
+ * tarea a `done` y cierra la fase de ejecución. Una tarea descompuesta no
+ * tiene ejecución propia: la cierra el servidor cuando se cierra su última
+ * parte, con su propio resultado.
  */
 export function comentarResultado(db: DatabaseSync, datos: ComentarioDeAgente): Comentario {
 	return escribirContenido(db, (conexion, revision) => {
+		if (estaDescompuesta(conexion, datos.tareaId)) {
+			throw new ErrorDeRegla(
+				"sin_ejecucion_propia",
+				"Esta tarea está descompuesta y no tiene ejecución propia: el resultado se escribe en cada parte, y la tarea se cierra sola con la última.",
+			);
+		}
 		const tarea = exigirEjecucionEnMarcha(conexion, datos.tareaId, datos.terminalId, "estado_no_permite_resultado");
 		const comentario = insertarComentario(conexion, revision, {
 			tareaId: tarea.id,

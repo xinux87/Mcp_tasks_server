@@ -1623,7 +1623,7 @@ test("la lista enseña el progreso y los tokens, y filtra por conmutador y por t
 		// El progreso va detrás del título, al final de la celda.
 		assert.match(
 			lista,
-			/Exportar el listado a CSV <progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto">hijas 1\/2<\/span>/,
+			/Exportar el listado a CSV <progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto">subtareas 1\/2<\/span>/,
 		);
 		assert.match(lista, /<td class="numero pequeno">184 k<\/td>/);
 		// Sin consumo la celda se queda vacía: un cero no dice nada.
@@ -2163,7 +2163,7 @@ test("el bloque de hijas de la ficha lleva la cuenta, la barra y en qué punto e
 
 		// Sin hijas, el bloque dice lo de siempre.
 		const sinHijas = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
-		assert.match(sinHijas, /<h2>Hijas<\/h2>\s*<p class="silencio">Ninguna\.<\/p>/);
+		assert.match(sinHijas, /<h2>Subtareas<\/h2>\s*<p class="silencio">Ninguna\.<\/p>/);
 
 		moverTareaHumano(montaje.db, { tareaId: padre.id, usuarioId: 1, estado: "prepared" });
 		tomarTarea(montaje.db, { tareaId: padre.id, fase: "analisis", terminalId, modelo: "sonnet" });
@@ -2196,7 +2196,7 @@ test("el bloque de hijas de la ficha lleva la cuenta, la barra y en qué punto e
 		});
 
 		const ficha = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
-		assert.match(ficha, /<h2>Hijas 1\/3 <progress class="progreso" value="1" max="3"><\/progress><\/h2>/);
+		assert.match(ficha, /<h2>Subtareas 1\/3 <progress class="progreso" value="1" max="3"><\/progress><\/h2>/);
 		assert.match(ficha, /<p class="pequeno silencio">1 hecha · 2 en curso · 1 con pregunta abierta<\/p>/);
 	} finally {
 		await montaje.cerrar();

@@ -417,7 +417,7 @@ test("una funcionalidad se descompone en partes por el MCP y solo la primera lle
 		// No se ejecuta: se ejecutan sus partes.
 		assert.equal(
 			codigoDe(await llamar(a, "tomar_tarea", { id: idFila(montaje, 2), fase: "ejecucion" })),
-			"funcionalidad_sin_ejecucion",
+			"sin_ejecucion_propia",
 		);
 		await llamar(a, "tomar_tarea", { id: idFila(montaje, 2), fase: "analisis" });
 
@@ -518,6 +518,78 @@ test("una funcionalidad se descompone en partes por el MCP y solo la primera lle
 	} finally {
 		await a.close();
 		await b.close();
+		await montaje.cerrar();
+	}
+});
+
+test("una tarea se descompone en subtareas por el MCP y deja de tener ejecución propia", async () => {
+	const montaje = montar();
+	const a = await conectar(montaje, montaje.tokenA);
+	try {
+		const madre = idFila(montaje, 1);
+		await llamar(a, "tomar_tarea", { id: madre, fase: "analisis" });
+		const primera = await llamar(a, "crear_tarea", {
+			titulo: "Sacar los datos",
+			descripcion: "Qué entrega: el fichero.",
+			clase: "parte",
+			padre: madre,
+		});
+		assert.equal(primera.error, false, primera.texto);
+		await llamar(a, "crear_tarea", {
+			titulo: "Poner el botón",
+			descripcion: "Qué entrega: el botón.",
+			clase: "parte",
+			padre: madre,
+			dependeDe: [idFila(montaje, 2)],
+		});
+		// Con autoejecución y todo, el análisis la deja esperando al humano.
+		const analisis = await llamar(a, "comentar_tarea", { id: madre, tipo: "analisis", texto: "Plan de conjunto." });
+		assert.match(
+			analisis.texto,
+			new RegExp(
+				`^- ${madre} · prepared · subtareas 0\\/2 · análisis listo · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-a$`,
+				"m",
+			),
+		);
+		const documento = await llamar(a, "leer_tarea", { id: madre });
+		assert.match(documento.texto, /^partes: 2\npartesCerradas: 0$/m);
+
+		// No se ejecuta: se ejecutan sus partes.
+		assert.equal(codigoDe(await llamar(a, "tomar_tarea", { id: madre, fase: "ejecucion" })), "sin_ejecucion_propia");
+
+		// Aprobada, pasa a doing y no se le ofrece a nadie; sus partes sí.
+		aprobarEjecucion(montaje.db, { tareaId: 1, usuarioId: montaje.usuarioId });
+		const tras = await llamar(a, "novedades", { revision: 0 });
+		assert.doesNotMatch(tras.texto, new RegExp(`^- ${madre} `, "m"));
+		assert.match(tras.texto, new RegExp(`^- ${idFila(montaje, 2)} · prepared · Sacar los datos · `, "m"));
+
+		// Ni hijas de trabajo ni resultado propio.
+		assert.equal(
+			codigoDe(await llamar(a, "crear_tarea", { titulo: "Suelta", descripcion: "d", clase: "hija", padre: madre })),
+			"sin_ejecucion_propia",
+		);
+		assert.equal(
+			codigoDe(await llamar(a, "comentar_tarea", { id: madre, tipo: "resultado", texto: "Hecho." })),
+			"sin_ejecucion_propia",
+		);
+
+		// Una pregunta no se descompone.
+		const pregunta = crearTareaHumana(montaje.db, {
+			titulo: "¿Cuánto cuesta?",
+			descripcion: "d",
+			usuarioId: montaje.usuarioId,
+			tipo: "pregunta",
+			analisisTerminalId: 1,
+		});
+		moverTareaHumano(montaje.db, { tareaId: pregunta.id, usuarioId: montaje.usuarioId, estado: "prepared" });
+		const deLaPregunta = formatearId(pregunta.codigo);
+		await llamar(a, "tomar_tarea", { id: deLaPregunta, fase: "analisis" });
+		assert.equal(
+			codigoDe(await llamar(a, "crear_tarea", { titulo: "P", descripcion: "d", clase: "parte", padre: deLaPregunta })),
+			"solo_desde_descomposicion",
+		);
+	} finally {
+		await a.close();
 		await montaje.cerrar();
 	}
 });

@@ -23,8 +23,9 @@ ven las marcas que dicen en qué anda
 (`bloqueada` si espera una respuesta, `sin terminal` si cualquiera puede tomarla, `en marcha` si ya la ha
 tomado alguien y desde cuándo, `parada` si esa fase lleva demasiado sin cerrarse y conviene liberarla desde la ficha, `esperando` si depende de otra tarea que aún no está hecha), y con `autoejecucion`
 activada —lo normal— la ejecución arranca sola en cuanto el análisis termina sin preguntas abiertas.
-Una **funcionalidad** es una tarea que se descompone en partes; una **pregunta** es una tarea cuya
-respuesta es la respuesta misma, sin código.
+Una **funcionalidad** es una tarea que se descompone en partes, y cualquier tarea grande puede tener
+**subtareas** con dependencias que el humano aprueba antes de trabajarlas; una **pregunta** es una tarea
+cuya respuesta es la respuesta misma, sin código.
 
 **La web abre en la bandeja**: lo que espera por el humano, de todos los proyectos, en cuatro bloques
 por lo que le toca hacer —Contesta, Aprueba, Revisa, Define—. Se contesta y se aprueba desde ahí mismo,

@@ -480,6 +480,7 @@ test("una hija de trabajo nace en doing colgando del padre y con sus asignacione
 				codigo: hija.codigo,
 				estado: "doing",
 				titulo: "Generar el fichero CSV",
+				clase: "hija",
 				dependeDe: [],
 				bloqueada: false,
 			},

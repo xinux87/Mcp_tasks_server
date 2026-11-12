@@ -549,7 +549,7 @@ test("la tarjeta enseña el progreso de sus hijas y los tokens de todo su árbol
 		// La barra va debajo del título, con las hijas cerradas sobre el total.
 		assert.match(
 			cuerpo,
-			/<progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto">hijas 1\/2<\/span>/,
+			/<progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto">subtareas 1\/2<\/span>/,
 		);
 		// Y los tokens, abreviados, al final de la tarjeta.
 		assert.match(cuerpo, /<span class="tokens">184 k<\/span>/);

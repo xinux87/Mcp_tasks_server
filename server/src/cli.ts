@@ -46,7 +46,8 @@ const AYUDA = `Uso: node src/cli.ts <comando>
       respuesta y cierra la tarea. La asignación de ejecución se ignora.
       Con --funcionalidad la tarea es un evolutivo: su análisis la descompone en
       partes y el humano las aprueba. --rama es la rama de git en la que se
-      trabaja, que sus partes heredan. --padre solo admite una funcionalidad.
+      trabaja, que sus partes heredan. --padre cuelga la tarea como subtarea de
+      cualquier otra abierta que no sea una pregunta, y vive en su proyecto.
 
   borrar-tarea <usuario> <id>
       Borra una tarea, esté en la columna que esté, con su hilo. Una tarea con

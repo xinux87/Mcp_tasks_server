@@ -330,9 +330,10 @@ function dependenciasLegibles(dependeDe: string[] | undefined): Html {
 }
 
 /**
- * El progreso de una tarea con hijas. En una funcionalidad son sus partes, y
- * una parte solo cuenta cuando el humano la acepta: es la cuenta que ya lleva
- * su etiqueta.
+ * El progreso de una tarea con hijas: `subtareas 2/5`. En una funcionalidad
+ * son sus partes, y una parte solo cuenta cuando el humano la acepta: es la
+ * cuenta que ya lleva su etiqueta. Los carriles y esa etiqueta siguen siendo
+ * solo de las funcionalidades: una tarea con subtareas es una tarjeta más.
  */
 export function progresoDe(item: ItemIndice): Html {
 	return item.tipo === "funcionalidad"

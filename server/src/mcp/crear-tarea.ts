@@ -22,7 +22,7 @@ function exigirPadre(db: DatabaseSync, clase: string, padre: string | undefined)
  * `crear_tarea`: las tres razones por las que un agente crea una tarea van a
  * columnas distintas. Una hija de trabajo nace en `doing` colgando del padre;
  * una propuesta nace en `backlog` para que la decida el humano; una parte nace
- * en `backlog` colgando de la funcionalidad que se está descomponiendo.
+ * en `backlog` colgando de la tarea o funcionalidad que se está descomponiendo.
  */
 export function registrarHerramientaCrearTarea(
 	server: McpServer,
@@ -35,7 +35,7 @@ export function registrarHerramientaCrearTarea(
 		{
 			title: "Crear tarea",
 			description:
-				"Crea una tarea: clase «hija» para dejar visible una parte de la ejecución en curso (nace en doing colgando del padre), clase «propuesta» para el trabajo que descubres y que no es de esta tarea (nace en backlog, lo decide el humano) y clase «parte» para cada trozo de la funcionalidad que estás descomponiendo (nace en backlog colgando de ella y hereda sus asignaciones y su rama). Devuelve el id nuevo y su línea de índice.",
+				"Crea una tarea: clase «hija» para dejar visible una parte de la ejecución en curso (nace en doing colgando del padre), clase «propuesta» para el trabajo que descubres y que no es de esta tarea (nace en backlog, lo decide el humano) y clase «parte» para cada trozo del plan de la tarea o funcionalidad que estás descomponiendo (nace en backlog colgando de ella y hereda sus asignaciones y su rama; se crean antes del comentario «analisis»). Devuelve el id nuevo y su línea de índice.",
 			inputSchema: z.object({
 				titulo: z.string().min(1, { error: "el título no puede ir vacío" }).describe("Título de la tarea."),
 				descripcion: z
@@ -45,7 +45,7 @@ export function registrarHerramientaCrearTarea(
 				clase: z
 					.enum(["hija", "propuesta", "parte"])
 					.describe(
-						"«hija» cuelga de la tarea en curso; «propuesta» va al backlog; «parte» es un trozo de la funcionalidad que estás descomponiendo.",
+						"«hija» cuelga de la tarea en curso; «propuesta» va al backlog; «parte» es cada trozo del plan de la tarea o funcionalidad que estás descomponiendo.",
 					),
 				padre: z.string().optional().describe("Identificador del padre, obligatorio si la clase es «hija» o «parte»."),
 				tipo: z
@@ -56,7 +56,7 @@ export function registrarHerramientaCrearTarea(
 					.array(z.string())
 					.optional()
 					.describe(
-						"Solo en una parte: identificadores de otras partes de la misma funcionalidad que tienen que ir antes que esta.",
+						"Solo en una parte: identificadores de otras partes de la misma madre que tienen que ir antes que esta.",
 					),
 			}),
 		},
@@ -71,7 +71,7 @@ export function registrarHerramientaCrearTarea(
 				if (dependeDe !== undefined && clase !== "parte") {
 					throw new ErrorDeRegla(
 						"dependencias_no_permitidas",
-						"Las dependencias solo se ponen al crear una parte, entre partes de la misma funcionalidad.",
+						"Las dependencias solo se ponen al crear una parte, entre partes de la misma madre.",
 					);
 				}
 				let creada: Tarea;

@@ -33,7 +33,8 @@ function funcionalidadDe(db: DatabaseSync, tareaId: number): Tarea | undefined {
 /**
  * Lo que este comentario deja esperando al humano. Se mira después de escribir,
  * con la tarea ya tal como queda: `done` es una tarea hecha, y la marca
- * «análisis listo» es un análisis (o una descomposición) pendiente de aprobar.
+ * «análisis listo» es un análisis (o una descomposición, si la tarea tiene
+ * partes) pendiente de aprobar.
  *
  * `antes` es la funcionalidad de la que cuelga la tarea tal como estaba antes
  * de escribir: si el comentario la cerró en la misma transacción, también se
@@ -45,7 +46,7 @@ function avisarDeLoQueEspera(avisar: Avisador, db: DatabaseSync, item: ItemIndic
 	}
 	if (item.marcas.includes("análisis listo")) {
 		avisar({
-			tipo: item.tipo === "funcionalidad" ? "descomposicion_lista" : "analisis_listo",
+			tipo: item.partes === null ? "analisis_listo" : "descomposicion_lista",
 			codigo: item.codigo,
 			titulo: item.titulo,
 		});

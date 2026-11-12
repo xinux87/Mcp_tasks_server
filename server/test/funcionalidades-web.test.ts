@@ -138,7 +138,7 @@ test("una funcionalidad se crea con su rama y sale en su propia lista", async ()
 		assert.match(ficha, /<dt>Partes<\/dt>\s*<dd><span class="silencio">ninguna<\/span><\/dd>/);
 		assert.match(ficha, /<dt>Consumo de las partes<\/dt>/);
 		// Su ficha es su tablero, y encima está el alta de una parte.
-		assert.match(ficha, /<h2>Partes<\/h2>/);
+		assert.match(ficha, /<h2>Tareas<\/h2>/);
 		assert.match(
 			ficha,
 			new RegExp(`<a class="boton" href="\\/tareas\\/nueva\\?padre=${idFila(montaje, 1)}">Nueva parte<\\/a>`),

@@ -8,14 +8,7 @@ import { tokensAbreviados } from "./consumo.ts";
 import { dependenciasDe, detalleDependencias, escribirDependencias } from "./dependencias.ts";
 import { autorHumano } from "./hilo.ts";
 import { exigirProyectoPorId } from "./proyectos.ts";
-import {
-	buscarTarea,
-	exigirPadreFuncionalidad,
-	exigirPresupuesto,
-	exigirTarea,
-	type Tarea,
-	type TipoTarea,
-} from "./tareas.ts";
+import { buscarTarea, exigirPadre, exigirPresupuesto, exigirTarea, type Tarea, type TipoTarea } from "./tareas.ts";
 
 /**
  * Un título vacío deja la tarea sin nada que leer en el índice. Se comprueba
@@ -182,10 +175,7 @@ function cuantas(conexion: DatabaseSync, sql: string, ...parametros: number[]): 
 function mudarDeProyecto(conexion: DatabaseSync, tarea: Tarea, proyectoId: number, padreId: number | null): string {
 	const destino = exigirProyectoPorId(conexion, proyectoId);
 	if (padreId !== null || tarea.padreId !== null) {
-		throw new ErrorDeRegla(
-			"no_cambia_de_proyecto",
-			"La tarea cuelga de una funcionalidad: vive en el proyecto de su funcionalidad.",
-		);
+		throw new ErrorDeRegla("no_cambia_de_proyecto", "La tarea cuelga de otra: vive en el proyecto de su madre.");
 	}
 	if (cuantas(conexion, "SELECT COUNT(*) AS total FROM tareas WHERE padre_id = ?", tarea.id) > 0) {
 		throw new ErrorDeRegla("no_cambia_de_proyecto", "La tarea tiene tareas colgando: se quedarían en otro proyecto.");
@@ -226,8 +216,11 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 		}
 		const padreId = datos.padreId === undefined ? tarea.padreId : datos.padreId;
 		if (padreId !== null && padreId !== tarea.padreId) {
-			exigirPadreFuncionalidad(conexion, padreId);
+			exigirPadre(conexion, padreId, { tareaId: tarea.id, proyectoId: tarea.proyectoId });
 		}
+		// Colgarla a mano la hace una parte, como la que crea el análisis;
+		// descolgarla le quita la clase. Si no cambia de madre, conserva la suya.
+		const clase = padreId === null ? null : padreId === tarea.padreId ? tarea.clase : "parte";
 		// Se comprueba antes de componer el rastro: un tope que no es un número no
 		// se guarda ni se cuenta a medias.
 		const presupuesto = datos.presupuesto === undefined ? tarea.presupuesto : exigirPresupuesto(datos.presupuesto);
@@ -261,7 +254,7 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 		sentencia(
 			conexion,
 			`UPDATE tareas
-				SET titulo = ?, descripcion = ?, tipo = ?, rama = ?, padre_id = ?, proyecto_id = ?, autoejecucion = ?,
+				SET titulo = ?, descripcion = ?, tipo = ?, rama = ?, padre_id = ?, clase = ?, proyecto_id = ?, autoejecucion = ?,
 					presupuesto = ?,
 					analisis_agente_id = ?, analisis_modelo = ?, analisis_terminal_id = ?,
 					ejecucion_agente_id = ?, ejecucion_modelo = ?, ejecucion_terminal_id = ?,
@@ -273,6 +266,7 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 			datos.tipo,
 			datos.rama === undefined ? tarea.rama : datos.rama,
 			padreId,
+			clase,
 			proyectoId,
 			datos.autoejecucion ? 1 : 0,
 			presupuesto,

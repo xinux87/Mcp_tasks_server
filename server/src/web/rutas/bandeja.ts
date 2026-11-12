@@ -32,7 +32,7 @@ type Entorno = {
 	db: DatabaseSync;
 	claves: Claves;
 	colorDe: ColorDe;
-	/** Todas las tareas, para sacar las partes de una funcionalidad sin más consultas. */
+	/** Todas las tareas, para sacar las partes de una tarea descompuesta sin más consultas. */
 	items: ItemIndice[];
 };
 
@@ -97,9 +97,9 @@ function preguntasSinContestar(item: ItemIndice, entorno: Entorno): Html {
 		</div>`;
 }
 
-/** Las partes de una funcionalidad, para revisarlas antes de aprobar la descomposición. */
-function partesDeLaFuncionalidad(item: ItemIndice, entorno: Entorno): Html {
-	const partes = entorno.items.filter((otra) => otra.padreId === item.id);
+/** Las partes de una tarea descompuesta, para revisarlas antes de aprobar la descomposición. */
+function partesDeLaMadre(item: ItemIndice, entorno: Entorno): Html {
+	const partes = entorno.items.filter((otra) => otra.padreId === item.id && otra.clase === "parte");
 	if (partes.length === 0) {
 		return html``;
 	}
@@ -111,10 +111,14 @@ function partesDeLaFuncionalidad(item: ItemIndice, entorno: Entorno): Html {
 		</ul>`;
 }
 
-/** Una tarea con el análisis hecho: el comentario y el botón que lo aprueba. */
+/**
+ * Una tarea con el análisis hecho: el comentario y el botón que lo aprueba. En
+ * una tarea descompuesta lo que se aprueba es la descomposición, y sus partes
+ * van debajo del análisis.
+ */
 function porAprobar(item: ItemIndice, entorno: Entorno): Html {
 	const analisis = ultimo(entorno.db, item.id, "analisis");
-	const esFuncionalidad = item.tipo === "funcionalidad";
+	const descompuesta = item.partes !== null;
 	return html`${cabeceraItem(item, entorno.claves, autorDe(entorno, item.id, "analisis"))}
 		<div class="cuerpo-item">
 			${
@@ -122,10 +126,10 @@ function porAprobar(item: ItemIndice, entorno: Entorno): Html {
 					? html`<p class="silencio">Sin análisis en el hilo.</p>`
 					: tarjetaComentario(analisis, entorno.colorDe)
 			}
-			${esFuncionalidad ? partesDeLaFuncionalidad(item, entorno) : html``}
+			${descompuesta ? partesDeLaMadre(item, entorno) : html``}
 			<form method="post" action="/tareas/${formatearId(item.codigo)}/aprobar">
 				<input type="hidden" name="volver" value="/">
-				<button type="submit" class="principal">${esFuncionalidad ? "Aprobar descomposición" : "Aprobar ejecución"}</button>
+				<button type="submit" class="principal">${descompuesta ? "Aprobar descomposición" : "Aprobar ejecución"}</button>
 			</form>
 		</div>`;
 }

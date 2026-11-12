@@ -94,7 +94,7 @@ function frontmatter(completa: TareaCompleta): string {
 		lineas.push(`dependeDe: [${completa.dependeDe.map(formatearId).join(", ")}]`);
 	}
 	lineas.push(`marcas: [${completa.marcas.join(", ")}]`);
-	// El progreso de una funcionalidad: partes cerradas sobre partes totales.
+	// El progreso de una tarea descompuesta: partes cerradas sobre partes totales.
 	if (completa.partes !== null && completa.partesCerradas !== null) {
 		lineas.push(`partes: ${completa.partes}`, `partesCerradas: ${completa.partesCerradas}`);
 	}

@@ -143,7 +143,7 @@ test("una funcionalidad con rama: se descompone, se aprueba, se ejecuta parte a 
 		// Una funcionalidad no se ejecuta: se ejecutan sus partes.
 		assert.equal(
 			codigoDe(() => tomarTarea(banco.db, { tareaId: evolutivo.id, fase: "ejecucion", terminalId: banco.portatil })),
-			"funcionalidad_sin_ejecucion",
+			"sin_ejecucion_propia",
 		);
 
 		// Aprobar la descomposición saca las partes del backlog en su orden y
@@ -252,7 +252,7 @@ test("sin rama no se crea la parte de integrar, y las hijas de trabajo de una pa
 					terminalId: banco.portatil,
 				}),
 			),
-			"funcionalidad_sin_ejecucion",
+			"sin_ejecucion_propia",
 		);
 		comentarResultado(banco.db, { tareaId: unica.id, terminalId: banco.portatil, texto: "hecho\n\nCommit: aaaaaaa" });
 		moverTareaHumano(banco.db, { tareaId: unica.id, usuarioId: banco.ana, estado: "finished" });

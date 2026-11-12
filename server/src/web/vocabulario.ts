@@ -91,3 +91,21 @@ export const NOMBRE_TIPO_TAREA: Record<TipoTarea, string> = {
  * sobre una tarea hecha, va en el cuadro de comentar y no tiene `<details>`.
  */
 export const VOLVER_A_DEFINIR = "Devolver a por definir";
+
+/**
+ * Cómo se llaman las partes de una tarea descompuesta, y sus hijas en
+ * general: «Tareas» en una funcionalidad, «Subtareas» en cualquier otra. Por
+ * dentro siguen siendo partes e hijas; esas dos palabras no llegan a la
+ * pantalla.
+ */
+export function nombreDeHijas(tipo: TipoTarea): { plural: string; singular: string } {
+	return tipo === "funcionalidad"
+		? { plural: "Tareas", singular: "tarea" }
+		: { plural: "Subtareas", singular: "subtarea" };
+}
+
+/** El rótulo del progreso de la tarjeta y de la fila: `subtareas 2/5`. */
+export const PROGRESO_HIJAS = "subtareas";
+
+/** El campo del formulario que cuelga una tarea de otra. */
+export const SUBTAREA_DE = "Subtarea de";

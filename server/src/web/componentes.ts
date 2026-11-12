@@ -14,7 +14,14 @@ import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
 import { formatearId } from "../md/ids.ts";
 import { abreviar, edad, faseLegible, horasDesde, SIN_DATO } from "./formatos.ts";
 import type { Html } from "./plantilla.ts";
-import { DUENO_COLUMNA, FRASE_DUENO_COLUMNA, NOMBRE_ESTADO, NOMBRE_FASE, NOMBRE_MARCA } from "./vocabulario.ts";
+import {
+	DUENO_COLUMNA,
+	FRASE_DUENO_COLUMNA,
+	NOMBRE_ESTADO,
+	NOMBRE_FASE,
+	NOMBRE_MARCA,
+	PROGRESO_HIJAS,
+} from "./vocabulario.ts";
 
 /**
  * Los componentes reutilizables de la web: etiquetas, chips, cabecera de
@@ -147,12 +154,19 @@ export type EnElCiclo = {
 	marcas: readonly Marca[];
 	/** Número de la pregunta abierta más antigua: «Espera tu respuesta a P1». */
 	preguntaAbierta: number | null;
+	/**
+	 * Si tiene partes (o es una funcionalidad): su análisis es la descomposición
+	 * y lo que se trabaja en curso son las partes. Sin decirlo, solo lo está
+	 * una funcionalidad.
+	 */
+	descompuesta?: boolean;
 };
 
 /** Qué pasa ahora mismo y de quién es el turno. */
 function quePasaAhora(tarea: EnElCiclo): { frase: string; deTurno: boolean } {
 	const respuesta = { frase: `Espera tu respuesta a P${tarea.preguntaAbierta ?? 1}`, deTurno: true };
 	const bloqueada = tarea.marcas.includes("bloqueada");
+	const descompuesta = tarea.descompuesta ?? tarea.tipo === "funcionalidad";
 	switch (tarea.estado) {
 		case "backlog":
 			return { frase: "Termina de definirla y pásala a preparadas", deTurno: true };
@@ -161,9 +175,9 @@ function quePasaAhora(tarea: EnElCiclo): { frase: string; deTurno: boolean } {
 				return respuesta;
 			}
 			if (tarea.marcas.includes("análisis listo")) {
-				// En una funcionalidad el análisis son sus partes: lo que hay que
-				// mirar antes de aprobar no es un texto, es la descomposición.
-				return tarea.tipo === "funcionalidad"
+				// En una tarea descompuesta el análisis son sus partes: lo que hay
+				// que mirar antes de aprobar no es un texto, es la descomposición.
+				return descompuesta
 					? { frase: "Revisa las partes", deTurno: true }
 					: { frase: "Espera tu aprobación del análisis", deTurno: true };
 			}
@@ -172,7 +186,7 @@ function quePasaAhora(tarea: EnElCiclo): { frase: string; deTurno: boolean } {
 			if (bloqueada) {
 				return respuesta;
 			}
-			return tarea.tipo === "funcionalidad"
+			return descompuesta
 				? { frase: "Las partes se están trabajando", deTurno: false }
 				: { frase: "El agente la está ejecutando", deTurno: false };
 		case "done":
@@ -559,7 +573,7 @@ export function accionNuevaTarea(prefijo = ""): Html {
 }
 
 /**
- * Lo que ha avanzado una tarea: barra fina y `hijas 2/5` al lado, hijas
+ * Lo que ha avanzado una tarea: barra fina y `subtareas 2/5` al lado, hijas
  * cerradas sobre hijas totales. En una funcionalidad son sus partes, y el
  * rótulo lo dice.
  *
@@ -567,7 +581,7 @@ export function accionNuevaTarea(prefijo = ""): Html {
  * pintarla y contarla a quien no la ve. Sin nada que contar no se pinta:
  * una tarea sin hijas no tiene progreso, tiene trabajo.
  */
-export function barraProgreso(cerradas: number, total: number, rotulo = "hijas"): Html {
+export function barraProgreso(cerradas: number, total: number, rotulo = PROGRESO_HIJAS): Html {
 	if (total === 0) {
 		return html``;
 	}
@@ -820,4 +834,53 @@ export function franjaEnMarcha(
  */
 export function migaDeProyecto(proyecto: { clave: string }): Miga {
 	return { texto: proyecto.clave, href: `/p/${proyecto.clave}` };
+}
+
+/** Lo que necesita `olasDe` de cada parte: su código y los de las que van antes. */
+export type ParteConDependencias = { codigo: string; dependeDe: readonly string[] };
+
+/**
+ * El orden de ejecución de las partes de una tarea, en olas: la ola de una
+ * parte es 1 si no depende de ninguna hermana y, si depende, 1 más la mayor
+ * de las de sus dependencias. Lo que está en la misma ola puede ir a la vez.
+ * Solo cuentan las dependencias entre hermanas: una de fuera no ordena nada
+ * aquí. Dentro de cada ola, las partes van en el orden en que llegan.
+ *
+ * Un ciclo no debería existir (la base lo impide); si se colara, se corta
+ * donde se cierra en vez de no acabar.
+ */
+export function olasDe<T extends ParteConDependencias>(partes: readonly T[]): T[][] {
+	const porCodigo = new Map(partes.map((parte) => [parte.codigo, parte]));
+	const olaDe = new Map<string, number>();
+	const calcular = (parte: T, camino: Set<string>): number => {
+		const sabida = olaDe.get(parte.codigo);
+		if (sabida !== undefined) {
+			return sabida;
+		}
+		if (camino.has(parte.codigo)) {
+			return 0;
+		}
+		camino.add(parte.codigo);
+		let ola = 1;
+		for (const codigo of parte.dependeDe) {
+			const hermana = porCodigo.get(codigo);
+			if (hermana !== undefined) {
+				ola = Math.max(ola, calcular(hermana, camino) + 1);
+			}
+		}
+		olaDe.set(parte.codigo, ola);
+		return ola;
+	};
+	const olas: T[][] = [];
+	for (const parte of partes) {
+		const indice = calcular(parte, new Set()) - 1;
+		const ola = olas[indice];
+		if (ola === undefined) {
+			olas[indice] = [parte];
+		} else {
+			ola.push(parte);
+		}
+	}
+	// Con un ciclo cortado podría quedar una ola sin nadie: no se pinta.
+	return olas.filter((ola) => ola !== undefined);
 }

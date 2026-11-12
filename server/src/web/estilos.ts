@@ -1877,6 +1877,67 @@ details.caja[open] > summary {
 	margin-bottom: 0.9rem;
 }
 
+/* «Añadir subtarea»: una sola línea, el título y el botón al lado. */
+.anadir-subtarea {
+	display: flex;
+	gap: 0.5rem;
+	margin: 0 0 1.4rem;
+}
+
+.anadir-subtarea input {
+	flex: 1;
+	min-width: 0;
+}
+
+/* El orden de ejecución: una fila por ola, con su rótulo delante y las
+   partes que pueden ir a la vez como tarjetas mínimas una al lado de otra. */
+.olas {
+	margin: 0 0 1.4rem;
+	padding: 0;
+	list-style: none;
+}
+
+.olas > li {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.5rem 1rem;
+	padding: 0.6rem 0;
+	border-bottom: 1px solid var(--borde);
+}
+
+.olas > li:last-child {
+	border-bottom: none;
+}
+
+.rotulo-ola {
+	flex: 0 0 4rem;
+	color: var(--texto-suave);
+	font-size: 0.8125rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.olas ul {
+	display: flex;
+	flex: 1;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.parte-ola {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.4rem;
+	padding: 0.35rem 0.6rem;
+	border: 1px solid var(--borde);
+	border-radius: 8px;
+	background: var(--fondo);
+}
+
 /* Borrar es excepcional y no compite con «Guardar cambios»: enlace rojo
    discreto al final del bloque de editar. */
 .accion-peligro {

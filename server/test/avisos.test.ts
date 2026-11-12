@@ -352,3 +352,17 @@ test("la descomposición de una funcionalidad avisa, y cerrar su última parte a
 		await montaje.cerrar();
 	}
 });
+
+test("una tarea con autoejecución que se descompone avisa de la descomposición, no del análisis", async () => {
+	const montaje = await montar();
+	try {
+		const tarea = tareaEnPrepared(montaje, "Rehacer la exportación", true);
+		const id = formatearId(tarea.codigo);
+		await llamar(montaje, "tomar_tarea", { id, fase: "analisis" });
+		await llamar(montaje, "crear_tarea", { titulo: "Sacar los datos", descripcion: "d", clase: "parte", padre: id });
+		await llamar(montaje, "comentar_tarea", { id, tipo: "analisis", texto: "Plan de conjunto." });
+		assert.deepEqual(await montaje.recoger(), [`${id} descomposición lista: «Rehacer la exportación»\n${ficha(tarea)}`]);
+	} finally {
+		await montaje.cerrar();
+	}
+});

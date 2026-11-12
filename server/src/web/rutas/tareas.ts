@@ -8,6 +8,7 @@ import { buscarTerminalPorId, revisionActual } from "../../db/consultas.ts";
 import type { ConsumoDeTarea } from "../../db/consumo.ts";
 import { dependenciasPendientes, dependientesDe } from "../../db/dependencias.ts";
 import { editarTareaBacklog, exigirTitulo } from "../../db/edicion.ts";
+import { crearSubtarea } from "../../db/funcionalidades.ts";
 import { type Comentario, comentarioHumano, iteracionesDe, responder, type TipoComentario } from "../../db/hilo.ts";
 import { buscarProyectoPorId, listarProyectos, type Proyecto } from "../../db/proyectos.ts";
 import {
@@ -50,6 +51,7 @@ import {
 	type Miga,
 	migaDeProyecto,
 	muestraEdad,
+	olasDe,
 	type Propiedad,
 	pasosDelCiclo,
 	propiedades,
@@ -97,7 +99,14 @@ import {
 	type RespuestaHtml,
 } from "../plantilla.ts";
 import { type DependenciasWeb, destinoSeguro, usuarioActual } from "../sesion.ts";
-import { NOMBRE_COLUMNA, NOMBRE_ESTADO, NOMBRE_FASE, VOLVER_A_DEFINIR } from "../vocabulario.ts";
+import {
+	NOMBRE_COLUMNA,
+	NOMBRE_ESTADO,
+	NOMBRE_FASE,
+	nombreDeHijas,
+	SUBTAREA_DE,
+	VOLVER_A_DEFINIR,
+} from "../vocabulario.ts";
 import { paginaBandeja } from "./bandeja.ts";
 import {
 	enCarriles,
@@ -171,10 +180,10 @@ const TAREA_VACIA: ValoresTarea = {
 
 /**
  * Lo que el formulario de tarea necesita de la base: los terminales que se
- * pueden asignar, las funcionalidades que pueden ser su padre y las tareas de
- * las que puede depender. Ni una funcionalidad cerrada ni la propia tarea
- * entran en las listas: la primera ya no admite partes y la segunda no puede
- * depender de sí misma.
+ * pueden asignar, las tareas de las que puede ser subtarea y las tareas de las
+ * que puede depender. Ni una tarea cerrada ni la propia tarea entran en las
+ * listas: la primera ya no admite subtareas y la segunda no puede depender de
+ * sí misma. Una pregunta tampoco puede ser madre: se cierra con su respuesta.
  */
 type OpcionesTarea = {
 	activos: TerminalListado[];
@@ -191,7 +200,13 @@ function opcionesDeTarea(db: DatabaseSync, tareaId: number | null, proyecto: Pro
 	return {
 		activos: terminalesActivos(db),
 		agentes: listarAgentes(db),
-		padres: items.filter((item) => item.tipo === "funcionalidad" && item.estado !== "finished" && item.id !== tareaId),
+		padres: items.filter(
+			(item) =>
+				item.tipo !== "pregunta" &&
+				item.estado !== "finished" &&
+				item.id !== tareaId &&
+				(proyecto === undefined || item.proyectoId === proyecto.id),
+		),
 		candidatas: items.filter((item) => item.estado !== "finished" && item.id !== tareaId),
 		proyecto,
 	};
@@ -458,10 +473,10 @@ function selectTipo(elegido: TipoTarea): Html {
 		</label>`;
 }
 
-/** El desplegable de la funcionalidad de la que esta tarea es una parte. */
+/** El desplegable de la tarea de la que esta es una subtarea. */
 function selectPadre(padres: ItemIndice[], elegido: string | null): Html {
 	return html`<label>
-			<span>Parte de la funcionalidad</span>
+			<span>${SUBTAREA_DE}</span>
 			<select name="padre">
 				<option value=""${elegido === null ? raw(" selected") : ""}>ninguna</option>
 				${padres.map(
@@ -469,7 +484,7 @@ function selectPadre(padres: ItemIndice[], elegido: string | null): Html {
 						html`<option value="${formatearId(padre.codigo)}"${padre.codigo === elegido ? raw(" selected") : ""}>${formatearId(padre.codigo)} — ${padre.titulo}</option>`,
 				)}
 			</select>
-			<span class="ayuda">Si la eliges, esta tarea es una de sus partes y hereda su rama.</span>
+			<span class="ayuda">Si la eliges, esta tarea es una de sus subtareas y hereda su rama.</span>
 		</label>`;
 }
 
@@ -896,20 +911,78 @@ function desgloseHijas(hijas: readonly HijaDeTarea[]): string {
 }
 
 /**
- * Las hijas de la tarea, con la misma cuenta y la misma barra que la tarjeta
- * del tablero: es donde el humano decide si acepta el resultado de la padre.
+ * El título del bloque de hijas, con la misma cuenta y la misma barra que la
+ * tarjeta del tablero, y el desglose debajo: «Tareas 2/5» en una
+ * funcionalidad, «Subtareas 2/5» en cualquier otra.
  */
-function bloqueHijas(hijas: readonly HijaDeTarea[]): Html {
+function cabeceraHijas(tipo: TipoTarea, hijas: readonly HijaDeTarea[]): Html {
+	const { plural } = nombreDeHijas(tipo);
 	if (hijas.length === 0) {
-		return html`<h2>Hijas</h2>
-			<p class="silencio">Ninguna.</p>`;
+		return html`<h2>${plural}</h2>`;
 	}
 	const hechas = hijas.filter((hija) => hija.estado === "done" || hija.estado === "finished").length;
-	return html`<h2>Hijas ${hechas}/${hijas.length} <progress class="progreso" value="${hechas}" max="${hijas.length}"></progress></h2>
-		<p class="pequeno silencio">${desgloseHijas(hijas)}</p>
+	return html`<h2>${plural} ${hechas}/${hijas.length} <progress class="progreso" value="${hechas}" max="${hijas.length}"></progress></h2>
+		<p class="pequeno silencio">${desgloseHijas(hijas)}</p>`;
+}
+
+/**
+ * Las hijas de una tarea que no está descompuesta, en lista: es donde el
+ * humano decide si acepta el resultado de la madre. Las hijas de trabajo y las
+ * subtareas salen igual: son hijas con estado.
+ */
+function bloqueHijas(tipo: TipoTarea, hijas: readonly HijaDeTarea[]): Html {
+	if (hijas.length === 0) {
+		return html`${cabeceraHijas(tipo, hijas)}
+			<p class="silencio">Ninguna.</p>`;
+	}
+	return html`${cabeceraHijas(tipo, hijas)}
 		<ul class="hijas">
 			${hijas.map((hija) => html`<li>${insigniaEstado(hija.estado)} ${enlaceTarea(hija.codigo)} ${hija.titulo}</li>`)}
 		</ul>`;
+}
+
+/**
+ * «Añadir subtarea»: una línea con solo el título. Va debajo del bloque de
+ * subtareas mientras la tarea se define, se prepara o se trabaja; una pregunta
+ * no se descompone y una tarea hecha o cerrada ya no admite más.
+ */
+function anadirSubtarea(tarea: Tarea): Html {
+	if (tarea.tipo === "pregunta" || !["backlog", "prepared", "doing"].includes(tarea.estado)) {
+		return html``;
+	}
+	const { singular } = nombreDeHijas(tarea.tipo);
+	return html`<form class="anadir-subtarea" method="post" action="/tareas/${formatearId(tarea.codigo)}/subtareas">
+			<input type="text" name="titulo" required placeholder="Título de la ${singular}" aria-label="Título de la ${singular}">
+			<button type="submit">Añadir ${singular}</button>
+		</form>`;
+}
+
+/**
+ * El orden de ejecución de las partes, en olas: una fila por ola y una tarjeta
+ * mínima por parte. Dice qué puede ir a la vez y, por tanto, cuántas partes se
+ * pueden repartir entre terminales. Con una sola parte no hay orden que
+ * enseñar.
+ */
+function bloqueOlas(hijas: readonly HijaDeTarea[]): Html {
+	const partes = hijas.filter((hija) => hija.clase === "parte");
+	if (partes.length < 2) {
+		return html``;
+	}
+	return html`<h2>Orden de ejecución</h2>
+		<p class="silencio">Lo que está en la misma ola puede ir a la vez.</p>
+		<ol class="olas">
+			${olasDe(partes).map(
+				(ola, indice) => html`<li>
+					<span class="rotulo-ola">Ola ${indice + 1}</span>
+					<ul>
+						${ola.map(
+							(parte) =>
+								html`<li class="parte-ola">${enlaceTarea(parte.codigo)} <span class="titulo">${parte.titulo}</span> ${insigniaEstado(parte.estado)}</li>`,
+						)}
+					</ul>
+				</li>`,
+			)}
+		</ol>`;
 }
 
 function tablaConsumo(consumo: ConsumoDeTarea, presupuesto: number | null): Html {
@@ -1090,9 +1163,9 @@ function accionesFicha(completa: TareaCompleta): Html | undefined {
 		return botonMover(id, "prepared", "Pasar a preparadas");
 	}
 	// La marca «análisis listo» ya excluye las preguntas: no tienen ejecución.
-	// En una funcionalidad, lo que se aprueba es su descomposición en partes.
+	// En una tarea descompuesta, lo que se aprueba es su descomposición en partes.
 	if (completa.tarea.estado === "prepared" && completa.marcas.includes("análisis listo")) {
-		const texto = completa.tarea.tipo === "funcionalidad" ? "Aprobar descomposición" : "Aprobar ejecución";
+		const texto = completa.partes === null ? "Aprobar ejecución" : "Aprobar descomposición";
 		return html`<form method="post" action="/tareas/${id}/aprobar">
 				<button type="submit" class="principal">${texto}</button>
 			</form>`;
@@ -1379,27 +1452,35 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 	const actividad = html`<h2>Actividad</h2>
 		${actividadDeTarea(deps.db, tarea.id, colorDe)}`;
 
-	// La ficha de una funcionalidad es su propio tablero: encima lo que se
-	// decidió, debajo las partes en las que se descompuso.
-	const principal =
-		tarea.tipo === "funcionalidad"
-			? html`${descripcion}
+	// La ficha de una tarea descompuesta es su propio tablero: encima lo que se
+	// decidió, debajo las partes en las que se descompuso y en qué orden van.
+	// Una funcionalidad lo es siempre, aunque todavía no tenga partes.
+	const descompuesta = completa.partes !== null;
+	const principal = descompuesta
+		? html`${descripcion}
 				${comun}
 
-				<h2>Partes</h2>
-				<div class="acciones acciones-partes">
-					<a class="boton" href="/tareas/nueva?padre=${id}">Nueva parte</a>
-				</div>
+				${cabeceraHijas(tarea.tipo, completa.hijas)}
+				${
+					tarea.tipo === "funcionalidad"
+						? html`<div class="acciones acciones-partes">
+								<a class="boton" href="/tareas/nueva?padre=${id}">Nueva parte</a>
+							</div>`
+						: html``
+				}
 				${tablero(
 					deps.db,
 					{ estado: "", terminal: "", marca: "", padre: id, proyecto: "", rapido: "", q: "" },
 					deps.config.FASE_PARADA_HORAS,
 				)}
+				${anadirSubtarea(tarea)}
+				${bloqueOlas(completa.hijas)}
 
 				${actividad}`
-			: html`${descripcion}
+		: html`${descripcion}
 
-				${bloqueHijas(completa.hijas)}
+				${bloqueHijas(tarea.tipo, completa.hijas)}
+				${anadirSubtarea(tarea)}
 
 				${comun}
 				${actividad}`;
@@ -1429,6 +1510,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 		tipo: tarea.tipo,
 		marcas: completa.marcas,
 		preguntaAbierta: abiertas[0]?.numero ?? null,
+		descompuesta,
 	})}
 		${preguntasArriba(completa)}
 		<div class="ficha">
@@ -1685,6 +1767,21 @@ export function registrarRutasTareas(app: Hono, deps: DependenciasWeb): void {
 	});
 
 	// Suelta la fase que un terminal dejó tomada: la salida de una fase parada.
+	// «Añadir subtarea» desde la ficha: solo el título, y de vuelta a la ficha.
+	app.post("/tareas/:id/subtareas", async (c) => {
+		const cual = tareaDeRuta(deps.db, c);
+		if (cual === null) {
+			return paginaNoEncontrada(c, deps, NO_ES_UNA_TAREA);
+		}
+		const formulario = await leerFormulario(c);
+		try {
+			crearSubtarea(deps.db, { madreId: cual.id, titulo: campo(formulario, "titulo"), usuarioId: usuarioActual(c).id });
+			return c.redirect(`/tareas/${formatearId(cual.codigo)}`, 302);
+		} catch (error) {
+			return paginaFicha(c, deps, cual.id, mensajeDeRegla(error));
+		}
+	});
+
 	app.post("/tareas/:id/liberar", async (c) => {
 		const cual = tareaDeRuta(deps.db, c);
 		if (cual === null) {
