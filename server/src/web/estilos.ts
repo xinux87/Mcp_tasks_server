@@ -39,7 +39,7 @@ export const CSS = `:root {
 	--acento-texto: #0a7d37;
 	--acento-tinte: #dcfbe5;
 	--sobre-acento: #0d0f0c;
-	--turno: #c24e00;
+	--turno: #b34800;
 	--turno-fondo: #ffe8d6;
 	--sobre-turno: #fbfbf6;
 	--peligro: #c92626;
@@ -327,6 +327,19 @@ a.id-tarea:hover {
 .espacio select:hover {
 	background: var(--fondo-hover);
 	box-shadow: var(--sombra-filete);
+}
+
+/* El color del proyecto elegido, delante de su nombre: el icono del espacio. */
+.espacio .punto {
+	position: absolute;
+	top: 50%;
+	left: 0.55rem;
+	margin-top: -4px;
+	pointer-events: none;
+}
+
+.espacio:has(.punto) select {
+	padding-left: 1.4rem;
 }
 
 .bloque {
@@ -976,20 +989,33 @@ input[type="checkbox"], input[type="radio"] {
 	accent-color: var(--acento);
 }
 
-label.opcion {
-	padding: 0.5rem 0.7rem;
+/* Las opciones de una pregunta son las filas de una sola tarjeta, separadas
+   por la línea suave; la elegida se tiñe del acento. */
+.opciones {
+	margin: 0 0 1rem;
 	border-radius: var(--radio-tarjeta);
+	background: var(--superficie);
 	box-shadow: var(--sombra-filete);
+	overflow: hidden;
+}
+
+label.opcion {
+	margin: 0;
+	padding: 0.65rem 0.9rem;
 	cursor: pointer;
-	transition: background-color 120ms var(--suave), box-shadow 120ms var(--suave);
+	transition: background-color 120ms var(--suave);
+}
+
+label.opcion + label.opcion {
+	border-top: 1px solid var(--borde-suave);
 }
 
 label.opcion:hover {
 	background: var(--fondo-hover);
 }
 
-label.opcion:has(input:checked) {
-	box-shadow: 0 0 0 1.5px var(--acento);
+label.opcion:has(:checked) {
+	background: var(--acento-tinte);
 }
 
 label.opcion .consecuencia {
@@ -999,12 +1025,20 @@ label.opcion .consecuencia {
 	font-size: 0.8125rem;
 }
 
+/* La recomendada, como píldora teñida del acento detrás del texto. */
 .recomendada {
-	margin-left: 0.4rem;
+	display: inline-flex;
+	align-items: center;
+	height: 20px;
+	margin-left: 0.5rem;
+	padding: 0 0.45rem;
+	border-radius: var(--radio-chip);
+	background: var(--acento-tinte);
 	color: var(--acento-texto);
-	font-size: 0.78125rem;
+	font-size: 0.71875rem;
 	font-weight: 500;
 	white-space: nowrap;
+	vertical-align: middle;
 }
 
 /* Botones de 32 px: el secundario es una pieza de la superficie con su sombra
@@ -1128,10 +1162,15 @@ button.enlace:hover {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 0.35rem 0.6rem;
-	margin-bottom: 0.5rem;
+	gap: 0.35rem 0.5rem;
+	margin-bottom: 0.4rem;
 	color: var(--texto-suave);
-	font-size: 0.78125rem;
+	font-size: 0.8125rem;
+}
+
+/* La fecha cierra la cabecera por la derecha. */
+.comentario > header .fecha {
+	margin-left: auto;
 }
 
 .comentario .autor {
@@ -1591,8 +1630,9 @@ button.pequeno, .boton.pequeno {
    la última columna es estrecha y «Rotar token» no puede partirse. */
 .acciones-terminal {
 	display: flex;
-	flex-wrap: wrap;
-	gap: 0.2rem 0.6rem;
+	flex-direction: column;
+	gap: 0.2rem;
+	white-space: nowrap;
 }
 
 /* --- selector de color --------------------------------------------------- */
@@ -1673,15 +1713,15 @@ button.pequeno, .boton.pequeno {
 /* Con diez columnas, el hueco lateral de cada una suma más que cualquier dato:
    aquí se recorta para que la fila entera quepa sin desplazar la tabla. */
 .tabla-terminales th, .tabla-terminales td {
-	padding-left: 0.4rem;
-	padding-right: 0.4rem;
+	padding-left: 0.3rem;
+	padding-right: 0.3rem;
 }
 
 /* Los agentes en paralelo se cambian en la propia fila: el número es de una
    cifra, así que el campo ocupa lo justo y el botón va a su lado. */
 .cambio-agentes {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	align-items: center;
 	gap: 0.3rem;
 	margin: 0;
@@ -1692,12 +1732,12 @@ button.pequeno, .boton.pequeno {
 }
 
 .celda-cuenta {
-	min-width: 9rem;
+	min-width: 6.5rem;
 	overflow-wrap: anywhere;
 }
 
 .celda-uso {
-	min-width: 11rem;
+	min-width: 9.5rem;
 }
 
 .uso {
@@ -1913,15 +1953,6 @@ button.pequeno, .boton.pequeno {
 	margin-right: 0;
 }
 
-/* En la lista, el título manda: el resto de columnas se lee de refilón. */
-.grupo td:first-child, .grupo th:first-child {
-	width: 6rem;
-}
-
-.grupo tbody td:nth-child(3), .grupo tbody td:nth-child(4) {
-	color: var(--texto-suave);
-}
-
 /* El grupo de las cerradas se pliega; el triángulo no debe empujar el rótulo. */
 .grupo summary {
 	cursor: pointer;
@@ -1947,6 +1978,10 @@ label.casilla .que, label.opcion .que {
 	font-size: inherit;
 }
 
+label.opcion .que {
+	font-weight: 500;
+}
+
 label.casilla .detalle, label.opcion .consecuencia {
 	grid-column: 2;
 	margin: 0.1rem 0 0;
@@ -1957,7 +1992,7 @@ label.casilla .detalle, label.opcion .consecuencia {
 
 /* Va dentro del texto de la opción, no debajo. */
 label.opcion .recomendada {
-	display: inline;
+	display: inline-flex;
 }
 
 /* --- nueva tarea y edición ----------------------------------------------- */
@@ -1980,16 +2015,6 @@ label.opcion .recomendada {
 }
 
 /* --- ficha --------------------------------------------------------------- */
-
-.hijas {
-	margin: 0 0 1.4rem;
-	padding: 0;
-	list-style: none;
-}
-
-.hijas li {
-	padding: 0.2rem 0;
-}
 
 /* El rastro de la tarea: una línea por acción, de la más antigua a la más
    nueva. Sin numerar: lo que ordena es la fecha del final. */
@@ -2120,7 +2145,7 @@ details.caja[open] > summary {
 .olas > li {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: baseline;
+	align-items: flex-start;
 	gap: 0.5rem 1rem;
 	padding: 0.6rem 0;
 	border-bottom: 1px solid var(--borde-suave);
@@ -2132,30 +2157,16 @@ details.caja[open] > summary {
 
 .rotulo-ola {
 	flex: 0 0 4rem;
+	padding-top: 0.7rem;
 	color: var(--texto-suave);
 	font-size: 0.8125rem;
 	font-variant-numeric: tabular-nums;
 }
 
-.olas ul {
-	display: flex;
+.olas .filas {
 	flex: 1;
-	flex-wrap: wrap;
-	gap: 0.5rem;
+	min-width: 0;
 	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-.parte-ola {
-	display: inline-flex;
-	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 0.4rem;
-	padding: 0.35rem 0.6rem;
-	border-radius: var(--radio);
-	background: var(--superficie);
-	box-shadow: var(--sombra-filete);
 }
 
 /* Borrar es excepcional y no compite con «Guardar cambios»: enlace rojo
@@ -2193,6 +2204,12 @@ details.caja[open] > summary {
 
 .ficha > .panel {
 	order: -1;
+}
+
+/* Lo ancho de dentro (el tablero de las partes) se desplaza en su envoltorio:
+   la columna no crece por él ni se sale del contenido. */
+.ficha > .principal {
+	min-width: 0;
 }
 
 @media (min-width: 64rem) {
@@ -2237,13 +2254,51 @@ details.caja[open] > summary {
 	grid-template-columns: 6.5rem 1fr;
 }
 
-/* La tabla de consumo del panel, apretada: cinco columnas en 18 rem. Si aun
-   así no caben, se desplaza su envoltorio, no el panel. */
-.panel th, .panel td {
-	height: 32px;
-	padding: 0.3rem 0.5rem 0.3rem 0;
+/* El consumo del panel, en chips: una fila por fase (modelo, tokens,
+   herramientas y duración) y debajo el total con hijas, con su barra cuando
+   hay presupuesto. */
+.consumo {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+	margin: 0 0 1.4rem;
+}
+
+.consumo-fase {
+	display: grid;
+	gap: 0.3rem;
+}
+
+.consumo-nombre {
+	color: var(--texto-suave);
 	font-size: 0.78125rem;
-	white-space: nowrap;
+}
+
+.chips-consumo {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3rem;
+}
+
+.chip-consumo {
+	padding: 0 0.5rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.consumo-total {
+	display: flex;
+	font-variant-numeric: tabular-nums;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.3rem 0.6rem;
+	margin: 0;
+	padding-top: 0.6rem;
+	border-top: 1px solid var(--borde-suave);
+}
+
+.consumo-barra {
+	width: 100%;
 }
 
 .panel h2 {
@@ -2285,7 +2340,7 @@ details.caja[open] > summary {
 }
 
 /* El punto de cada paso, por encima del filete que los une. */
-.punto {
+.ciclo .punto {
 	position: relative;
 	display: block;
 	width: 16px;
@@ -2294,6 +2349,7 @@ details.caja[open] > summary {
 	border: 1px solid var(--borde-fuerte);
 	border-radius: 50%;
 	background: var(--fondo);
+	box-shadow: none;
 }
 
 .paso-nombre {
@@ -2384,7 +2440,7 @@ details.caja[open] > summary {
 		text-align: left;
 	}
 
-	.punto {
+	.ciclo .punto {
 		margin: 0;
 	}
 
@@ -2434,18 +2490,11 @@ details.caja[open] > summary {
 }
 
 .cabecera-item {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 0.5rem;
-	padding: 0.6rem 0.9rem 0.6rem 1.1rem;
+	padding: 0 0.9rem 0 1.1rem;
 	border-bottom: 1px solid var(--borde-suave);
 }
 
-/* El título se come el hueco que quede: el chip y la edad se van al otro borde. */
 .cabecera-item .titulo {
-	flex: 1;
-	min-width: 8rem;
 	font-weight: 600;
 }
 
@@ -2461,6 +2510,11 @@ details.caja[open] > summary {
 /* El primer mensaje del cuerpo ya está separado por el borde de la cabecera. */
 .cuerpo-item > .comentario:first-child {
 	border-top: none;
+}
+
+/* Las partes por aprobar, separadas del análisis que las explica. */
+.cuerpo-item > .filas {
+	margin: 0.8rem 0;
 }
 
 /* Las dos salidas de un resultado, en una sola fila: pedir otra iteración
@@ -2561,7 +2615,7 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
 	padding: 0.8rem 16px;
 	border-top: none;
 	border-radius: var(--radio-tarjeta);
-	background: var(--fondo-lateral);
+	background: var(--hueco);
 }
 
 /* El cuadro de escribir cierra el hilo, pegado al último mensaje. */
@@ -2586,6 +2640,7 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
 
 .comentar textarea {
 	width: 100%;
+	max-width: none;
 }
 
 /* En estrecho la pantalla es toda del hilo: un cuadro fijo se comería media. */
@@ -2613,7 +2668,7 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
    ha muerto, que mirando solo la columna «Conectado» había que adivinarlo. */
 .ahora-rejilla {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(min(26rem, 100%), 1fr));
 	gap: 0.8rem;
 	margin-bottom: 1.6rem;
 }
@@ -2637,26 +2692,15 @@ form:has(select[name="tipo"] option[value="funcionalidad"]:checked) label:has(se
 	margin: 0;
 }
 
-.ahora-fases {
-	display: flex;
-	flex-direction: column;
-	gap: 0.4rem;
+/* Dentro de la tarjeta del terminal las filas no llevan otra tarjeta. */
+.filas.ahora-fases {
 	margin: 0;
+	background: none;
+	box-shadow: none;
+}
+
+.filas.ahora-fases > li {
 	padding: 0;
-	list-style: none;
-}
-
-.ahora-fases li {
-	display: flex;
-	align-items: baseline;
-	flex-wrap: wrap;
-	gap: 0.4rem;
-}
-
-/* El título se come el hueco que quede: la edad se va al borde derecho. */
-.ahora-titulo {
-	flex: 1;
-	min-width: 6rem;
 }
 
 /* --- «Configuración», desplegable en la barra lateral ------------------- */
@@ -2717,5 +2761,237 @@ details.bloque > summary:hover {
 
 .proposito > :last-child {
 	margin-bottom: 0;
+}
+
+/* --- el punto de color y el que late -------------------------------------- */
+
+/* Un círculo de 8 px del color fuerte de su clase «.color-*», que es el del
+   texto: la sombra por dentro lo rellena y tapa el tinte que pone la clase de
+   fondo, en los dos modos y sin pelearse con la tabla de nueve colores. Sin
+   clase toma el color de lo que lo rodea, como dentro de una etiqueta. */
+.punto {
+	display: inline-block;
+	flex: none;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	box-shadow: inset 0 0 0 4px currentColor;
+	vertical-align: middle;
+}
+
+.insignia .punto {
+	margin-right: 0.35rem;
+}
+
+/* «Agente trabajando»: lo único de la página que está pasando ahora. Quien
+   pide menos movimiento lo tiene quieto por la regla general de arriba. */
+.latido {
+	animation: latido 1.6s ease-in-out infinite;
+}
+
+@keyframes latido {
+	0%, 100% {
+		transform: scale(1);
+		opacity: 1;
+	}
+
+	50% {
+		transform: scale(0.6);
+		opacity: 0.4;
+	}
+}
+
+/* --- la fila de tarea ------------------------------------------------------ */
+
+/* Una lista de filas es una tarjeta: las filas se separan por la línea suave y
+   se iluminan al pasar por encima. La usan la lista, la bandeja, las subtareas,
+   el orden de ejecución y «Ahora mismo». */
+.filas {
+	margin: 0 0 1.4rem;
+	padding: 0;
+	list-style: none;
+	border-radius: var(--radio-tarjeta);
+	background: var(--superficie);
+	box-shadow: var(--sombra-tarjeta);
+}
+
+.filas > li {
+	padding: 0 0.8rem;
+	transition: background-color 120ms var(--suave);
+}
+
+.filas > li + li {
+	border-top: 1px solid var(--borde-suave);
+}
+
+.filas > li:hover {
+	background: var(--fondo-hover);
+}
+
+.filas > li:first-child {
+	border-radius: var(--radio-tarjeta) var(--radio-tarjeta) 0 0;
+}
+
+.filas > li:last-child {
+	border-radius: 0 0 var(--radio-tarjeta) var(--radio-tarjeta);
+}
+
+.filas > li:only-child {
+	border-radius: var(--radio-tarjeta);
+}
+
+/* 44 px: punto, id, título en una línea y, al borde derecho, la píldora, los
+   agentes, los tokens y la edad. Todo lo demás guarda su ancho; solo el título
+   cede, con puntos suspensivos. */
+.fila-tarea {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	min-height: 44px;
+	min-width: 0;
+}
+
+.fila-tarea > * {
+	flex: none;
+}
+
+.fila-tarea > .titulo {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.estado-fila {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+	color: var(--texto-suave);
+	font-size: 0.78125rem;
+}
+
+/* El nombre del estado, donde va, ocupa siempre lo mismo: los ids se alinean. */
+.nombre-estado {
+	min-width: 4.6rem;
+}
+
+.fila-tarea .progreso-texto {
+	margin: 0;
+	white-space: nowrap;
+}
+
+.fila-tarea .derecha {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-left: auto;
+	padding-left: 0.6rem;
+}
+
+.fila-tarea .derecha .insignia {
+	margin-right: 0;
+}
+
+/* Tokens y edad en su columna: alineados a la derecha y con ancho fijo, para
+   que de una fila a otra se comparen de un vistazo. */
+.fila-tarea .tokens {
+	min-width: 4.5rem;
+	color: var(--texto-suave);
+	font-size: 0.75rem;
+	text-align: right;
+	white-space: nowrap;
+}
+
+.fila-tarea .hueco-edad {
+	min-width: 3.2rem;
+	text-align: right;
+}
+
+/* En estrecho la derecha baja a su propia línea en vez de comerse el título. */
+@media (max-width: 48rem) {
+	.fila-tarea {
+		flex-wrap: wrap;
+		gap: 0.3rem 0.6rem;
+		padding: 0.5rem 0;
+	}
+
+	.fila-tarea .derecha {
+		flex-wrap: wrap;
+		margin-left: 0;
+		padding-left: 0;
+	}
+}
+
+/* --- la tarjeta de aprobación ---------------------------------------------- */
+
+/* Una pregunta abierta es una tarjeta: de qué tarea es, la pregunta de
+   título, por qué importa, las opciones y las acciones a la derecha. En la
+   bandeja ya va dentro de la tarjeta del pendiente y no lleva otra. */
+.pregunta-abierta {
+	padding: 0.9rem 1.1rem 1rem;
+	border-top: none;
+	border-radius: var(--radio-tarjeta);
+	background: var(--superficie);
+	box-shadow: var(--sombra-tarjeta);
+}
+
+.cuerpo-item .pregunta-abierta {
+	padding: 0.8rem 0 0;
+	border-radius: 0;
+	background: none;
+	box-shadow: none;
+}
+
+.pregunta-abierta > header .titulo {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pregunta-titulo {
+	margin: 0.3rem 0 0.2rem;
+	font-size: 0.9375rem;
+}
+
+.pregunta-titulo strong {
+	font-weight: 600;
+}
+
+.por-que {
+	margin: 0 0 0.9rem;
+	color: var(--texto-suave);
+}
+
+.pregunta-abierta .responder {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.pregunta-abierta fieldset {
+	margin: 0;
+	padding: 0;
+	box-shadow: none;
+}
+
+/* El rótulo del grupo es para los lectores: a la vista ya lo dice la tarjeta. */
+.pregunta-abierta legend {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+.pregunta-abierta textarea {
+	max-width: none;
+	min-height: 4rem;
+}
+
+.acciones-respuesta {
+	justify-content: flex-end;
 }
 `;

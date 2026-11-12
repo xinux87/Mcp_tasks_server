@@ -41,12 +41,14 @@ import {
 	buscadorDeCreador,
 	COLOR_ESTADO,
 	chipProyecto,
+	chipsDeAgentes,
 	chipUsuario,
 	duenoDeColumna,
 	edadEnColumna,
 	enlaceFuncionalidad,
 	esperaPorTi,
 	etiqueta,
+	filaDeTarea,
 	fraseDeAccion,
 	type Miga,
 	migaDeProyecto,
@@ -110,6 +112,7 @@ import {
 import { paginaBandeja } from "./bandeja.ts";
 import {
 	enCarriles,
+	etiquetaDeTarjeta,
 	filaFiltros,
 	filtroDeIndice,
 	filtrosDe,
@@ -354,11 +357,6 @@ function enlaceTarea(codigo: string): Html {
 	return html`<a class="id-tarea" href="/tareas/${id}">${id}</a>`;
 }
 
-/** La fase de ejecución de una pregunta no existe: no hay nada que enseñar. */
-function ejecucionLegible(tipo: TipoTarea, modelo: string | null, terminal: string | null): string {
-	return tipo === "pregunta" ? SIN_DATO : faseLegible(modelo, terminal);
-}
-
 // --- el formulario de una tarea ----------------------------------------------
 
 function opcionTerminal(terminal: TerminalListado, seleccionado: number | null): Html {
@@ -563,7 +561,7 @@ function camposTarea(valores: ValoresTarea, opciones: OpcionesTarea): Html {
 				opciones,
 			)}
 			${fase(
-				esFuncionalidad ? "Ejecución de las partes (por defecto)" : "Ejecución",
+				esFuncionalidad ? "Ejecución de las tareas (por defecto)" : "Ejecución",
 				"ejecucion",
 				{
 					agenteId: valores.ejecucionAgenteId,
@@ -577,82 +575,47 @@ function camposTarea(valores: ValoresTarea, opciones: OpcionesTarea): Html {
 
 // --- la lista ----------------------------------------------------------------
 
-function filaTarea(
-	db: DatabaseSync,
-	item: ItemIndice,
-	creadorDe: Creador,
-	deQuien: Funcionalidades,
-	claves: Claves,
-	conEstado: boolean,
-): Html {
-	const tarea = buscarTarea(db, item.id);
-	const creador =
-		tarea === undefined
-			? null
-			: creadorDe({ usuarioId: tarea.creadaPorUsuarioId, terminalId: tarea.creadaPorTerminalId });
+/**
+ * Una tarea de la lista: la fila de tarea con la misma píldora única que la
+ * tarjeta del tablero, el tipo aparte, sus agentes, sus tokens y su edad.
+ */
+function filaTarea(item: ItemIndice, deQuien: Funcionalidades, claves: Claves, conEstado: boolean): Html {
 	const funcionalidad = item.padreId === null ? undefined : deQuien.get(item.padreId);
 	const proyecto = claves?.get(item.proyectoId);
-	return html`<tr>
-			${conEstado ? html`<td>${insigniaEstado(item.estado)}</td>` : html``}
-			<td>${enlaceTarea(item.codigo)} ${proyecto === undefined ? html`` : chipProyecto(proyecto)}</td>
-			<td>
-				${esperaPorTi(item.estado, item.marcas)}${insigniaTipoDeItem(item)}${insigniasMarcas(item.marcas, item.enMarchaDesde)}${item.titulo} ${progresoDe(item)}
-				${
-					funcionalidad === undefined || item.padreCodigo === null
-						? html``
-						: html`<span class="pequeno">${enlaceFuncionalidad(item.padreCodigo, funcionalidad)}</span>`
-				}
-			</td>
-			<td class="pequeno">${faseLegible(item.analisisModelo, item.analisisTerminal)}</td>
-			<td class="pequeno">${ejecucionLegible(item.tipo, item.ejecucionModelo, item.ejecucionTerminal)}</td>
-			<td class="numero pequeno">${tokensConPresupuesto(item.tokensConHijas, item.presupuesto)}</td>
-			<td>${creador ?? SIN_DATO}</td>
-			<td class="pequeno">${edadEnColumna(item)}</td>
-		</tr>`;
+	return html`<li>${filaDeTarea({
+		codigo: item.codigo,
+		titulo: item.titulo,
+		estado: item.estado,
+		nombreEstado: conEstado,
+		delante: proyecto === undefined ? undefined : chipProyecto(proyecto),
+		detras: html`${progresoDe(item)}${
+			funcionalidad === undefined || item.padreCodigo === null
+				? html``
+				: html`<span class="pequeno">${enlaceFuncionalidad(item.padreCodigo, funcionalidad)}</span>`
+		}`,
+		derecha: html`${etiquetaDeTarjeta(item)}${insigniaTipoDeItem(item)}${chipsDeAgentes(item)}
+			<span class="tokens">${tokensConPresupuesto(item.tokensConHijas, item.presupuesto)}</span>
+			<span class="hueco-edad">${edadEnColumna(item)}</span>`,
+	})}</li>`;
 }
 
 /** El proyecto de cada fila, solo en la vista cruzada: acotada sobraría. */
 type Claves = Map<number, Proyecto> | null;
 
 /**
- * La tabla de la lista. Agrupada por funcionalidad las tareas de una franja
- * están en columnas distintas, así que la columna Estado va delante; por
- * columnas la enseña el rótulo del grupo y sobraría en cada fila.
+ * Las filas de la lista. Agrupada por funcionalidad las tareas de una franja
+ * están en columnas distintas, así que cada fila dice su estado al lado del
+ * punto; por columnas lo dice el rótulo del grupo y sobraría en cada fila.
  */
-function tablaLista(
-	db: DatabaseSync,
-	items: ItemIndice[],
-	creadorDe: Creador,
-	deQuien: Funcionalidades,
-	claves: Claves,
-	conEstado = false,
-): Html {
+function tablaLista(items: ItemIndice[], deQuien: Funcionalidades, claves: Claves, conEstado = false): Html {
 	if (items.length === 0) {
 		return html`<p class="silencio">Ninguna.</p>`;
 	}
-	return html`<div class="tabla-envuelta">
-			<table>
-				<thead>
-					<tr>
-						${conEstado ? html`<th>Estado</th>` : html``}
-						<th>Id</th><th>Título</th><th>Análisis</th><th>Ejecución</th>
-						<th class="numero">Tokens</th><th>Creada por</th><th>En columna</th>
-					</tr>
-				</thead>
-				<tbody>${items.map((item) => filaTarea(db, item, creadorDe, deQuien, claves, conEstado))}</tbody>
-			</table>
-		</div>`;
+	return html`<ul class="filas">${items.map((item) => filaTarea(item, deQuien, claves, conEstado))}</ul>`;
 }
 
-function grupoColumna(
-	db: DatabaseSync,
-	estado: Estado,
-	items: ItemIndice[],
-	creadorDe: Creador,
-	deQuien: Funcionalidades,
-	claves: Claves,
-): Html {
-	const tabla = tablaLista(db, items, creadorDe, deQuien, claves);
+function grupoColumna(estado: Estado, items: ItemIndice[], deQuien: Funcionalidades, claves: Claves): Html {
+	const tabla = tablaLista(items, deQuien, claves);
 	const rotulo = rotuloColumna(insigniaColumna(estado), items.length);
 	// Las cerradas están archivadas: se ven si se piden, no estorban por defecto.
 	if (estado === "finished") {
@@ -870,18 +833,18 @@ function propiedadesDeFuncionalidad(db: DatabaseSync, completa: TareaCompleta, c
 		filas.push({ nombre: "Rama", valor: ramaLegible(tarea.rama) });
 	}
 	filas.push({
-		nombre: "Partes",
+		nombre: "Tareas",
 		// Sin partes no hay barra que pintar: todavía no está descompuesta.
 		valor:
 			completa.partes === 0
 				? html`<span class="silencio">ninguna</span>`
-				: barraProgreso(completa.partesCerradas ?? 0, completa.partes ?? 0, "partes"),
+				: barraProgreso(completa.partesCerradas ?? 0, completa.partes ?? 0, "tareas"),
 	});
 	filas.push({ nombre: "Análisis", valor: faseConPapel(completa, "analisis") });
-	filas.push({ nombre: "Ejecución de las partes", valor: faseConPapel(completa, "ejecucion") });
+	filas.push({ nombre: "Ejecución de las tareas", valor: faseConPapel(completa, "ejecucion") });
 	filas.push({ nombre: "Depende de", valor: dependenciasLegibles(db, tarea.id, completa.dependeDe) });
 	filas.push({ nombre: "Bloquea a", valor: dependientesLegibles(db, tarea.id) });
-	filas.push({ nombre: "Consumo de las partes", valor: `${numeroLegible(completa.consumo.totalConHijas)} tokens` });
+	filas.push({ nombre: "Consumo de las tareas", valor: `${numeroLegible(completa.consumo.totalConHijas)} tokens` });
 	filas.push({ nombre: "Presupuesto", valor: presupuestoLegible(tarea.presupuesto) });
 	filas.push({ nombre: "Creada", valor: creadaLegible(tarea, creadorDe) });
 	filas.push({ nombre: "Revisión", valor: String(tarea.revision) });
@@ -926,6 +889,20 @@ function cabeceraHijas(tipo: TipoTarea, hijas: readonly HijaDeTarea[]): Html {
 }
 
 /**
+ * Una hija en una fila de tarea: su estado dicho junto al punto, porque aquí
+ * no hay rótulo de columna que lo diga, y la pregunta abierta como píldora.
+ */
+function filaDeHija(hija: HijaDeTarea): Html {
+	return filaDeTarea({
+		codigo: hija.codigo,
+		titulo: hija.titulo,
+		estado: hija.estado,
+		nombreEstado: true,
+		derecha: hija.bloqueada ? esperaPorTi(hija.estado, ["bloqueada"]) : undefined,
+	});
+}
+
+/**
  * Las hijas de una tarea que no está descompuesta, en lista: es donde el
  * humano decide si acepta el resultado de la madre. Las hijas de trabajo y las
  * subtareas salen igual: son hijas con estado.
@@ -936,8 +913,8 @@ function bloqueHijas(tipo: TipoTarea, hijas: readonly HijaDeTarea[]): Html {
 			<p class="silencio">Ninguna.</p>`;
 	}
 	return html`${cabeceraHijas(tipo, hijas)}
-		<ul class="hijas">
-			${hijas.map((hija) => html`<li>${insigniaEstado(hija.estado)} ${enlaceTarea(hija.codigo)} ${hija.titulo}</li>`)}
+		<ul class="filas hijas">
+			${hijas.map((hija) => html`<li>${filaDeHija(hija)}</li>`)}
 		</ul>`;
 }
 
@@ -974,24 +951,30 @@ function bloqueOlas(hijas: readonly HijaDeTarea[]): Html {
 			${olasDe(partes).map(
 				(ola, indice) => html`<li>
 					<span class="rotulo-ola">Ola ${indice + 1}</span>
-					<ul>
-						${ola.map(
-							(parte) =>
-								html`<li class="parte-ola">${enlaceTarea(parte.codigo)} <span class="titulo">${parte.titulo}</span> ${insigniaEstado(parte.estado)}</li>`,
-						)}
+					<ul class="filas">
+						${ola.map((parte) => html`<li class="parte-ola">${filaDeHija(parte)}</li>`)}
 					</ul>
 				</li>`,
 			)}
 		</ol>`;
 }
 
-function tablaConsumo(consumo: ConsumoDeTarea, presupuesto: number | null): Html {
+/** Un chip de consumo: una cifra con lo que es al lado, y la cuenta entera en el título. */
+function chipConsumo(texto: string, titulo: string): Html {
+	return html`<span class="chip chip-consumo" title="${titulo}">${texto}</span>`;
+}
+
+/**
+ * El consumo del panel, en chips: una fila por fase con su modelo, sus
+ * tokens, sus herramientas y su duración, y debajo el total con hijas, contra
+ * el presupuesto cuando lo hay. Cinco columnas no cabían en el panel.
+ */
+function chipsConsumo(consumo: ConsumoDeTarea, presupuesto: number | null): Html {
 	const fases: { nombre: string; fase: ConsumoDeTarea["analisis"] }[] = [
 		{ nombre: NOMBRE_FASE.analisis, fase: consumo.analisis },
 		{ nombre: NOMBRE_FASE.ejecucion, fase: consumo.ejecucion },
 	];
-	const conDatos = fases.filter((entrada) => entrada.fase !== null);
-	if (conDatos.length === 0 && consumo.totalConHijas === 0) {
+	if (fases.every((entrada) => entrada.fase === null) && consumo.totalConHijas === 0) {
 		return html`<p class="silencio">Sin consumo.</p>`;
 	}
 	// Con tope, el total se lee contra él: lo gastado de lo que había.
@@ -999,32 +982,29 @@ function tablaConsumo(consumo: ConsumoDeTarea, presupuesto: number | null): Html
 		presupuesto === null
 			? numeroLegible(consumo.totalConHijas)
 			: `${numeroLegible(consumo.totalConHijas)} de ${numeroLegible(presupuesto)}`;
-	return html`<div class="tabla-envuelta">
-			<table>
-				<thead>
-					<tr>
-						<th>Fase</th><th>Modelo</th><th class="numero">Tokens</th>
-						<th class="numero">Herramientas</th><th class="numero">Duración</th>
-					</tr>
-				</thead>
-				<tbody>
-					${conDatos.map(
-						(entrada) => html`<tr>
-							<td>${entrada.nombre}</td>
-							<td>${entrada.fase?.modelo ?? SIN_DATO}</td>
-							<td class="numero">${numeroLegible(entrada.fase?.tokens ?? 0)}</td>
-							<td class="numero">${entrada.fase?.herramientas ?? 0}</td>
-							<td class="numero">${duracionLegible(entrada.fase?.duracionMs ?? 0)}</td>
-						</tr>`,
-					)}
-					<tr>
-						<td colspan="2"><strong>Total con hijas</strong></td>
-						<td class="numero"><strong>${total}</strong></td>
-						<td class="numero"></td>
-						<td class="numero"></td>
-					</tr>
-				</tbody>
-			</table>
+	return html`<div class="consumo">
+			${fases.map(({ nombre, fase }) =>
+				fase === null
+					? html``
+					: html`<div class="consumo-fase">
+							<span class="consumo-nombre">${nombre}</span>
+							<span class="chips-consumo">
+								${chipUsuario(fase.modelo, null)}
+								${chipConsumo(tokensAbreviados(fase.tokens), `${numeroLegible(fase.tokens)} tokens`)}
+								${chipConsumo(`${fase.herramientas} herr.`, `${fase.herramientas} llamadas a herramientas`)}
+								${chipConsumo(duracionLegible(fase.duracionMs), "Duración")}
+							</span>
+						</div>`,
+			)}
+			<p class="consumo-total">
+				<span class="consumo-nombre">Total con hijas</span>
+				<strong>${total}</strong>
+			</p>
+			${
+				presupuesto === null
+					? html``
+					: html`<progress class="progreso consumo-barra" value="${Math.min(consumo.totalConHijas, presupuesto)}" max="${presupuesto}"></progress>`
+			}
 		</div>`;
 }
 
@@ -1325,9 +1305,6 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 		return filtros.padre === "" || item.padreCodigo === padreCodigo;
 	});
 
-	// Un solo buscador para toda la tabla: la lista pinta una fila por tarea y
-	// no puede consultar usuarios y terminales en cada una.
-	const creadorDe = buscadorDeCreador(db);
 	// Agrupada, la cabecera de cada franja ya dice de quién son sus partes: las
 	// filas no lo repiten y no hay títulos que buscar.
 	const carriles = enCarriles(filtros);
@@ -1339,10 +1316,8 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 	const porColumna = (suyos: ItemIndice[]): Html =>
 		html`${COLUMNAS.map((estado) =>
 			grupoColumna(
-				db,
 				estado,
 				suyos.filter((item) => item.estado === estado),
-				creadorDe,
 				deQuien,
 				claves,
 			),
@@ -1353,11 +1328,7 @@ function paginaLista(c: Context, deps: DependenciasWeb): RespuestaHtml {
 		${
 			carriles
 				? franjasDe(db, items).map(({ cual, items: suyos }) =>
-						seccionFranja(
-							cual,
-							claves,
-							cual === null ? porColumna(suyos) : tablaLista(db, suyos, creadorDe, deQuien, claves, true),
-						),
+						seccionFranja(cual, claves, cual === null ? porColumna(suyos) : tablaLista(suyos, deQuien, claves, true)),
 					)
 				: porColumna(items)
 		}`;
@@ -1464,7 +1435,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 				${
 					tarea.tipo === "funcionalidad"
 						? html`<div class="acciones acciones-partes">
-								<a class="boton" href="/tareas/nueva?padre=${id}">Nueva parte</a>
+								<a class="boton" href="/tareas/nueva?padre=${id}">Nueva tarea</a>
 							</div>`
 						: html``
 				}
@@ -1494,7 +1465,7 @@ function paginaFicha(c: Context, deps: DependenciasWeb, tareaId: number, aviso: 
 			tarea.tipo === "funcionalidad"
 				? html``
 				: html`<h2>Consumo</h2>
-					${tablaConsumo(completa.consumo, tarea.presupuesto)}`
+					${chipsConsumo(completa.consumo, tarea.presupuesto)}`
 		}
 		${liberarLaFase(completa)}
 		${vueltasAtras(completa)}

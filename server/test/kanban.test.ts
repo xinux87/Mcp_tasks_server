@@ -618,7 +618,7 @@ test("agrupado por funcionalidad, el tablero es una franja por cada una y otra d
 			new RegExp(`<h2><a href="\\/tareas\\/${idFila(montaje, 1)}">Listados para comerciales<\\/a><\\/h2>`),
 		);
 		assert.match(cuerpo, /<span class="insignia estado-doing color-amarillo">En curso<\/span>/);
-		assert.match(cuerpo, /<span class="progreso-texto">partes 0\/2<\/span>/);
+		assert.match(cuerpo, /<span class="progreso-texto">tareas 0\/2<\/span>/);
 
 		// Las funcionalidades son cabecera, no tarjeta.
 		for (const id of [idFila(montaje, 1), idFila(montaje, 5), idFila(montaje, 7)]) {
@@ -668,17 +668,19 @@ test("la lista sale agrupada por funcionalidad, con la columna Estado y las suel
 			cuerpo,
 			new RegExp(`<h2><a href="\\/tareas\\/${idFila(montaje, 1)}">Listados para comerciales<\\/a><\\/h2>`),
 		);
-		assert.match(cuerpo, /<span class="progreso-texto">partes 0\/2<\/span>/);
-		// La tabla de la franja lleva la columna Estado delante, con su etiqueta.
+		assert.match(cuerpo, /<span class="progreso-texto">tareas 0\/2<\/span>/);
+		// Cada fila de la franja dice su estado delante: el punto y su nombre.
 		const [, franja = "", sueltas = ""] = cuerpo.split('<section class="franja"');
-		assert.match(franja, /<th>Estado<\/th>\s*<th>Id<\/th>/);
-		assert.match(franja, /<td><span class="insignia estado-prepared color-azul">Preparada<\/span><\/td>/);
+		assert.match(
+			franja,
+			/<span class="punto estado-prepared color-azul"><\/span><span class="nombre-estado">Preparada<\/span>/,
+		);
 		// Sus partes, en su franja y ordenadas por columna: por definir va antes
 		// que preparada, como en el tablero.
 		assert.ok(franja.indexOf("Pintar el botón") < franja.indexOf("Sacar los datos del listado"));
 		// La funcionalidad es la cabecera, no una fila más.
 		assert.ok(
-			!cuerpo.includes(`<td><a class="id-tarea" href="/tareas/${idFila(montaje, 1)}">`),
+			!new RegExp(`href="/tareas/${idFila(montaje, 1)}">[^<]+</a>\\s*<span class="titulo">`).test(cuerpo),
 			"la funcionalidad no es una fila",
 		);
 		// Y lo que no cuelga de ninguna, en «Sueltas» con los grupos de siempre.
@@ -690,7 +692,7 @@ test("la lista sale agrupada por funcionalidad, con la columna Estado y las suel
 		// como una fila más.
 		const columnas = await (await pedir(montaje, "/tareas?agrupar=no", { cookie })).text();
 		assert.ok(!columnas.includes('class="franja"'), "por columnas no hay franjas");
-		assert.ok(!columnas.includes("<th>Estado</th>"), "el grupo ya dice en qué columna está");
+		assert.ok(!columnas.includes('class="nombre-estado"'), "el grupo ya dice en qué columna está");
 		assert.match(columnas, /<span class="insignia tipo-funcionalidad color-azul">Funcionalidad 0\/2<\/span>/);
 		assert.match(columnas, /<a class="boton-filtro" href="\/tareas">Agrupar por funcionalidad<\/a>/);
 		// El conmutador de vistas se lleva la agrupación de una vista a la otra.

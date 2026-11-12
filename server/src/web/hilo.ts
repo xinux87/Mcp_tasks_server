@@ -43,7 +43,7 @@ export function tarjetaComentario(
 				${chipAutor(comentario.autor, colorDe)}
 				${comentario.tipo === "comentario" ? html`` : insigniaTipo(comentario.tipo)}
 				${numero === null ? html`` : html`<span>P${numero}</span>`}
-				<span>${fechaLegible(comentario.creado)}</span>
+				<span class="fecha">${fechaLegible(comentario.creado)}</span>
 			</header>
 			<div class="cuerpo">${raw(renderMarkdown(comentario.texto))}</div>
 			${extra}
@@ -83,7 +83,10 @@ export function cuadroDeComentar(codigo: string, estado: Estado): Html {
 		</form>`;
 }
 
-/** Una opción de una pregunta abierta: tarjeta seleccionable con su consecuencia. */
+/**
+ * Una opción de una pregunta abierta: una fila de la tarjeta de opciones, con
+ * el radio, el texto y su consecuencia debajo. La elegida se tiñe sola.
+ */
 function opcionDePregunta(texto: string, consecuencia: string, recomendada: boolean): Html {
 	return html`<label class="opcion">
 			<input type="radio" name="opcion" value="${texto}" required>
@@ -93,23 +96,28 @@ function opcionDePregunta(texto: string, consecuencia: string, recomendada: bool
 }
 
 /**
- * El formulario de respuesta: las opciones como tarjetas, la nota y el botón.
- * `volver` es la ruta a la que redirigir al contestar; sin él se vuelve a la
- * ficha, que es lo que hace la propia ficha.
+ * El formulario de respuesta: las opciones como filas de una sola tarjeta, la
+ * nota y, alineado a la derecha, el botón. `volver` es la ruta a la que
+ * redirigir al contestar; sin él se vuelve a la ficha, que es lo que hace la
+ * propia ficha.
  */
 export function formularioRespuesta(codigo: string, pregunta: Pregunta, volver?: string): Html {
 	return html`<form class="responder" method="post" action="/tareas/${formatearId(codigo)}/responder/P${pregunta.numero}">
 			<fieldset>
 				<legend>Responder a P${pregunta.numero}</legend>
 				${volver === undefined ? html`` : html`<input type="hidden" name="volver" value="${volver}">`}
-				${pregunta.opciones.map((opcion) =>
-					opcionDePregunta(opcion.texto, opcion.consecuencia, opcion.texto === pregunta.recomendacion),
-				)}
+				<div class="opciones">
+					${pregunta.opciones.map((opcion) =>
+						opcionDePregunta(opcion.texto, opcion.consecuencia, opcion.texto === pregunta.recomendacion),
+					)}
+				</div>
 				<label>
 					<span>Nota (opcional)</span>
 					<textarea name="nota" rows="3"></textarea>
 				</label>
-				<button type="submit" class="principal">Responder</button>
+				<div class="acciones acciones-respuesta">
+					<button type="submit" class="principal">Responder</button>
+				</div>
 			</fieldset>
 		</form>`;
 }
@@ -126,10 +134,11 @@ export type OpcionesPregunta = {
 };
 
 /**
- * Una pregunta abierta con todo lo que hace falta para contestarla: la
- * pregunta en negrita, por qué importa, las opciones y el formulario. Se pinta
- * desde los campos de la pregunta, no desde el Markdown del hilo, porque quien
- * la enseña fuera de la ficha no tiene el comentario delante.
+ * Una pregunta abierta con todo lo que hace falta para contestarla, como
+ * tarjeta de aprobación: la pregunta de título, por qué importa en suave, las
+ * opciones y el formulario. Se pinta desde los campos de la pregunta, no desde
+ * el Markdown del hilo, porque quien la enseña fuera de la ficha no tiene el
+ * comentario delante.
  */
 export function tarjetaPreguntaAbierta(
 	tarea: TareaDeLaPregunta,
@@ -141,14 +150,12 @@ export function tarjetaPreguntaAbierta(
 	return html`<article class="comentario pregunta-abierta" id="pregunta-${formatearId(tarea.codigo)}-P${pregunta.numero}">
 			<header>
 				<a class="id-tarea" href="/tareas/${formatearId(tarea.codigo)}">${formatearId(tarea.codigo)}</a>
-				<span>${tarea.titulo}</span>
+				<span class="titulo">${tarea.titulo}</span>
 				<span>P${pregunta.numero}</span>
-				<span>${fechaLegible(pregunta.creada)}</span>
+				<span class="fecha">${fechaLegible(pregunta.creada)}</span>
 			</header>
-			<div class="cuerpo">
-				<p><strong>${pregunta.pregunta}</strong></p>
-				<p class="silencio">${pregunta.porQueImporta}</p>
-			</div>
+			<p class="pregunta-titulo"><strong>${pregunta.pregunta}</strong></p>
+			<p class="por-que">${pregunta.porQueImporta}</p>
 			${formularioRespuesta(tarea.codigo, pregunta, volver)}
 		</article>`;
 }

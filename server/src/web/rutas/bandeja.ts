@@ -7,11 +7,11 @@ import { type Comentario, comentariosDeTarea, preguntasDeTarea, type TipoComenta
 import { listarProyectos, type Proyecto } from "../../db/proyectos.ts";
 import { type ItemIndice, listarTareas } from "../../db/tareas.ts";
 import { formatearId } from "../../md/ids.ts";
-import { buscadorDeColor, chipAutor, chipProyecto, edadEnColumna } from "../componentes.ts";
+import { buscadorDeColor, chipAutor, chipProyecto, edadEnColumna, filaDeTarea } from "../componentes.ts";
 import { edad } from "../formatos.ts";
 import { ESTADO_AVISO } from "../formulario.ts";
 import { type ColorDe, tarjetaComentario, tarjetaPreguntaAbierta } from "../hilo.ts";
-import { type Html, insigniaEstado, pagina, type RespuestaHtml } from "../plantilla.ts";
+import { type Html, pagina, type RespuestaHtml } from "../plantilla.ts";
 import { type DependenciasWeb, usuarioActual } from "../sesion.ts";
 import { navProyectos } from "./proyectos.ts";
 
@@ -53,15 +53,14 @@ function ultimo(db: DatabaseSync, tareaId: number, tipo: TipoComentario): Coment
  * la bandeja sí: es justo lo que se está mirando.
  */
 function cabeceraItem(item: ItemIndice, claves: Claves, quien: Html, cuanto?: Html): Html {
-	const id = formatearId(item.codigo);
 	const proyecto = claves.get(item.proyectoId);
-	return html`<div class="cabecera-item">
-			${proyecto === undefined ? html`` : chipProyecto(proyecto)}
-			<a class="id-tarea" href="/tareas/${id}">${id}</a>
-			<span class="titulo">${item.titulo}</span>
-			${quien}
-			${cuanto ?? edadEnColumna(item)}
-		</div>`;
+	return html`<div class="cabecera-item">${filaDeTarea({
+		codigo: item.codigo,
+		titulo: item.titulo,
+		estado: item.estado,
+		delante: proyecto === undefined ? undefined : chipProyecto(proyecto),
+		derecha: html`${quien}${cuanto ?? edadEnColumna(item)}`,
+	})}</div>`;
 }
 
 /** Quién escribió lo último de ese tipo. Sin nada escrito, nadie que enseñar. */
@@ -103,11 +102,11 @@ function partesDeLaMadre(item: ItemIndice, entorno: Entorno): Html {
 	if (partes.length === 0) {
 		return html``;
 	}
-	return html`<ul class="hijas">
-			${partes.map((parte) => {
-				const id = formatearId(parte.codigo);
-				return html`<li>${insigniaEstado(parte.estado)} <a class="id-tarea" href="/tareas/${id}">${id}</a> ${parte.titulo}</li>`;
-			})}
+	return html`<ul class="filas hijas">
+			${partes.map(
+				(parte) =>
+					html`<li>${filaDeTarea({ codigo: parte.codigo, titulo: parte.titulo, estado: parte.estado, nombreEstado: true })}</li>`,
+			)}
 		</ul>`;
 }
 

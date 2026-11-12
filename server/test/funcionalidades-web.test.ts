@@ -135,13 +135,13 @@ test("una funcionalidad se crea con su rama y sale en su propia lista", async ()
 		assert.match(ficha, /<span class="insignia tipo-funcionalidad color-azul">Funcionalidad<\/span>/);
 		assert.match(ficha, /<dt>Rama<\/dt>\s*<dd><code>evolutivo\/csv<\/code><\/dd>/);
 		// Sin partes todavía no hay barra que pintar: se dice y ya está.
-		assert.match(ficha, /<dt>Partes<\/dt>\s*<dd><span class="silencio">ninguna<\/span><\/dd>/);
-		assert.match(ficha, /<dt>Consumo de las partes<\/dt>/);
+		assert.match(ficha, /<dt>Tareas<\/dt>\s*<dd><span class="silencio">ninguna<\/span><\/dd>/);
+		assert.match(ficha, /<dt>Consumo de las tareas<\/dt>/);
 		// Su ficha es su tablero, y encima está el alta de una parte.
 		assert.match(ficha, /<h2>Tareas<\/h2>/);
 		assert.match(
 			ficha,
-			new RegExp(`<a class="boton" href="\\/tareas\\/nueva\\?padre=${idFila(montaje, 1)}">Nueva parte<\\/a>`),
+			new RegExp(`<a class="boton" href="\\/tareas\\/nueva\\?padre=${idFila(montaje, 1)}">Nueva tarea<\\/a>`),
 		);
 		assert.match(ficha, new RegExp(`data-fuente="\\/tareas\\/kanban\\/tablero\\?padre=${idFila(montaje, 1)}"`));
 
@@ -188,7 +188,7 @@ test("una parte creada desde la web hereda la rama y aparece en el tablero de su
 		// El tablero de la funcionalidad enseña la parte, y la cuenta ya es 0/1.
 		const tablero = await ver(montaje, cookie, `/tareas/${idFila(montaje, 1)}`);
 		assert.match(tablero, new RegExp(`data-id="${idFila(montaje, 2)}"`));
-		assert.match(tablero, /<span class="progreso-texto">partes 0\/1<\/span>/);
+		assert.match(tablero, /<span class="progreso-texto">tareas 0\/1<\/span>/);
 
 		// En la lista agrupada, la funcionalidad es la cabecera de su franja.
 		const lista = await ver(montaje, cookie, "/tareas");
@@ -310,7 +310,7 @@ test("la descomposición se aprueba desde la ficha y la funcionalidad se cierra 
 		assert.match(enMarcha, /<span class="insignia estado-doing color-amarillo">En curso<\/span>/);
 		assert.match(
 			enMarcha,
-			/<progress class="progreso" value="0" max="2"><\/progress><span class="progreso-texto">partes 0\/2<\/span>/,
+			/<progress class="progreso" value="0" max="2"><\/progress><span class="progreso-texto">tareas 0\/2<\/span>/,
 		);
 		// Una parte espera a la otra: eso es lo que frena la funcionalidad.
 		assert.match(enMarcha, /<span class="insignia marca-esperando color-naranja">1 esperando a otra<\/span>/);
@@ -321,7 +321,7 @@ test("la descomposición se aprueba desde la ficha y la funcionalidad se cierra 
 		// Cerrada la última parte, el servidor cierra la funcionalidad.
 		assert.equal(exigirTarea(montaje.db, 1).estado, "done");
 		const cerrada = await ver(montaje, cookie, "/funcionalidades");
-		assert.match(cerrada, /<span class="progreso-texto">partes 2\/2<\/span>/);
+		assert.match(cerrada, /<span class="progreso-texto">tareas 2\/2<\/span>/);
 		assert.match(cerrada, /<span class="insignia estado-done color-verde">Hecha<\/span>/);
 		// La barra llena: el valor iguala al máximo.
 		assert.match(cerrada, /<progress class="progreso" value="2" max="2"><\/progress>/);

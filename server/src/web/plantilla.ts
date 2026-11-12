@@ -97,17 +97,25 @@ export function insigniaColumna(estado: Estado): Html {
 }
 
 /**
+ * «Agente trabajando», con un punto que late delante: es lo único de la página
+ * que está pasando ahora mismo.
+ */
+const AGENTE_TRABAJANDO = html`<span class="insignia marca-en-marcha color-${COLOR_MARCA["en marcha"]}"><span class="punto latido" aria-hidden="true"></span>${NOMBRE_MARCA["en marcha"]}</span>`;
+
+/**
  * Etiquetas de las marcas activas de una tarea, en su orden. La de «en marcha»
  * lleva detrás cuánto lleva la fase tomada (`en marcha 12 min`), que es lo que
  * distingue un subagente trabajando de uno que murió hace horas.
  */
 export function insigniasMarcas(marcas: readonly Marca[], enMarchaDesde: string | null = null): Html {
 	return html`${marcas.map((marca) => {
-		const insignia = etiqueta(NOMBRE_MARCA[marca], COLOR_MARCA[marca], `marca-${CLASE_MARCA[marca]}`);
-		if (marca !== "en marcha" || enMarchaDesde === null) {
-			return insignia;
+		if (marca !== "en marcha") {
+			return etiqueta(NOMBRE_MARCA[marca], COLOR_MARCA[marca], `marca-${CLASE_MARCA[marca]}`);
 		}
-		return html`${insignia}<span class="edad" title="${enMarchaDesde}">${edad(enMarchaDesde)}</span>`;
+		if (enMarchaDesde === null) {
+			return AGENTE_TRABAJANDO;
+		}
+		return html`${AGENTE_TRABAJANDO}<span class="edad" title="${enMarchaDesde}">${edad(enMarchaDesde)}</span>`;
 	})}`;
 }
 
@@ -303,7 +311,7 @@ function selectorProyecto(proyectos: readonly Proyecto[], proyecto: Proyecto | u
 	const ruta = rutaDeVista(vista);
 	return html`<form class="selector-proyecto" method="get" action="/ir">
 			<label class="solo-lectores" for="ir-proyecto">Proyecto</label>
-			<span class="espacio"><select id="ir-proyecto" name="destino">
+			<span class="espacio">${proyecto === undefined ? html`` : html`<span class="punto color-${proyecto.color}" aria-hidden="true"></span>`}<select id="ir-proyecto" name="destino">
 				${proyectos.map(
 					(cual) =>
 						html`<option value="/p/${cual.clave}${ruta.acotada}"${cual.id === proyecto?.id ? raw(" selected") : ""}>${cual.clave} — ${cual.nombre}</option>`,

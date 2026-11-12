@@ -209,8 +209,12 @@ test("una tarea descompuesta se aprueba como una funcionalidad, en la ficha y en
 
 		const lista = await ficha(montaje, cookie, madre);
 		assert.match(lista, /<button type="submit" class="principal">Aprobar descomposición<\/button>/);
-		assert.match(lista, /<span class="paso-ahora">Revisa las partes<\/span>/);
+		assert.match(lista, /<span class="paso-ahora">Revisa las subtareas<\/span>/);
 		assert.match(lista, /<h2>Subtareas 0\/3 /);
+		// Su tablero no repite el proyecto en cada tarjeta: ya lo dice el panel.
+		const tableroDeLaFicha = lista.slice(lista.indexOf('<section id="tablero"'), lista.indexOf('<ol class="olas">'));
+		assert.match(tableroDeLaFicha, /Sacar los datos/);
+		assert.ok(!tableroDeLaFicha.includes("insignia proyecto"), "el tablero de la ficha pinta el chip de proyecto");
 		// Tres olas, cada una con su parte, en orden.
 		const olas = lista.slice(lista.indexOf('<ol class="olas">'));
 		const posiciones = ["Ola 1", "Sacar los datos", "Ola 2", "Poner el botón", "Ola 3", "Probarlo todo"].map((texto) =>
@@ -222,17 +226,17 @@ test("una tarea descompuesta se aprueba como una funcionalidad, en la ficha y en
 		);
 		assert.match(
 			olas,
-			/<li class="parte-ola"><a class="id-tarea" href="\/tareas\/T-[0-9A-Z]+">T-[0-9A-Z]+<\/a> <span class="titulo">Sacar los datos<\/span> <span class="insignia estado-backlog/,
+			/<li class="parte-ola"><div class="fila-tarea">\s*<span class="estado-fila"><span class="punto estado-backlog[\s\S]*?<a class="id-tarea" href="\/tareas\/T-[0-9A-Z]+">T-[0-9A-Z]+<\/a>\s*<span class="titulo">Sacar los datos<\/span>/,
 		);
 
 		// En la bandeja, «Aprueba» enseña sus partes bajo el análisis.
 		const bandeja = await (await pedir(montaje, "/", cookie)).text();
 		assert.match(bandeja, /Aprobar descomposición/);
-		assert.match(bandeja, /<ul class="hijas">[\s\S]*Sacar los datos[\s\S]*Probarlo todo[\s\S]*<\/ul>/);
+		assert.match(bandeja, /<ul class="filas hijas">[\s\S]*Sacar los datos[\s\S]*Probarlo todo[\s\S]*<\/ul>/);
 
 		aprobarEjecucion(montaje.db, { tareaId: madre.id, usuarioId: 1 });
 		const enCurso = await ficha(montaje, cookie, madre);
-		assert.match(enCurso, /<span class="paso-ahora">Las partes se están trabajando<\/span>/);
+		assert.match(enCurso, /<span class="paso-ahora">Las subtareas se están trabajando<\/span>/);
 	} finally {
 		await montaje.cerrar();
 	}

@@ -275,7 +275,7 @@ const MARCA_DE_TARJETA: readonly Marca[] = ["parada", "en marcha", "sin terminal
  * ninguna se leía; con una se lee de lejos. El tipo de la tarea se pinta aparte:
  * eso no es una marca.
  */
-function etiquetaDeTarjeta(item: ItemIndice): Html {
+export function etiquetaDeTarjeta(item: ItemIndice): Html {
 	if (verboDeTurno(item.estado, item.marcas) !== null) {
 		return esperaPorTi(item.estado, item.marcas);
 	}
@@ -337,7 +337,7 @@ function dependenciasLegibles(dependeDe: string[] | undefined): Html {
  */
 export function progresoDe(item: ItemIndice): Html {
 	return item.tipo === "funcionalidad"
-		? barraProgreso(item.partesCerradas ?? 0, item.partes ?? 0, "partes")
+		? barraProgreso(item.partesCerradas ?? 0, item.partes ?? 0, "tareas")
 		: barraProgreso(item.hijasCerradas, item.hijas);
 }
 
@@ -521,7 +521,7 @@ export function seccionFranja(cual: ItemIndice | null, proyectos: Map<number, Pr
 				<a class="id-tarea" href="/tareas/${id}">${id}</a>
 				<h2><a href="/tareas/${id}">${cual.titulo}</a></h2>
 				${insigniaEstado(cual.estado)}
-				${barraProgreso(cual.partesCerradas ?? 0, cual.partes ?? 0, "partes")}`;
+				${barraProgreso(cual.partesCerradas ?? 0, cual.partes ?? 0, "tareas")}`;
 	return html`<section class="franja"${cual === null ? html`` : html` data-padre="${id}"`}>
 			<header class="franja-cabecera">${cabecera}</header>
 			${dentro}
@@ -545,7 +545,14 @@ export function tablero(db: DatabaseSync, filtros: Filtros, horasParada: number,
 	// Dentro del tablero de una funcionalidad, y dentro de una franja, cada
 	// tarjeta cuelga de la que encabeza: repetir su título en todas no diría
 	// nada que no diga ya la cabecera.
-	const vecindad = vecindadDe(db, items, filtros.padre === "" && !carriles, acotado === undefined);
+	// El tablero de las partes de una tarea va en su ficha, que ya dice el
+	// proyecto, y las partes heredan el de su madre: el chip sobraría.
+	const vecindad = vecindadDe(
+		db,
+		items,
+		filtros.padre === "" && !carriles,
+		acotado === undefined && filtros.padre === "",
+	);
 	// `data-padre` y `data-proyecto` son el ámbito del tablero: con ellos, la
 	// posición que manda el cliente al soltar es entre las tarjetas que se ven.
 	return html`<section id="tablero" class="tablero" data-fuente="${fuenteDe(filtros, acotado)}" data-padre="${filtros.padre}" data-proyecto="${acotado?.clave ?? ""}" data-revision="${revisionActual(db)}">

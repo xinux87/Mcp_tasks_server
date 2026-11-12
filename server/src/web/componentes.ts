@@ -20,6 +20,7 @@ import {
 	NOMBRE_ESTADO,
 	NOMBRE_FASE,
 	NOMBRE_MARCA,
+	nombreDeHijas,
 	PROGRESO_HIJAS,
 } from "./vocabulario.ts";
 
@@ -167,6 +168,8 @@ function quePasaAhora(tarea: EnElCiclo): { frase: string; deTurno: boolean } {
 	const respuesta = { frase: `Espera tu respuesta a P${tarea.preguntaAbierta ?? 1}`, deTurno: true };
 	const bloqueada = tarea.marcas.includes("bloqueada");
 	const descompuesta = tarea.descompuesta ?? tarea.tipo === "funcionalidad";
+	// «subtareas» en una tarea y «tareas» en una funcionalidad: «partes» no llega a la pantalla.
+	const hijas = nombreDeHijas(tarea.tipo).plural.toLowerCase();
 	switch (tarea.estado) {
 		case "backlog":
 			return { frase: "Termina de definirla y pásala a preparadas", deTurno: true };
@@ -178,7 +181,7 @@ function quePasaAhora(tarea: EnElCiclo): { frase: string; deTurno: boolean } {
 				// En una tarea descompuesta el análisis son sus partes: lo que hay
 				// que mirar antes de aprobar no es un texto, es la descomposición.
 				return descompuesta
-					? { frase: "Revisa las partes", deTurno: true }
+					? { frase: `Revisa las ${hijas}`, deTurno: true }
 					: { frase: "Espera tu aprobación del análisis", deTurno: true };
 			}
 			return { frase: "El agente de análisis la está estudiando", deTurno: false };
@@ -187,7 +190,7 @@ function quePasaAhora(tarea: EnElCiclo): { frase: string; deTurno: boolean } {
 				return respuesta;
 			}
 			return descompuesta
-				? { frase: "Las partes se están trabajando", deTurno: false }
+				? { frase: `Las ${hijas} se están trabajando`, deTurno: false }
 				: { frase: "El agente la está ejecutando", deTurno: false };
 		case "done":
 			return { frase: "Revisa el resultado", deTurno: true };
@@ -756,20 +759,66 @@ export function buscadorDeCreador(db: DatabaseSync): (quien: QuienCreo) => Html 
 	};
 }
 
+/** Lo que pinta una fila de tarea. */
+export type FilaTarea = {
+	codigo: string;
+	titulo: string;
+	estado: Estado;
+	/** El nombre del estado al lado del punto, donde no lo dice ya el rótulo de un grupo. */
+	nombreEstado?: boolean;
+	/** El punto late en vez de decir el estado: una fase en marcha. */
+	latiendo?: boolean;
+	/** Delante del id: el chip de proyecto de las vistas cruzadas. */
+	delante?: Html;
+	/** Detrás del título, sin competir con él: el progreso, de qué funcionalidad es parte. */
+	detras?: Html;
+	/** Al borde derecho, en este orden: la píldora única, el tipo, agentes, tokens y edad. */
+	derecha?: Html;
+};
+
 /**
- * Una fase tomada, en una línea: qué tarea, qué fase, con qué modelo y desde
- * hace cuánto. Parada, la edad duele y la línea lo dice con su etiqueta.
+ * La fila de tarea, la misma en la lista, la bandeja, las subtareas y «Ahora
+ * mismo»: punto de estado, id, título en una línea y, al borde derecho, lo que
+ * cada pantalla le ponga. Una sola píldora: quien la llama elige cuál.
+ *
+ * El punto lleva la clase del estado (`estado-prepared`) para los tests y su
+ * color de la tabla de nueve; sin el nombre al lado, lo dice a los lectores.
+ */
+export function filaDeTarea(fila: FilaTarea): Html {
+	const id = formatearId(fila.codigo);
+	const nombre = NOMBRE_ESTADO[fila.estado];
+	const punto =
+		fila.latiendo === true
+			? html`<span class="punto latido color-${COLOR_MARCA["en marcha"]}" role="img" aria-label="${NOMBRE_MARCA["en marcha"]}"></span>`
+			: fila.nombreEstado === true
+				? html`<span class="punto estado-${fila.estado} color-${COLOR_ESTADO[fila.estado]}"></span><span class="nombre-estado">${nombre}</span>`
+				: html`<span class="punto estado-${fila.estado} color-${COLOR_ESTADO[fila.estado]}" role="img" aria-label="${nombre}" title="${nombre}"></span>`;
+	return html`<div class="fila-tarea">
+			<span class="estado-fila">${punto}</span>
+			${fila.delante ?? html``}
+			<a class="id-tarea" href="/tareas/${id}">${id}</a>
+			<span class="titulo">${fila.titulo}</span>
+			${fila.detras ?? html``}
+			<span class="derecha">${fila.derecha ?? html``}</span>
+		</div>`;
+}
+
+/**
+ * Una fase tomada, en una fila: qué tarea, qué fase, con qué modelo y desde
+ * hace cuánto. Parada, la edad duele y la fila lo dice con su etiqueta.
  */
 function lineaEnMarcha(fase: FaseEnMarcha): Html {
-	const id = formatearId(fase.codigo);
 	const cuanto = fase.desde === null ? "en marcha" : `en marcha ${edad(fase.desde)}`;
-	return html`<li>
-			<a href="/tareas/${id}">${id}</a>
-			<span class="ahora-titulo">${fase.titulo}</span>
+	return html`<li>${filaDeTarea({
+		codigo: fase.codigo,
+		titulo: fase.titulo,
+		// La fase dice el estado: el análisis se hace en preparada; la ejecución, en curso.
+		estado: fase.fase === "analisis" ? "prepared" : "doing",
+		latiendo: true,
+		derecha: html`${fase.parada ? etiqueta(NOMBRE_MARCA.parada, COLOR_MARCA.parada, "marca-parada") : html``}
 			<span class="pequeno silencio">${NOMBRE_FASE[fase.fase]}${fase.modelo === null ? "" : ` · ${fase.modelo}`}</span>
-			<span class="edad${fase.parada ? " edad-peligro" : ""}" title="${fase.desde ?? ""}">${cuanto}</span>
-			${fase.parada ? etiqueta(NOMBRE_MARCA.parada, COLOR_MARCA.parada, "marca-parada") : html``}
-		</li>`;
+			<span class="edad${fase.parada ? " edad-peligro" : ""}" title="${fase.desde ?? ""}">${cuanto}</span>`,
+	})}</li>`;
 }
 
 /** Qué trabaja un terminal ahora mismo, o desde cuándo está en reposo. */
@@ -785,7 +834,7 @@ function tarjetaEnMarcha(terminal: TerminalListado, fases: readonly FaseEnMarcha
 			${
 				fases.length === 0
 					? html`<p class="silencio">En reposo.</p>`
-					: html`<ul class="ahora-fases">${fases.map(lineaEnMarcha)}</ul>`
+					: html`<ul class="filas ahora-fases">${fases.map(lineaEnMarcha)}</ul>`
 			}
 		</article>`;
 }

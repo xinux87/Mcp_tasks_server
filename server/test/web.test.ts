@@ -203,8 +203,8 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		assert.match(cuerpoLista, /<p class="dueno-columna">la defines tú<\/p>/);
 		const backlog = grupo(cuerpoLista, "Por definir");
 		assert.ok(backlog.includes(id), "la tarea sale en la columna de por definir");
-		// «Creada por» enseña el chip de quien la creó, con su color.
-		assert.match(backlog, /<span class="chip color-\w+"><span class="inicial">A<\/span>ana<\/span>/);
+		// Cada tarea es una fila de tarea, con el punto de su estado.
+		assert.match(backlog, /<div class="fila-tarea">\s*<span class="estado-fila"><span class="punto estado-backlog/);
 		assert.match(grupo(cuerpoLista, "Preparadas"), /Ninguna\./);
 		// La lista arranca con «cabeceraPagina» y su acción principal, y su tabla
 		// ocupa todo el ancho como el kanban.
@@ -306,10 +306,9 @@ test("una pregunta se crea con su tipo, sale con badge y sin nada de ejecución"
 		assert.match(cuerpo, /name="ejecucionModelo"/);
 		// El desplegable de tipo vuelve con la pregunta elegida.
 		assert.match(cuerpo, /<option value="pregunta" selected>Pregunta<\/option>/);
-		// Y en la lista, su columna de ejecución queda vacía.
+		// Y en la lista lleva un solo agente, el de análisis: no tiene ejecución.
 		const lista = await (await pedir(montaje, "/tareas", { cookie })).text();
-		assert.match(lista, /<th>Creada por<\/th>/);
-		assert.match(lista, /<td class="pequeno">—<\/td>/);
+		assert.match(lista, /<span class="agentes">\s*<span class="agente[^"]*" title="[^"]*">[^<]*<\/span>\s*<\/span>/);
 
 		// El kanban la marca igual en su tarjeta.
 		const kanban = await pedir(montaje, "/tareas/kanban", { cookie });
@@ -1396,9 +1395,9 @@ test("la lista y el kanban enseñan la edad en columna, y la ficha desde cuándo
 		const cookie = await entrar(montaje);
 		const id = await crearTarea(montaje, cookie, "Exportar clientes", "Hace falta un CSV.");
 
-		// En backlog no hay edad que enseñar, pero la columna ya se llama así.
+		// En backlog no hay edad que enseñar, pero su hueco ya está en la fila.
 		const enBacklog = await (await pedir(montaje, "/tareas", { cookie })).text();
-		assert.match(enBacklog, /<th>En columna<\/th>/);
+		assert.match(enBacklog, /<span class="hueco-edad"><\/span>/);
 		assert.doesNotMatch(enBacklog, /class="edad"/);
 
 		await pedir(montaje, `/tareas/${id}/mover`, { cookie, formulario: { estado: "prepared" } });
@@ -1619,15 +1618,14 @@ test("la lista enseña el progreso y los tokens, y filtra por conmutador y por t
 		moverTareaHumano(montaje.db, { tareaId: suelta.id, usuarioId: 1, estado: "prepared" });
 
 		const lista = await (await pedir(montaje, "/tareas", { cookie })).text();
-		assert.match(lista, /<th class="numero">Tokens<\/th>/);
-		// El progreso va detrás del título, al final de la celda.
+		// El progreso va detrás del título.
 		assert.match(
 			lista,
-			/Exportar el listado a CSV <progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto">subtareas 1\/2<\/span>/,
+			/Exportar el listado a CSV<\/span>\s*<progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto">subtareas 1\/2<\/span>/,
 		);
-		assert.match(lista, /<td class="numero pequeno">184 k<\/td>/);
-		// Sin consumo la celda se queda vacía: un cero no dice nada.
-		assert.match(lista, /<td class="numero pequeno"><\/td>/);
+		assert.match(lista, /<span class="tokens">184 k<\/span>/);
+		// Sin consumo la cifra se queda vacía: un cero no dice nada.
+		assert.match(lista, /<span class="tokens"><\/span>/);
 
 		// «Espera por ti»: la hija en done entra; la preparada sin nada pendiente, no.
 		const espera = await (await pedir(montaje, "/tareas?rapido=espera", { cookie })).text();
@@ -1701,7 +1699,7 @@ test("el presupuesto se pone en el formulario, se ve en la ficha y avisa cuando 
 		assert.match(pasada, /<strong>250\.000 de 200\.000<\/strong>/);
 		// Y la fila de la lista pinta lo gastado sobre el tope.
 		const lista = await (await pedir(montaje, "/tareas", { cookie })).text();
-		assert.match(lista, /<td class="numero pequeno">250 k \/ 200 k<\/td>/);
+		assert.match(lista, /<span class="tokens">250 k \/ 200 k<\/span>/);
 		assert.match(lista, /<span class="insignia marca-sobre-presupuesto color-naranja">Sobre presupuesto<\/span>/);
 
 		// Quitarlo deja la tarea sin tope y sin marca, y deja rastro en los dos sentidos.
@@ -1864,7 +1862,7 @@ test("nada de lo que se ve enseña un nombre interno: estados, marcas y fases", 
 		// La clase lleva el nombre interno; el texto, el del vocabulario.
 		const ficha = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
 		assert.match(ficha, /<span class="insignia estado-prepared color-azul">Preparada<\/span>/);
-		assert.match(ficha, /<td>Análisis<\/td>/);
+		assert.match(ficha, /<span class="consumo-nombre">Análisis<\/span>/);
 		assert.match(ficha, /<span class="insignia tipo-analisis color-azul">Análisis<\/span>/);
 
 		// En la lista, el rótulo de cada grupo dice la columna en plural.
@@ -2231,7 +2229,10 @@ test("la ficha enseña la edad de la fase en marcha, la marca «parada» y el bo
 		const enMarcha = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
 		assert.ok(enMarcha.includes("marca-en-marcha"), "falta la marca de fase en marcha");
 		// La marca lleva su edad al lado, en texto suave.
-		assert.match(enMarcha, /marca-en-marcha[^<]*<\/span><span class="edad"[^>]*>0 min<\/span>/);
+		assert.match(
+			enMarcha,
+			/marca-en-marcha[^>]*><span class="punto latido" aria-hidden="true"><\/span>Agente trabajando<\/span><span class="edad"[^>]*>0 min<\/span>/,
+		);
 		assert.ok(enMarcha.includes(`/tareas/${id}/liberar`), "falta el botón de liberar");
 		assert.ok(!enMarcha.includes("marca-parada"), "la fase recién tomada no está parada");
 
@@ -2286,7 +2287,8 @@ test("la franja «Ahora mismo» enseña la fase en marcha de cada terminal y el 
 		assert.match(lista, /<h2>Ahora mismo<\/h2>/);
 		const trabajando = tarjetaAhora(lista, "portatil-ana");
 		const id = formatearId(tarea.codigo);
-		assert.ok(trabajando.includes(`<a href="/tareas/${id}">${id}</a>`), "la fase no enlaza a la ficha");
+		assert.ok(trabajando.includes(`<a class="id-tarea" href="/tareas/${id}">${id}</a>`), "la fase no enlaza a la ficha");
+		assert.ok(trabajando.includes('<span class="punto latido'), "la fase en marcha no lleva el punto que late");
 		assert.ok(trabajando.includes("Exportar el listado de clientes"), "falta el título de la tarea");
 		assert.ok(trabajando.includes("Análisis · sonnet"), "falta la fase con su modelo");
 		assert.match(trabajando, /<span class="edad"[^>]*>en marcha 0 min<\/span>/);
@@ -2324,6 +2326,100 @@ test("un terminal revocado no sale en la franja «Ahora mismo»", async () => {
 		assert.ok(!despues.includes("<strong>portatil-ana</strong>"), "el revocado sigue en la franja");
 		// Sin ningún terminal vivo no hay nada que enseñar y la franja no se pinta.
 		assert.ok(!despues.includes("Ahora mismo"), "la franja se pinta sin terminales vivos");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+// --- patrones de componente ---------------------------------------------------
+
+/** La fila de la lista que lleva ese título, desde su `<div>` hasta el cierre. */
+function filaDe(cuerpo: string, titulo: string): string {
+	const fin = cuerpo.indexOf(`<span class="titulo">${titulo}</span>`);
+	assert.ok(fin >= 0, `no aparece la fila de «${titulo}»`);
+	const inicio = cuerpo.lastIndexOf('<div class="fila-tarea">', fin);
+	return cuerpo.slice(inicio, cuerpo.indexOf("</li>", fin));
+}
+
+test("una fila de la lista lleva una sola píldora: la de turno gana a las marcas", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const terminalId = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com").valor.terminal.id;
+		const tarea = crearTareaHumana(montaje.db, {
+			titulo: "Migrar el envío de correos",
+			descripcion: "d",
+			usuarioId: 1,
+			analisisModelo: "fable",
+			analisisTerminalId: terminalId,
+		});
+		moverTareaHumano(montaje.db, { tareaId: tarea.id, usuarioId: 1, estado: "prepared" });
+		tomarTarea(montaje.db, { tareaId: tarea.id, fase: "analisis", terminalId, modelo: "fable" });
+		preguntar(montaje.db, {
+			tareaId: tarea.id,
+			terminalId,
+			pregunta: "¿Qué cola usamos?",
+			porQueImporta: "Cambiarla es otra pieza.",
+			opciones: [
+				{ texto: "Redis", consecuencia: "Sin piezas nuevas." },
+				{ texto: "No hacer nada", consecuencia: "Sigue tardando." },
+			],
+			recomendacion: "Redis",
+		});
+		assert.deepEqual(
+			leerTarea(montaje.db, tarea.id, CONFIG_PRUEBA.FASE_PARADA_HORAS)?.marcas.filter((marca) =>
+				["bloqueada", "en marcha"].includes(marca),
+			),
+			["bloqueada", "en marcha"],
+		);
+
+		const fila = filaDe(await (await pedir(montaje, "/tareas", { cookie })).text(), "Migrar el envío de correos");
+		// El chip de proyecto va delante del id; las píldoras, a la derecha.
+		const derecha = fila.slice(fila.indexOf('<span class="derecha">'));
+		assert.equal(derecha.match(/class="insignia /g)?.length, 1, `más de una píldora en la fila: ${fila}`);
+		assert.match(fila, /<span class="insignia turno">Contesta<\/span>/);
+		assert.ok(!fila.includes("Pregunta abierta"), "la marca repite lo que ya dice el turno");
+		assert.ok(!fila.includes("Agente trabajando"), "la marca en marcha no cabe junto al turno");
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("el consumo del panel son chips por fase, con el total con hijas contra el presupuesto", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		const terminalId = crearTerminalConToken(montaje.db, 1, "portatil-ana", "ana@ejemplo.com").valor.terminal.id;
+		const tarea = crearTareaHumana(montaje.db, {
+			titulo: "Exportar el listado",
+			descripcion: "d",
+			usuarioId: 1,
+			presupuesto: 200_000,
+		});
+		registrarConsumo(montaje.db, {
+			tareaId: tarea.id,
+			fase: "analisis",
+			modelo: "fable",
+			terminalId,
+			tokens: 31_500,
+			herramientas: 6,
+			duracionMs: 87_000,
+		});
+
+		const ficha = await (await pedir(montaje, `/tareas/${formatearId(tarea.codigo)}`, { cookie })).text();
+		const consumo = ficha.slice(ficha.indexOf('<div class="consumo">'), ficha.lastIndexOf("</aside>"));
+		assert.ok(consumo.startsWith('<div class="consumo">'), "falta el bloque de consumo");
+		assert.ok(!consumo.includes("<table"), "el consumo ya no es una tabla");
+		// Una fila de chips por fase: modelo, tokens, herramientas y duración.
+		assert.match(consumo, /<span class="consumo-nombre">Análisis<\/span>/);
+		assert.match(consumo, /<span class="chip color-gris"><span class="inicial">F<\/span>fable<\/span>/);
+		assert.match(consumo, /<span class="chip chip-consumo" title="31\.500 tokens">31 k<\/span>/);
+		assert.match(consumo, />6 herr\.<\/span>/);
+		assert.match(consumo, />1 m 27 s<\/span>/);
+		// Y el total con hijas contra el tope, con su barra.
+		assert.match(consumo, /Total con hijas/);
+		assert.match(consumo, /<strong>31\.500 de 200\.000<\/strong>/);
+		assert.match(consumo, /<progress class="progreso consumo-barra" value="31500" max="200000">/);
 	} finally {
 		await montaje.cerrar();
 	}
