@@ -147,11 +147,12 @@ en `prepared` y **no** tiene ningún comentario `analisis` en el hilo; es
 | Lo que ves en la tarea | Qué haces |
 |---|---|
 | Marca `bloqueada` | **Nada.** Hay una pregunta sin contestar. Pasa a la siguiente. |
-| `prepared`, sin comentario `analisis`, y `analisis.terminal` está vacío (marca `sin terminal`) o es este terminal | Candidata a **análisis**. |
+| `doing` y descompuesta: `tipo: funcionalidad`, o su línea de índice lleva `subtareas n/m` o `funcionalidad n/m`, o su frontmatter trae `partes:` | **Nada**, aunque el último mensaje sea del humano. No tiene ejecución propia: lo que se ejecuta son sus partes, que llegan solas por `novedades`. Esta fila manda sobre la de retomar. |
+| `prepared`, sin comentario `analisis`, y `analisis.terminal` está vacío (marca `sin terminal`) o es este terminal | Candidata a **análisis**. Si es grande, la descompone el propio subagente de análisis: tú no lo decides aquí. |
 | `prepared`, `tipo: pregunta`, sin comentario `analisis`, y `analisis.terminal` está vacío o es este terminal | Candidata a **análisis**. Es lo único que tiene esa tarea. |
 | `prepared`, `tipo: funcionalidad`, sin comentario `analisis`, y `analisis.terminal` está vacío o es este terminal | Candidata a **descomposición**. |
 | `prepared`, con comentario `analisis`, sin marca `bloqueada` ni `análisis listo`, y `ejecucion.terminal` está vacío o es este terminal | Candidata a **ejecución**. |
-| `prepared` con marca `análisis listo` | **Nada.** `autoejecucion` está desactivada y el humano todavía no ha aprobado el análisis. |
+| `prepared` con marca `análisis listo` | **Nada.** El humano todavía no ha aprobado el análisis (`autoejecucion` desactivada) o la descomposición (la tarea tiene partes). |
 | `doing`, `ejecucion.terminal` es este terminal, sin marca `bloqueada`, y el último mensaje del hilo escrito por un humano (`respuesta` o `comentario`, autor `humano:…`) es posterior al último mensaje escrito por un agente (autor `modelo@terminal`, de cualquier tipo) | Candidata a **ejecución (retomar)**, con esos mensajes del humano en contexto. |
 | Marca `esperando` | **Nada.** Delante hay otra tarea que todavía no está hecha. Cuando se cierre, esta llegará sola por `novedades`. |
 | `doing` sin mensaje nuevo del humano, o `done`, o `finished` | **Nada.** |
@@ -160,9 +161,13 @@ El hilo es un chat: esa regla de «lo último lo ha dicho el humano» es la que 
 que se retome igual tras una respuesta a una pregunta que tras un comentario
 suelto del humano.
 
-Una **funcionalidad en `doing`** no es trabajo de ningún agente: lo que se
-ejecuta son sus partes, que llegan solas por `novedades` como tareas normales.
-Y una funcionalidad con la marca `análisis listo` está esperando a que el humano
+Una **tarea descompuesta en `doing`** no es trabajo de ningún agente. Lo está
+una funcionalidad y lo está cualquier tarea con partes: su línea de índice lleva
+`funcionalidad n/m` o `subtareas n/m` después del estado, sin segmento
+`ejecucion:`, y su frontmatter trae `partes:` y `partesCerradas:`. Lo que se
+ejecuta son sus partes, que llegan solas por `novedades` como tareas normales, y
+la madre se cierra sola cuando la última parte se cierra. Y una tarea
+descompuesta con la marca `análisis listo` está esperando a que el humano
 apruebe su descomposición: tampoco se toca.
 
 Una tarea con `tipo: pregunta` **solo tiene fase de análisis**: su frontmatter
@@ -189,6 +194,8 @@ prioridad que ha puesto el humano. Las demás esperan a la vuelta siguiente.
    - Si devuelve `modelo_no_coincide`, la fase ya tiene otro modelo asignado:
      usa el que diga el mensaje, tanto para volver a llamar a `tomar_tarea` como
      para lanzar el subagente.
+   - Si devuelve `sin_ejecucion_propia`, la tarea está descompuesta y no se
+     ejecuta ella: se ejecutan sus partes. Descártala y sigue con las demás.
    - `tomar_tarea` con fase `ejecucion` pasa la tarea a `doing` ella sola. No
      cambies el estado a mano.
 2. **Si la fase que toca lleva `agente`**, llama a `leer_agente` con ese nombre
@@ -291,22 +298,52 @@ Documento completo tal como lo devolvió leer_tarea, hilo incluido:
 
 1. Lee el repositorio en << RUTA DEL REPOSITORIO >> lo que necesites para
    entender el alcance real: qué existe ya, qué hay que tocar y qué no.
-2. Decide si puedes plantear el trabajo sin decisiones del humano.
-3. Termina de UNA de estas dos formas, nunca de las dos:
+2. Decide si puedes plantear el trabajo sin decisiones del humano, y si la
+   tarea es grande: varias piezas que se construyen y se validan por separado,
+   o más de lo que un agente termina de una vez.
+3. Termina de UNA de estas tres formas, nunca de dos:
 
-   a) Si lo tienes claro: llama a
+   a) Si lo tienes claro y la tarea es grande: descomponla. PRIMERO crea cada
+      parte con `mcp__tareas__crear_tarea`, clase = `parte`,
+      padre = << ID >>:
+        - `titulo` en llano, desde el punto de vista de quien pidió la tarea.
+        - `descripcion` con tres apartados con estos títulos exactos, en prosa:
+          «Qué entrega» (lo que queda construido), «Cómo se comprueba» (qué
+          hay que ver o ejecutar para darla por buena) y «Depende de» (qué
+          partes tienen que ir antes y por qué, o «Nada»).
+        - `dependeDe` con los identificadores de las partes que tienen que ir
+          antes, cuando el orden importa. Solo valen partes de esta misma tarea.
+      Entre dos y diez partes. Cada una tiene que poder ejecutarla un agente en
+      una sesión: si una no cabe, pártela; si dos no se entienden por separado,
+      júntalas.
+      DESPUÉS, y solo después, llama a `mcp__tareas__comentar_tarea` con
+      id = << ID >>, tipo = `analisis` y el plan de conjunto en Markdown:
+        - Qué se construye, en prosa, y qué parte se ocupa de qué.
+        - Qué no se toca.
+        - Cómo se comprueba el conjunto cuando estén todas las partes.
+      El orden importa: si escribes el análisis antes, la tarea puede pasar a
+      ejecución y ya no admite partes. Las partes nacen en backlog: las revisa
+      y las aprueba el humano. La tarea se queda en `prepared` esperando esa
+      aprobación aunque tenga `autoejecucion`, así que no esperes a nadie, no
+      muevas las partes de columna y no las ejecutes. Si la tarea tiene `rama`,
+      el servidor añade al aprobar la parte que integra esa rama: esa no la
+      crees tú.
+
+   b) Si lo tienes claro y la tarea no es grande: llama a
       `mcp__tareas__comentar_tarea` con
       id = << ID >>, tipo = `analisis` y un texto en Markdown con:
         - Qué hay que hacer, en prosa, sin listar archivos uno a uno.
         - El plan, en pasos numerados.
         - Los riesgos: qué se puede romper y qué no está claro.
 
-   b) Si necesitas una decisión del humano: llama a
+   c) Si necesitas una decisión del humano: llama a
       `mcp__tareas__preguntar` con
       id = << ID >>, `pregunta` (una frase), `porQueImporta` (un párrafo),
       `opciones[]` (cada una con `texto` y `consecuencia`, incluida la de no
       hacer nada) y `recomendacion` (el `texto` de una de las opciones).
-      La pregunta deja la tarea bloqueada; no escribas también el análisis.
+      La pregunta deja la tarea bloqueada; no escribas también el análisis ni
+      crees partes. Cuando contesten, el análisis se retoma y entonces eliges
+      entre a) y b).
 
 4. Si de paso descubres trabajo que NO es parte de esta tarea, créalo con
    `mcp__tareas__crear_tarea` con clase `propuesta`. Nace en
@@ -320,7 +357,8 @@ nombres de función ni códigos internos. Criterio: ¿lo entiende alguien que
 conoce el negocio y no ha visto el código?
 
 No hay fase de ejecución detrás. Al escribir ese comentario la tarea se cierra
-sola y pasa a `done`: no propongas pasos ni esperes a nadie.
+sola y pasa a `done`: no propongas pasos ni esperes a nadie. Una pregunta no se
+descompone: la salida a) no vale aquí.
 
 Si para responder te hace falta una decisión del humano, usa `preguntar` igual
 que en cualquier otra tarea. Y lo que descubras de paso que habría que hacer no
@@ -330,15 +368,18 @@ va en la respuesta: va como `crear_tarea` con clase `propuesta`.
 
 << COPIA AQUÍ LAS CINCO REGLAS DE ARRIBA, ENTERAS >>
 
-Cuando termines, resume en tres líneas qué análisis dejaste o qué preguntaste.
+Cuando termines, resume en tres líneas qué análisis dejaste, en cuántas partes
+la dejaste si la descompusiste, o qué preguntaste.
 ```
 
 ## Plantilla del prompt de descomposición
 
 Es la de una funcionalidad. Una descomposición es la fase `analisis` de esa
 funcionalidad: se toma con `tomar_tarea` igual que cualquier análisis y se lanza
-con el modelo de análisis. Copia esto, rellena los huecos entre `<< >>` y
-bórralos.
+con el modelo de análisis. Una tarea que no es funcionalidad también puede
+descomponerse, pero eso lo decide su subagente de análisis con la salida a) de
+la plantilla de análisis: a ella no le toca esta. Copia esto, rellena los huecos
+entre `<< >>` y bórralos.
 
 ```text
 ## Quién eres  << SOLO SI LA FASE LLEVA AGENTE; SI NO, BORRA ESTE BLOQUE >>
@@ -378,7 +419,10 @@ Documento completo tal como lo devolvió leer_tarea, hilo incluido:
    padre = << ID >>:
      - `titulo` en llano, desde el punto de vista de quien pidió la
        funcionalidad.
-     - `descripcion` con qué hay que construir y cómo se sabe que está hecho.
+     - `descripcion` con tres apartados con estos títulos exactos, en prosa:
+       «Qué entrega» (lo que queda construido), «Cómo se comprueba» (qué hay
+       que ver o ejecutar para darla por buena) y «Depende de» (qué partes
+       tienen que ir antes y por qué, o «Nada»).
      - `dependeDe` con los identificadores de las partes que tienen que ir
        antes, cuando el orden importa. Solo valen partes de esta misma
        funcionalidad.
@@ -386,8 +430,10 @@ Documento completo tal como lo devolvió leer_tarea, hilo incluido:
    una sesión: si una no cabe, pártela; si dos no se entienden por separado,
    júntalas.
 4. Cierra con `mcp__tareas__comentar_tarea` con id = << ID >>,
-   tipo = `analisis` y un texto que resuma la descomposición: qué hace cada
-   parte, en qué orden van y qué riesgos ves.
+   tipo = `analisis` y el plan de conjunto en Markdown:
+     - Qué se construye, en prosa, y qué parte se ocupa de qué.
+     - Qué no se toca.
+     - Cómo se comprueba el conjunto cuando estén todas las partes.
 
 Las partes nacen en backlog: las revisa el humano y las aprueba él. No las
 muevas de columna ni las ejecutes. Si la funcionalidad tiene `rama`, el
@@ -475,19 +521,29 @@ el commit de la fusión en el `resultado`. La verificación que tiene que pasar 
 1. Trabaja en el repositorio en << RUTA DEL REPOSITORIO >>. Sigue el plan del
    análisis. Si el análisis se equivoca en algo, arréglalo y dilo en un
    `comentario`.
-2. Cuenta lo que vas haciendo cuando haya algo que contar: llama a
+2. Las decisiones del humano no viven solo en el hilo. Si el frontmatter trae
+   `padre`, lee también la madre con `mcp__tareas__leer_tarea`: las
+   respuestas a las preguntas de su análisis están en su hilo. Si una
+   `respuesta` del humano, en este hilo o en el de la madre, fija una decisión
+   de arquitectura o de producto y lo que construyes la toca, mira si ya está
+   anotada en el repositorio; si no lo está, anótala tú en el mismo commit, en
+   la forma que el propio repositorio dicte (un ADR, el CHANGELOG, el documento
+   de reglas que tenga). Así la anota la primera subtarea que la toca y las
+   siguientes la encuentran escrita. Si el repositorio no tiene esa forma,
+   cita la decisión en el mensaje del commit.
+3. Cuenta lo que vas haciendo cuando haya algo que contar: llama a
    `mcp__tareas__comentar_tarea` con tipo = `comentario` y dos
    o tres líneas. No comentes cada archivo que tocas.
-3. Si repartes el trabajo en partes que merecen verse por separado, crea cada
+4. Si repartes el trabajo en trozos que merecen verse por separado, crea cada
    una con `mcp__tareas__crear_tarea`, clase = `hija`,
    padre = << ID >>. Nacen en doing con las mismas asignaciones y cada una cierra
    con su propio `resultado`.
-4. Si necesitas una decisión del humano, llama a
+5. Si necesitas una decisión del humano, llama a
    `mcp__tareas__preguntar` con id = << ID >>, `pregunta`,
    `porQueImporta`, `opciones[]` (con la de no hacer nada) y `recomendacion`.
    La tarea queda bloqueada: para de construir lo que esa pregunta gobierna,
    termina lo que no dependa de ella y acaba tu turno. No cierres la tarea.
-5. Cuando esté hecho: haz commit y llama a
+6. Cuando esté hecho: haz commit y llama a
    `mcp__tareas__comentar_tarea` con
    id = << ID >>, tipo = `resultado`, estado = `done` y un texto con:
         - Qué se construyó, en prosa y desde el punto de vista de quien lo pidió.
