@@ -472,6 +472,10 @@ test("una funcionalidad se descompone en partes por el MCP y solo la primera lle
 			propuesta.texto,
 			new RegExp(`^- ${idFila(montaje, 5)} · backlog · funcionalidad 0\\/0 · Rehacer el informe mensual · `, "m"),
 		);
+		// Nace sin padre, aunque la cree el análisis de otra: cuelga del proyecto.
+		const documentoPropuesta = await llamar(a, "leer_tarea", { id: idFila(montaje, 5) });
+		assert.doesNotMatch(documentoPropuesta.texto, /^padre:/m);
+		assert.equal(exigirTarea(montaje.db, 5).padreId, null);
 
 		// El comentario de análisis cierra la descomposición.
 		const analizada = await llamar(a, "comentar_tarea", {

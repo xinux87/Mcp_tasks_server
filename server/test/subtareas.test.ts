@@ -412,3 +412,53 @@ test("las olas del orden de ejecución salen de las dependencias entre hermanas"
 	// Un ciclo no debería existir, pero si se colara no cuelga.
 	assert.equal(olasDe([parte("A", "B"), parte("B", "A")]).flat().length, 2);
 });
+
+test("el organigrama es piramidal: una funcionalidad nunca cuelga de otra tarea", () => {
+	const banco = montar();
+	try {
+		const nueva = (titulo: string, extra: { tipo?: "funcionalidad"; padreId?: number } = {}) =>
+			crearTareaHumana(banco.db, { titulo, descripcion: "d", usuarioId: banco.ana, ...extra });
+		const portal = nueva("Portal", { tipo: "funcionalidad" });
+		const madre = nueva("Una tarea");
+
+		// En el alta, colgada de una tarea o de otra funcionalidad.
+		assert.equal(
+			codigoDe(() => nueva("Colgada", { tipo: "funcionalidad", padreId: madre.id })),
+			"funcionalidad_con_padre",
+		);
+		assert.equal(
+			codigoDe(() => nueva("Colgada", { tipo: "funcionalidad", padreId: portal.id })),
+			"funcionalidad_con_padre",
+		);
+		assert.throws(() => nueva("Colgada", { tipo: "funcionalidad", padreId: madre.id }), {
+			message: "Una funcionalidad cuelga del proyecto, no de otra tarea.",
+		});
+		// Una tarea bajo una funcionalidad y una tarea suelta siguen valiendo.
+		assert.equal(nueva("Parte", { padreId: portal.id }).padreId, portal.id);
+		assert.equal(nueva("Suelta").padreId, null);
+
+		// En la edición: ponerle padre a una funcionalidad, o hacer funcionalidad una tarea con padre.
+		const edicion = (tareaId: number, tipo: "tarea" | "funcionalidad", padreId: number | null) => () =>
+			editarTareaBacklog(banco.db, {
+				tareaId,
+				usuarioId: banco.ana,
+				titulo: "T",
+				descripcion: "d",
+				tipo,
+				padreId,
+				autoejecucion: true,
+				analisisModelo: null,
+				analisisTerminalId: null,
+				ejecucionModelo: null,
+				ejecucionTerminalId: null,
+			});
+		const otra = nueva("Otra", { tipo: "funcionalidad" });
+		assert.equal(codigoDe(edicion(otra.id, "funcionalidad", madre.id)), "funcionalidad_con_padre");
+		const parte = nueva("Parte colgada", { padreId: madre.id });
+		assert.equal(codigoDe(edicion(parte.id, "funcionalidad", madre.id)), "funcionalidad_con_padre");
+		// Descolgada a la vez, sí puede pasar a funcionalidad.
+		assert.equal(edicion(parte.id, "funcionalidad", null)().tipo, "funcionalidad");
+	} finally {
+		banco.cerrar();
+	}
+});

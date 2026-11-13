@@ -255,11 +255,25 @@ test("el campo «Subtarea de» lista las tareas abiertas que no son preguntas, y
 		assert.match(alta, new RegExp(`<option value="${evolutivo.codigo}">`));
 		assert.doesNotMatch(alta, /¿Una pregunta\?<\/option>/);
 		assert.doesNotMatch(alta, /Parte de la funcionalidad/);
-		// El alta de una funcionalidad también lo lleva: puede colgar de otra.
+		// El alta de una funcionalidad también lo lleva (el tipo se cambia en el
+		// mismo formulario), pero una funcionalidad no cuelga de nada: 422 y el
+		// formulario repintado con el mensaje.
 		assert.match(
 			await (await pedir(montaje, "/tareas/nueva?tipo=funcionalidad", cookie)).text(),
 			/<span>Subtarea de<\/span>/,
 		);
+		const colgada = await pedir(montaje, "/tareas", cookie, {
+			titulo: "Funcionalidad colgada",
+			descripcion: "d",
+			tipo: "funcionalidad",
+			padre: madre.codigo,
+			analisisTerminal: "",
+			ejecucionTerminal: "",
+		});
+		assert.equal(colgada.status, 422);
+		const repintado = await colgada.text();
+		assert.match(repintado, /Una funcionalidad cuelga del proyecto, no de otra tarea\./);
+		assert.match(repintado, /value="Funcionalidad colgada"/);
 
 		// En la edición no se ofrece la propia tarea.
 		const edicion = await ficha(montaje, cookie, madre);

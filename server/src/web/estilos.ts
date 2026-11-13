@@ -2747,7 +2747,7 @@ details.bloque > summary:hover {
 
 /* --- la página del proyecto ---------------------------------------------- */
 
-/* Las pestañas Resumen | Informes | Actividad: el mismo control segmentado de
+/* Las pestañas Panel | Informes | Actividad: el mismo control segmentado de
    Lista | Tablero, solo tan ancho como sus tres enlaces. */
 .pestanas {
 	width: fit-content;
@@ -2761,6 +2761,175 @@ details.bloque > summary:hover {
 
 .proposito > :last-child {
 	margin-bottom: 0;
+}
+
+/* --- el panel del proyecto ---------------------------------------------- */
+
+/* Las cuatro cifras de arriba, cada una en su tarjeta. La de tareas abiertas
+   lleva la barra del proyecto con su leyenda y ocupa dos huecos si caben. */
+.cifras {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+	gap: 0.8rem;
+	margin: 0 0 1.6rem;
+}
+
+.cifra {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+	min-width: 0;
+	padding: 0.8rem 0.9rem;
+	border-radius: var(--radio-tarjeta);
+	background: var(--superficie);
+	box-shadow: var(--sombra-tarjeta);
+}
+
+@media (min-width: 48rem) {
+	.cifra-ancha {
+		grid-column: span 2;
+	}
+}
+
+.cifra-valor {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 1.5rem;
+	font-weight: 600;
+	line-height: 1.2;
+	font-variant-numeric: tabular-nums;
+}
+
+.cifra-rotulo {
+	color: var(--texto-suave);
+	font-size: 0.8125rem;
+}
+
+/* Lo que espera por el humano: la única cifra que puede llevar la señal. */
+.cifra.en-turno .cifra-valor {
+	color: var(--turno);
+}
+
+.cifra-desglose {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0 0.8rem;
+	margin-top: 0.3rem;
+	font-size: 0.78125rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.cifra-barra {
+	margin-top: 0.5rem;
+}
+
+/* La barra apilada: los tramos se estiran con el viewBox; el trazo del color
+   de la superficie no escala y deja 2 px entre tramos a cualquier ancho. Los
+   extremos se redondean recortando el propio svg. */
+.barra-apilada {
+	display: block;
+	width: 100%;
+	height: 8px;
+	clip-path: inset(0 round 999px);
+}
+
+.barra-apilada rect {
+	fill: currentColor;
+	stroke: var(--superficie);
+	stroke-width: 2px;
+	vector-effect: non-scaling-stroke;
+}
+
+/* El gris fuerte de la tabla es la tinta: un tramo «por definir» negro en
+   claro (o blanco en oscuro) se comía la barra. Aquí va en tinta terciaria. */
+.barra-apilada .estado-backlog {
+	fill: var(--texto-terciario);
+}
+
+.leyenda-barra .punto.estado-backlog {
+	box-shadow: inset 0 0 0 4px var(--texto-terciario);
+}
+
+.leyenda-barra {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.2rem 0.9rem;
+	margin-top: 0.5rem;
+	color: var(--texto-suave);
+	font-size: 0.78125rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.leyenda-barra > span {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+/* En la fila de una funcionalidad la barra es corta: la cuenta va al lado. */
+.barra-partes {
+	width: 5rem;
+}
+
+.trabajando {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	color: var(--texto-suave);
+	font-size: 0.78125rem;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Una fila que despliega: la fila de tarea es el summary, con un chevron al
+   final que gira al abrir; dentro, sus partes como filas más adentro. */
+details.desplegable > summary {
+	margin: 0;
+	font-size: inherit;
+	font-weight: inherit;
+	list-style: none;
+	cursor: pointer;
+}
+
+details.desplegable > summary::-webkit-details-marker {
+	display: none;
+}
+
+details.desplegable > summary .fila-tarea::after {
+	content: "";
+	flex: none;
+	width: 5px;
+	height: 5px;
+	margin: 0 0.2rem 0 0.2rem;
+	border-right: 1.5px solid var(--texto-suave);
+	border-bottom: 1.5px solid var(--texto-suave);
+	transform: rotate(-45deg);
+	transition: transform 150ms var(--suave);
+}
+
+details.desplegable[open] > summary .fila-tarea::after {
+	transform: rotate(45deg);
+}
+
+/* En estrecho la fila se parte en líneas y el chevron quedaba suelto en una:
+   la fila entera sigue desplegando sin él. */
+@media (max-width: 48rem) {
+	details.desplegable > summary .fila-tarea::after {
+		display: none;
+	}
+}
+
+details.desplegable > .filas {
+	margin: 0 0 0.8rem 1.2rem;
+	box-shadow: var(--sombra-filete);
+}
+
+details.desplegable > p {
+	margin: 0 0 0.8rem 1.2rem;
+}
+
+.propiedades-proyecto {
+	margin-top: 2rem;
 }
 
 /* --- el punto de color y el que late -------------------------------------- */

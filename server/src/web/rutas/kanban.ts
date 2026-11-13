@@ -435,7 +435,7 @@ export type Franja = {
 };
 
 /** El orden de los carriles: primero lo que está en marcha. `finished` no tiene. */
-const ORDEN_FRANJAS: readonly Estado[] = ["doing", "prepared", "backlog", "done"];
+export const ORDEN_FRANJAS: readonly Estado[] = ["doing", "prepared", "backlog", "done"];
 
 /**
  * De qué funcionalidad cuelga una tarea: se sube por el padre hasta dar con
@@ -443,7 +443,7 @@ const ORDEN_FRANJAS: readonly Estado[] = ["doing", "prepared", "backlog", "done"
  * El tope de saltos no debería hacer falta, pero un árbol con un ciclo colgaría
  * la página entera.
  */
-function funcionalidadDe(item: ItemIndice, todas: Map<number, ItemIndice>): ItemIndice | null {
+export function funcionalidadDe(item: ItemIndice, todas: Map<number, ItemIndice>): ItemIndice | null {
 	let padreId = item.padreId;
 	for (let salto = 0; padreId !== null && salto < todas.size; salto += 1) {
 		const padre = todas.get(padreId);

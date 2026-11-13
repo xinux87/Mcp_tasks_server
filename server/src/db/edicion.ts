@@ -9,6 +9,7 @@ import { autorHumano } from "./hilo.ts";
 import { exigirProyectoPorId } from "./proyectos.ts";
 import {
 	buscarTarea,
+	exigirFuncionalidadSinPadre,
 	exigirPadre,
 	exigirPresupuesto,
 	exigirTarea,
@@ -231,6 +232,7 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 			);
 		}
 		const padreId = datos.padreId === undefined ? tarea.padreId : datos.padreId;
+		exigirFuncionalidadSinPadre(datos.tipo, padreId);
 		if (padreId !== null && padreId !== tarea.padreId) {
 			exigirPadre(conexion, padreId, { tareaId: tarea.id, proyectoId: tarea.proyectoId });
 		}

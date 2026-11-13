@@ -9,6 +9,7 @@ import { registrarRutasEventos } from "./rutas/eventos.ts";
 import { registrarRutasFuncionalidades } from "./rutas/funcionalidades.ts";
 import { registrarRutasInformes } from "./rutas/informes.ts";
 import { registrarRutasKanban } from "./rutas/kanban.ts";
+import { registrarRutasPanel } from "./rutas/panel.ts";
 import { exigeProyecto, registrarRutasProyectos } from "./rutas/proyectos.ts";
 import { registrarRutasSesion } from "./rutas/sesion.ts";
 import { registrarRutasTareas } from "./rutas/tareas.ts";
@@ -84,6 +85,7 @@ export function montarWeb(app: Hono, deps: DependenciasWeb): void {
 	registrarRutasFuncionalidades(app, deps);
 	registrarRutasInformes(app, deps);
 	registrarRutasProyectos(app, deps);
+	registrarRutasPanel(app, deps);
 	registrarRutasAgentes(app, deps);
 	registrarRutasTerminales(app, deps);
 	registrarRutasUsuarios(app, deps);

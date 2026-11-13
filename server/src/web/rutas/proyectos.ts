@@ -3,8 +3,9 @@ import type { Context, Hono, MiddlewareHandler } from "hono";
 import { html, raw } from "hono/html";
 import { altaPor } from "../../db/actividad.ts";
 import { listarTerminales } from "../../db/admin.ts";
-import { bandejaDelHumano, contarPendientes } from "../../db/bandeja.ts";
+import { contarPendientes } from "../../db/bandeja.ts";
 import { type ColorUsuario, esColorUsuario } from "../../db/colores.ts";
+import { revisionActual } from "../../db/consultas.ts";
 import {
 	borrarProyecto,
 	buscarProyectoPorClave,
@@ -18,17 +19,12 @@ import {
 import { listarTareas } from "../../db/tareas.ts";
 import {
 	accionNuevaTarea,
-	barraProgreso,
 	buscadorDeColor,
-	buscadorDeProyecto,
 	type Color,
 	chipDeAlta,
 	chipProyecto,
-	etiqueta,
-	franjaEnMarcha,
 	type Miga,
 	migaDeProyecto,
-	propiedades,
 	selectorDeColor,
 } from "../componentes.ts";
 import { SIN_DATO } from "../formatos.ts";
@@ -121,7 +117,7 @@ export function proyectoDeLaBarra(c: Context, db: DatabaseSync): Proyecto | unde
 	return proyectoActual(c) ?? (recordado.modo === "proyecto" ? recordado.proyecto : undefined);
 }
 
-function paginaSinProyecto(c: Context, db: DatabaseSync, clave: string): RespuestaHtml {
+export function paginaSinProyecto(c: Context, db: DatabaseSync, clave: string): RespuestaHtml {
 	return c.html(
 		pagina({
 			...navProyectos(c, db),
@@ -177,7 +173,7 @@ function filasDe(db: DatabaseSync): Fila[] {
 	}));
 }
 
-function textoOpcionalLegible(valor: string | null): Html {
+export function textoOpcionalLegible(valor: string | null): Html {
 	return valor === null ? html`<span class="silencio">${SIN_DATO}</span>` : html`<code>${valor}</code>`;
 }
 
@@ -402,19 +398,19 @@ function colorElegido(formulario: Formulario): { color?: string } {
 // --- la página del proyecto --------------------------------------------------
 
 /** Las tres pestañas de la página del proyecto. */
-export type PestanaProyecto = "resumen" | "informes" | "actividad";
+export type PestanaProyecto = "panel" | "informes" | "actividad";
 
 /** Cada pestaña: su texto, su ruta tras `/p/WEB` y la vista que marca en la barra. */
 const PESTANAS: Record<PestanaProyecto, { texto: string; ruta: string; vista: string }> = {
-	resumen: { texto: "Resumen", ruta: "", vista: "proyecto" },
+	panel: { texto: "Panel", ruta: "", vista: "proyecto" },
 	informes: { texto: "Informes", ruta: "/informes", vista: "proyecto-informes" },
 	actividad: { texto: "Actividad", ruta: "/actividad", vista: "proyecto-actividad" },
 };
 
-const ORDEN_PESTANAS: readonly PestanaProyecto[] = ["resumen", "informes", "actividad"];
+const ORDEN_PESTANAS: readonly PestanaProyecto[] = ["panel", "informes", "actividad"];
 
 /** Lo que dice la página de un proyecto que no tiene descripción. */
-const PROPOSITO_PROYECTO = "Un repositorio, sus terminales y sus tareas.";
+const PROPOSITO_PROYECTO = "Cómo va el proyecto: qué se está trabajando, qué espera por ti y qué falta.";
 
 /**
  * La página de un proyecto con la pestaña que toque: las tres comparten
@@ -447,84 +443,15 @@ export function paginaDeProyecto(
 			acciones: html`<a class="boton" href="/proyectos/${proyecto.id}/editar">Editar</a>${accionNuevaTarea(base)}`,
 			usuario: usuarioActual(c),
 			vista: PESTANAS[activa].vista,
+			// Solo el panel se refresca en vivo: informes y actividad no cambian con cada escritura.
+			revision: activa === "panel" ? revisionActual(deps.db) : undefined,
 			cuerpo: html`${pestanas}${cuerpo}`,
 		}),
 	);
 }
 
-/**
- * El resumen: cómo está configurado, qué se trabaja ahora mismo, qué
- * funcionalidades están en curso y qué espera por el humano. Los recuentos
- * salen de la consulta de la bandeja acotada a este proyecto.
- */
-function resumenProyecto(deps: DependenciasWeb, proyecto: Proyecto): Html {
-	const { db } = deps;
-	const horas = deps.config.FASE_PARADA_HORAS;
-	const base = `/p/${proyecto.clave}`;
-	const terminales = listarTerminales(db).filter((terminal) => terminal.proyectoId === proyecto.id);
-	const enCurso = listarTareas(db, { proyectoId: proyecto.id, estado: "doing" }, horas).filter(
-		(item) => item.tipo === "funcionalidad",
-	);
-	const bandeja = bandejaDelHumano(db, new Date(), horas, proyecto.id);
-	const espera = `${base}/tareas?rapido=espera`;
-	const pendientes: readonly { texto: string; cuantas: number }[] = [
-		{ texto: "Preguntas sin contestar", cuantas: bandeja.bloqueadas.length },
-		{ texto: "Análisis por aprobar", cuantas: bandeja.porAprobar.length },
-		{ texto: "Resultados por revisar", cuantas: bandeja.porRevisar.length },
-	];
-
-	return html`${propiedades([
-		{ nombre: "Repositorio", valor: textoOpcionalLegible(proyecto.repositorio) },
-		{ nombre: "Rama principal", valor: html`<code>${proyecto.ramaPrincipal}</code>` },
-		{ nombre: "Verificación", valor: textoOpcionalLegible(proyecto.verificacion) },
-		{ nombre: "Color", valor: etiqueta(proyecto.color, proyecto.color) },
-		{ nombre: "Creado por", valor: chipDeAlta(altaPor(db, "proyecto", proyecto.id), buscadorDeColor(db)) },
-	])}
-		${franjaEnMarcha(
-			db,
-			horas,
-			terminales,
-			buscadorDeProyecto(db),
-			html`<section class="ahora"><h2>Ahora mismo</h2><p class="silencio">Sin terminales en este proyecto.</p></section>`,
-		)}
-		<section class="informe">
-			<h2>Funcionalidades en curso</h2>
-			${
-				enCurso.length === 0
-					? html`<p class="silencio">Ninguna en curso.</p>`
-					: html`<ul class="hijas">
-						${enCurso.map((item) => {
-							const id = item.codigo;
-							return html`<li>
-								<a class="id-tarea" href="/tareas/${id}">${id}</a> ${item.titulo}
-								${barraProgreso(item.partesCerradas ?? 0, item.partes ?? 0, "")}
-							</li>`;
-						})}
-					</ul>`
-			}
-		</section>
-		<section class="informe">
-			<h2>Espera por ti</h2>
-			<ul class="hijas">
-				${pendientes.map(
-					(cual) => html`<li><a href="${espera}">${cual.texto}</a> <span class="contador">${cual.cuantas}</span></li>`,
-				)}
-			</ul>
-		</section>`;
-}
-
 /** Rutas de proyectos: la lista, el alta, la edición, el borrado y el salto de vista. */
 export function registrarRutasProyectos(app: Hono, deps: DependenciasWeb): void {
-	// La página del proyecto. `exigeProyecto` ya dejó el proyecto en el
-	// contexto, o respondió el 404.
-	app.get("/p/:clave", (c) => {
-		const proyecto = proyectoActual(c);
-		if (proyecto === undefined) {
-			return paginaSinProyecto(c, deps.db, c.req.param("clave"));
-		}
-		return paginaDeProyecto(c, deps, proyecto, "resumen", resumenProyecto(deps, proyecto));
-	});
-
 	app.get("/proyectos", (c) => paginaProyectos(c, deps, null));
 
 	app.get("/proyectos/nuevo", (c) => paginaNuevoProyecto(c, deps, PROYECTO_EN_BLANCO, null));

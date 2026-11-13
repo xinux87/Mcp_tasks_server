@@ -577,38 +577,112 @@ function barraDe(cuerpo: string): string {
 	return cuerpo.slice(cuerpo.indexOf('<aside class="lateral"'), cuerpo.indexOf("</aside>"));
 }
 
-test("la página del proyecto resume su configuración, sus terminales, lo que está en curso y lo que espera", async () => {
-	const montaje = montar();
+/**
+ * Una base que cuenta las lecturas del índice de un proyecto: cada `.all` de
+ * la consulta con la CTE `arbol` filtrada por proyecto. El panel tiene que
+ * hacer una sola, nunca una por funcionalidad.
+ */
+function contandoIndice(db: DatabaseSync): { db: DatabaseSync; lecturas: () => number } {
+	let lecturas = 0;
+	const proxy = new Proxy(db, {
+		get(objetivo, nombre) {
+			const valor = Reflect.get(objetivo, nombre, objetivo);
+			if (nombre !== "prepare" || typeof valor !== "function") {
+				return typeof valor === "function" ? valor.bind(objetivo) : valor;
+			}
+			return (sql: string) => {
+				const sentencia = objetivo.prepare(sql);
+				const delIndice = sql.includes("WITH RECURSIVE arbol") && sql.includes("t.proyecto_id = ?");
+				return new Proxy(sentencia, {
+					get(otra, cual) {
+						const metodo = Reflect.get(otra, cual, otra);
+						if (typeof metodo !== "function") {
+							return metodo;
+						}
+						return (...argumentos: unknown[]) => {
+							if (delIndice && cual === "all") {
+								lecturas += 1;
+							}
+							return metodo.apply(otra, argumentos);
+						};
+					},
+				});
+			};
+		},
+	});
+	return { db: proxy, lecturas: () => lecturas };
+}
+
+test("el panel del proyecto: cifras, ahora mismo, funcionalidades, cerradas, sueltas y propiedades, en una sola lectura", async () => {
+	const base = abrirBaseDeDatos(":memory:");
+	crearUsuario(base, "ana", hashPassword("secreta"));
+	const contado = contandoIndice(base);
+	const { app, cerrar } = crearApp({ db: contado.db, config: CONFIG_PRUEBA });
+	const montaje: Montaje = {
+		db: base,
+		app,
+		cerrar: async () => {
+			await cerrar();
+			base.close();
+		},
+	};
 	try {
 		const cookie = await entrar(montaje);
-		const { db } = montaje;
+		const db = base;
 		const web = crearProyecto(db, {
 			clave: "WEB",
 			nombre: "La web nueva",
 			descripcion: "El **frontal** de clientes.",
 			verificacion: "npm test",
 		});
-		altaTerminal(db, { usuarioId: 1, nombre: "portatil-web", cuenta: "ana@ejemplo.com", proyectoId: web.id });
-		// Una funcionalidad en curso con una parte de dos cerrada.
-		const portal = crearTareaHumana(db, {
-			titulo: "Portal de clientes",
-			descripcion: "d",
+		const { terminal } = altaTerminal(db, {
 			usuarioId: 1,
+			nombre: "portatil-web",
+			cuenta: "ana@ejemplo.com",
 			proyectoId: web.id,
-			tipo: "funcionalidad",
 		});
-		const parte = crearTareaHumana(db, { titulo: "La pantalla", descripcion: "d", usuarioId: 1, padreId: portal.id });
-		crearTareaHumana(db, { titulo: "El servicio", descripcion: "d", usuarioId: 1, padreId: portal.id });
-		db.prepare("UPDATE tareas SET estado = 'finished' WHERE id = ?").run(parte.id);
-		db.prepare("UPDATE tareas SET estado = 'doing' WHERE id = ?").run(portal.id);
-		// Un resultado por revisar en cada proyecto: solo cuenta el suyo.
-		for (const proyectoId of [web.id, 1]) {
-			const hecha = crearTareaHumana(db, { titulo: "Hecha", descripcion: "d", usuarioId: 1, proyectoId });
-			db.prepare("UPDATE tareas SET estado = 'done' WHERE id = ?").run(hecha.id);
-		}
+		const estado = (id: number, cual: string) => db.prepare("UPDATE tareas SET estado = ? WHERE id = ?").run(cual, id);
+		const nueva = (titulo: string, extra: { tipo?: "funcionalidad" | "pregunta"; padreId?: number } = {}) =>
+			crearTareaHumana(db, { titulo, descripcion: "d", usuarioId: 1, proyectoId: web.id, ...extra });
 
+		// Una funcionalidad en curso con una parte en cada uno de tres estados.
+		const portal = nueva("Portal de clientes", { tipo: "funcionalidad" });
+		const pantalla = nueva("La pantalla", { padreId: portal.id });
+		const servicio = nueva("El servicio", { padreId: portal.id });
+		const cerrada = nueva("El diseño", { padreId: portal.id });
+		estado(servicio.id, "doing");
+		estado(cerrada.id, "finished");
+		estado(portal.id, "doing");
+		// El servicio lo trabaja un agente y tiene una hija de trabajo, que no es parte.
+		db.prepare("UPDATE tareas SET en_marcha_terminal_id = ? WHERE id = ?").run(terminal.id, servicio.id);
+		const hijaPortal = nueva("Trozo del servicio", { padreId: servicio.id });
+		db.prepare("UPDATE tareas SET clase = 'hija', estado = 'doing' WHERE id = ?").run(hijaPortal.id);
+		// Una funcionalidad ya cerrada.
+		const vieja = nueva("Alta de comerciales", { tipo: "funcionalidad" });
+		estado(nueva("Formulario de alta", { padreId: vieja.id }).id, "finished");
+		estado(vieja.id, "finished");
+		// Sueltas: una con una pregunta abierta, una hecha, una cerrada y una hija de trabajo.
+		const bloqueada = nueva("Migrar los correos");
+		estado(bloqueada.id, "prepared");
+		db
+			.prepare(
+				`INSERT INTO preguntas (tarea_id, numero, pregunta, por_que_importa, opciones_json, recomendacion, creada, revision)
+				VALUES (?, 1, '¿Cola?', 'Importa', '[]', 'Redis', '2026-01-01T00:00:00Z', 1)`,
+			)
+			.run(bloqueada.id);
+		const hecha = nueva("Botón de exportar");
+		estado(hecha.id, "done");
+		estado(nueva("Suelta ya cerrada").id, "finished");
+		const hija = nueva("Hija suelta", { padreId: hecha.id });
+		db.prepare("UPDATE tareas SET clase = 'hija' WHERE id = ?").run(hija.id);
+		// Lo del otro proyecto no cuenta.
+		const ajena = crearTareaHumana(db, { titulo: "Ajena", descripcion: "d", usuarioId: 1 });
+		estado(ajena.id, "done");
+
+		const antes = contado.lecturas();
 		const respuesta = await pedir(montaje, "/p/WEB", { cookie });
 		assert.equal(respuesta.status, 200);
+		assert.equal(contado.lecturas() - antes, 1, "el panel lee el índice del proyecto una sola vez");
 		assert.equal(recordado(respuesta), "WEB");
 		const cuerpo = await respuesta.text();
 		assert.match(cuerpo, /data-vista="proyecto"/);
@@ -619,18 +693,20 @@ test("la página del proyecto resume su configuración, sus terminales, lo que e
 		assert.match(cuerpo, /<h1>La web nueva<\/h1>/);
 		assert.match(cuerpo, /<div class="proposito"><p>El <strong>frontal<\/strong> de clientes\.<\/p>/);
 		assert.match(cuerpo, new RegExp(`<a class="boton" href="/proyectos/${web.id}/editar">Editar</a>`));
-		assert.match(cuerpo, /<a class="boton principal" href="\/p\/WEB\/tareas\/nueva">Nueva tarea<\/a>/);
 		assert.match(
 			cuerpo,
-			/<nav class="vistas pestanas"[^>]*>\s*<a href="\/p\/WEB" aria-current="page">Resumen<\/a><a href="\/p\/WEB\/informes">Informes<\/a><a href="\/p\/WEB\/actividad">Actividad<\/a>/,
+			/<nav class="vistas pestanas"[^>]*>\s*<a href="\/p\/WEB" aria-current="page">Panel<\/a><a href="\/p\/WEB\/informes">Informes<\/a><a href="\/p\/WEB\/actividad">Actividad<\/a>/,
 		);
+		assert.doesNotMatch(cuerpo, /Resumen/);
 
-		// Resumen, en su orden: propiedades, ahora mismo, en curso, espera por ti.
+		// En su orden: cifras, ahora mismo, funcionalidades, cerradas, sueltas y propiedades.
 		const orden = [
-			"<dt>Repositorio</dt>",
+			'<section class="cifras"',
 			"<h2>Ahora mismo</h2>",
-			"<h2>Funcionalidades en curso</h2>",
-			"<h2>Espera por ti</h2>",
+			"<h2>Funcionalidades</h2>",
+			"<summary>Cerradas (1)</summary>",
+			"<h2>Tareas sueltas</h2>",
+			"<summary>Propiedades del proyecto</summary>",
 		];
 		const posiciones = orden.map((trozo) => cuerpo.indexOf(trozo));
 		assert.ok(
@@ -641,42 +717,107 @@ test("la página del proyecto resume su configuración, sus terminales, lo que e
 			[...posiciones].sort((a, b) => a - b),
 			posiciones,
 		);
+		const trozo = (desde: string, hasta: string) => cuerpo.slice(cuerpo.indexOf(desde), cuerpo.indexOf(hasta));
+		const cifras = trozo('<section class="cifras"', "<h2>Ahora mismo</h2>");
+		const abiertas = trozo("<h2>Funcionalidades</h2>", "<summary>Cerradas (1)</summary>");
+		const cerradas = trozo("<summary>Cerradas (1)</summary>", "<h2>Tareas sueltas</h2>");
+		const sueltas = trozo("<h2>Tareas sueltas</h2>", "<summary>Propiedades del proyecto</summary>");
+
+		// Las cifras. Tareas: tres partes del portal, la del alta y tres sueltas;
+		// ni funcionalidades ni hijas de trabajo. Abiertas, las cuatro no cerradas.
+		const cifra = (rotulo: string) =>
+			new RegExp(
+				`<div class="cifra([^"]*)">\\s*<span class="cifra-valor">((?:(?!cifra-valor).)*?)</span>\\s*<span class="cifra-rotulo">${rotulo}</span>`,
+				"s",
+			).exec(cifras);
+		assert.equal(cifra("Funcionalidades abiertas")?.[2], "1");
+		assert.equal(cifra("Tareas abiertas")?.[2], "4");
+		assert.match(cifras, /<title>1 por definir · 1 preparada · 1 en curso · 1 hecha · 3 cerradas<\/title>/);
+		assert.equal(cifras.match(/<rect /g)?.length, 5);
+		for (const leyenda of ["1 por definir", "1 preparada", "1 en curso", "1 hecha", "3 cerradas"]) {
+			assert.match(cifras, new RegExp(`<span class="punto [^"]*"></span>${leyenda}</span>`), leyenda);
+		}
+		// Espera por ti: la pregunta, nada por aprobar y el resultado por revisar.
+		const espera = cifra("Espera por ti");
+		assert.equal(espera?.[1], " en-turno");
+		assert.equal(espera?.[2], "2");
+		for (const texto of ["Contesta 1", "Aprueba 0", "Revisa 1"]) {
+			assert.match(cifras, new RegExp(`<a href="/p/WEB/tareas\\?rapido=espera">${texto}</a>`), texto);
+		}
+		const agentes = cifra("Agentes trabajando");
+		assert.match(agentes?.[2] ?? "", /class="punto latido[^"]*"[^>]*><\/span>1/);
+
+		assert.match(cuerpo, /<strong>portatil-web<\/strong>/);
+
+		// La funcionalidad en curso: su barra de partes, la cuenta y sus partes dentro.
+		assert.match(abiertas, /<details class="desplegable">\s*<summary>/);
+		assert.match(abiertas, /tareas 1\/3/);
+		const barraPortal = /<svg class="barra-apilada"[^>]*>(.*?)<\/svg>/s.exec(abiertas)?.[1] ?? "";
+		assert.equal(barraPortal.match(/<rect /g)?.length, 3);
+		assert.match(barraPortal, /<title>1 por definir · 1 en curso · 1 cerrada<\/title>/);
+		for (const parte of [pantalla, servicio, cerrada]) {
+			assert.match(abiertas, new RegExp(`<a class="id-tarea" href="/tareas/${parte.codigo}">${parte.codigo}</a>`));
+			assert.match(parte.codigo, /^US/);
+		}
+		assert.doesNotMatch(abiertas, new RegExp(hijaPortal.codigo));
+		assert.match(abiertas, /<span class="trabajando"[^>]*><span class="punto latido[^>]*><\/span>1<\/span>/);
+		assert.doesNotMatch(abiertas, new RegExp(vieja.codigo));
+		assert.match(cerradas, new RegExp(vieja.codigo));
+
+		// Sueltas: ni las cerradas ni las hijas de trabajo ni lo de otro proyecto.
+		assert.match(sueltas, new RegExp(bloqueada.codigo));
+		assert.match(sueltas, new RegExp(hecha.codigo));
+		assert.doesNotMatch(sueltas, /Suelta ya cerrada/);
+		assert.doesNotMatch(sueltas, new RegExp(hija.codigo));
+		assert.doesNotMatch(cuerpo, new RegExp(ajena.codigo));
+
+		// Las propiedades, plegadas al final.
+		assert.match(cuerpo, /<details class="caja propiedades-proyecto">\s*<summary>Propiedades del proyecto<\/summary>/);
 		assert.match(cuerpo, /<dt>Verificación<\/dt>\s*<dd><code>npm test<\/code><\/dd>/);
 		assert.match(cuerpo, /<dt>Rama principal<\/dt>\s*<dd><code>main<\/code><\/dd>/);
-		assert.match(cuerpo, /<dt>Color<\/dt>/);
 		assert.match(cuerpo, /<dt>Creado por<\/dt>/);
-		assert.match(cuerpo, /<strong>portatil-web<\/strong>/);
-		assert.match(cuerpo, new RegExp(`href="/tareas/${portal.codigo}">${portal.codigo}</a> Portal de clientes`));
-		assert.match(
-			cuerpo,
-			/<progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto"> 1\/2<\/span>/,
-		);
-		for (const [texto, cuantas] of [
-			["Preguntas sin contestar", 0],
-			["Análisis por aprobar", 0],
-			["Resultados por revisar", 1],
-		] as const) {
-			assert.match(
-				cuerpo,
-				new RegExp(`<a href="/p/WEB/tareas\\?rapido=espera">${texto}</a> <span class="contador">${cuantas}</span>`),
-				texto,
-			);
-		}
 		// «Proyecto» está activa en la barra; Configuración, cerrada.
 		assert.match(barraDe(cuerpo), /<a class="enlace-nav" href="\/p\/WEB" aria-current="page">Proyecto<\/a>/);
 		assert.match(barraDe(cuerpo), /<details class="bloque">/);
 
-		// El principal, sin descripción ni terminales vivos ni nada en curso.
-		for (const terminal of listarTerminales(db)) {
-			assert.equal(terminal.proyectoId === 1, false, "el montaje no debería tener terminales en el principal");
-		}
+		// El principal: sin descripción ni terminales, con la tarea ajena por revisar.
 		const principal = await (await pedir(montaje, "/p/DEFAULT", { cookie })).text();
-		assert.match(principal, /<p class="proposito">Un repositorio, sus terminales y sus tareas\.<\/p>/);
+		assert.match(
+			principal,
+			/<p class="proposito">Cómo va el proyecto: qué se está trabajando, qué espera por ti y qué falta\.<\/p>/,
+		);
 		assert.match(principal, /Sin terminales en este proyecto\./);
-		assert.match(principal, /Ninguna en curso\./);
+		assert.match(
+			principal,
+			/<div class="cifra">\s*<span class="cifra-valor">0<\/span>\s*<span class="cifra-rotulo">Agentes trabajando/,
+		);
+		assert.match(
+			principal,
+			/<div class="cifra en-turno">\s*<span class="cifra-valor">1<\/span>\s*<span class="cifra-rotulo">Espera por ti/,
+		);
 		assert.doesNotMatch(principal, /portatil-web/);
 
 		assert.equal((await pedir(montaje, "/p/NOEXISTE", { cookie })).status, 404);
+	} finally {
+		await montaje.cerrar();
+	}
+});
+
+test("un proyecto sin tareas enseña «Nada todavía» con el enlace de alta", async () => {
+	const montaje = montar();
+	try {
+		const cookie = await entrar(montaje);
+		crearProyecto(montaje.db, { clave: "VACIO", nombre: "Vacío", descripcion: "" });
+		const cuerpo = await (await pedir(montaje, "/p/VACIO", { cookie })).text();
+		assert.match(cuerpo, /Nada todavía\. <a href="\/p\/VACIO\/tareas\/nueva">Crea la primera tarea<\/a>/);
+		assert.doesNotMatch(cuerpo, /<h2>Funcionalidades<\/h2>/);
+		assert.doesNotMatch(cuerpo, /<svg class="barra-apilada"/);
+		// Sin nada que esperar, la cifra no lleva la señal; sin agentes, no late.
+		assert.match(
+			cuerpo,
+			/<div class="cifra">\s*<span class="cifra-valor">0<\/span>\s*<span class="cifra-rotulo">Espera por ti/,
+		);
+		assert.doesNotMatch(cuerpo, /latido/);
 	} finally {
 		await montaje.cerrar();
 	}

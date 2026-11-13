@@ -32,17 +32,21 @@ function porEdad(items: ItemIndice[], desde: (item: ItemIndice) => string): Item
 	return items.sort((uno, otro) => desde(uno).localeCompare(desde(otro)));
 }
 
-/**
- * Con `proyectoId`, lo de un solo proyecto: es lo que cuenta el resumen de la
- * página del proyecto, con la misma consulta que la bandeja.
- */
+/** Con `proyectoId`, lo de un solo proyecto. */
 export function bandejaDelHumano(
 	db: DatabaseSync,
 	ahora: Date = new Date(),
 	horasParada?: number,
 	proyectoId?: number,
 ): Bandeja {
-	const items = listarTareas(db, { proyectoId }, horasParada);
+	return bandejaDe(listarTareas(db, { proyectoId }, horasParada), ahora);
+}
+
+/**
+ * Los cuatro bloques sacados de un índice ya leído: el panel del proyecto lo
+ * lee una vez para todo y no repite la consulta para contar lo que espera.
+ */
+export function bandejaDe(items: ItemIndice[], ahora: Date = new Date()): Bandeja {
 	const limite = HORAS_BACKLOG * 60 * 60 * 1000;
 	return {
 		// En una bloqueada lo que espera es la pregunta, no la columna.

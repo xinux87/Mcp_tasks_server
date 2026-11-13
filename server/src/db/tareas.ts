@@ -147,6 +147,8 @@ export type ItemIndice = {
 	/** Código del padre, para enlazarlo sin volver a consultarlo. */
 	padreCodigo: string | null;
 	marcas: Marca[];
+	/** Cuántas preguntas suyas siguen sin respuesta: el panel las suma por funcionalidad. */
+	preguntasAbiertas: number;
 	/** Cuándo entró en su estado actual: la edad en columna sale de aquí. */
 	estadoDesde: string;
 	/**
@@ -288,6 +290,7 @@ export function comoTarea(fila: Record<string, unknown>): Tarea {
 /** Índice y novedades traen los nombres de terminal y las preguntas abiertas por JOIN. */
 function comoItemIndice(fila: Record<string, unknown>, horasParada: number): ItemIndice {
 	const tarea = comoTarea(fila);
+	const preguntasAbiertas = entero(fila, "preguntas_abiertas");
 	const descompuesta = booleano(fila, "descompuesta");
 	const tokensConHijas = entero(fila, "tokens_con_hijas");
 	return {
@@ -302,12 +305,13 @@ function comoItemIndice(fila: Record<string, unknown>, horasParada: number): Ite
 		padreCodigo: textoOpcional(fila, "padre_codigo"),
 		marcas: marcasDe(
 			tarea,
-			entero(fila, "preguntas_abiertas"),
+			preguntasAbiertas,
 			entero(fila, "dependencias_pendientes"),
 			tokensConHijas,
 			horasParada,
 			descompuesta,
 		),
+		preguntasAbiertas,
 		estadoDesde: tarea.estadoDesde,
 		bloqueadaDesde: textoOpcional(fila, "bloqueada_desde"),
 		enMarchaDesde: tarea.enMarchaDesde,
@@ -898,7 +902,19 @@ export type FilaNueva = {
 	creadaPorTerminalId: number | null;
 };
 
+/**
+ * El organigrama es piramidal: proyecto, funcionalidades, tareas. Una
+ * funcionalidad cuelga siempre del proyecto, nunca de otra tarea. Lo comprueban
+ * el alta (`insertarTarea`, el único camino) y la edición en `backlog`.
+ */
+export function exigirFuncionalidadSinPadre(tipo: TipoTarea, padreId: number | null): void {
+	if (tipo === "funcionalidad" && padreId !== null) {
+		throw new ErrorDeRegla("funcionalidad_con_padre", "Una funcionalidad cuelga del proyecto, no de otra tarea.");
+	}
+}
+
 export function insertarTarea(conexion: DatabaseSync, revision: number, nueva: FilaNueva): Tarea {
+	exigirFuncionalidadSinPadre(nueva.tipo, nueva.padreId);
 	const marca = ahora();
 	const cambios = sentencia(conexion, INSERTAR_TAREA).run(
 		siguienteCodigo(conexion, nueva.tipo),

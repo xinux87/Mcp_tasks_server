@@ -14,6 +14,7 @@ import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
 import { abreviar, edad, faseLegible, horasDesde, SIN_DATO } from "./formatos.ts";
 import type { Html } from "./plantilla.ts";
 import {
+	cuentaDeEstado,
 	DUENO_COLUMNA,
 	FRASE_DUENO_COLUMNA,
 	NOMBRE_ESTADO,
@@ -588,6 +589,42 @@ export function barraProgreso(cerradas: number, total: number, rotulo = PROGRESO
 		return html``;
 	}
 	return html`<progress class="progreso" value="${cerradas}" max="${total}"></progress><span class="progreso-texto">${rotulo} ${cerradas}/${total}</span>`;
+}
+
+/**
+ * La barra apilada: cuántas hay en cada estado, en el orden del ciclo y con el
+ * color de cada estado. Es un `<svg>` con un `<rect>` por tramo; los anchos van
+ * en el `viewBox` (que se estira al ancho de la caja) y el color en la clase,
+ * así que no hay estilo en línea. El hueco entre tramos es el trazo del color
+ * de la superficie, que no escala: 2 px a cualquier ancho. Los tramos se salen
+ * por arriba y por abajo para que ese trazo solo se vea entre ellos.
+ *
+ * Amarillo y verde se confunden con protanopia: la barra nunca se lee sola.
+ * Lleva siempre las cifras en su `<title>` y, con `conLeyenda`, también al
+ * lado, con su punto. Sin nada que contar no se pinta.
+ */
+export function barraApilada(estados: readonly Estado[], conLeyenda = false): Html {
+	const tramos = PASOS.map((estado) => ({ estado, cuantas: estados.filter((cual) => cual === estado).length })).filter(
+		(tramo) => tramo.cuantas > 0,
+	);
+	if (tramos.length === 0) {
+		return html``;
+	}
+	let x = 0;
+	const rects = tramos.map(({ estado, cuantas }) => {
+		const rect = html`<rect class="estado-${estado} color-${COLOR_ESTADO[estado]}" x="${x}" y="-1" width="${cuantas}" height="3"></rect>`;
+		x += cuantas;
+		return rect;
+	});
+	const cifras = tramos.map(({ estado, cuantas }) => cuentaDeEstado(estado, cuantas));
+	const barra = html`<svg class="barra-apilada" viewBox="0 0 ${x} 1" preserveAspectRatio="none" role="img"><title>${cifras.join(" · ")}</title>${rects}</svg>`;
+	if (!conLeyenda) {
+		return barra;
+	}
+	return html`${barra}<span class="leyenda-barra">${tramos.map(
+		({ estado, cuantas }) =>
+			html`<span><span class="punto estado-${estado} color-${COLOR_ESTADO[estado]}"></span>${cuentaDeEstado(estado, cuantas)}</span>`,
+	)}</span>`;
 }
 
 /**

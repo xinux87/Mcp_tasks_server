@@ -109,3 +109,8 @@ export const PROGRESO_HIJAS = "subtareas";
 
 /** El campo del formulario que cuelga una tarea de otra. */
 export const SUBTAREA_DE = "Subtarea de";
+
+/** Una cifra con su estado, en minúscula: «1 preparada», «4 hechas». */
+export function cuentaDeEstado(estado: Estado, cuantas: number): string {
+	return `${cuantas} ${(cuantas === 1 ? NOMBRE_ESTADO : NOMBRE_COLUMNA)[estado].toLowerCase()}`;
+}
