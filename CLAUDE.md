@@ -19,8 +19,8 @@ Dos modelos, dos papeles: el mismo reparto que implementa la herramienta.
 
 | Papel | Modelo | Hace | No hace |
 |---|---|---|---|
-| **Definición** | Claude Fable 5.1 (`claude-fable-5-1`), la sesión principal | Mantiene este archivo, convierte cada bloque de trabajo en un encargo cerrado, revisa, ejecuta la verificación e integra. Resuelve las dudas técnicas y lleva al humano las de negocio. | Código de producción, salvo correcciones puntuales al revisar. |
-| **Ejecución** | Claude Opus 5 (`claude-opus-5`), un subagente por encargo (Agent con `model: "opus"`) | Código y tests del encargo, ejecuta la batería y devuelve un informe: qué hizo, archivos tocados, verificación y dudas. | Cambiar definiciones de este archivo: si una no le cuadra, lo reporta. |
+| **Definición** | Claude Fable, la sesión principal | Mantiene este archivo, convierte cada bloque de trabajo en un encargo cerrado, revisa, ejecuta la verificación e integra. Resuelve las dudas técnicas y lleva al humano las de negocio. | Código de producción, salvo correcciones puntuales al revisar. |
+| **Ejecución** | Claude Opus, un subagente por encargo (Agent con `model: "opus"`, que apunta al Opus vigente) | Código y tests del encargo, ejecuta la batería y devuelve un informe: qué hizo, archivos tocados, verificación y dudas. | Cambiar definiciones de este archivo: si una no le cuadra, lo reporta. |
 
 **Un encargo lleva**, en este orden: objetivo en una frase; secciones de este archivo que leer; archivos que crea o toca y cuáles no; criterios de aceptación verificables, uno por línea; comando de verificación.
 
@@ -159,7 +159,7 @@ Del humano, desde la web o el CLI, en cualquier estado y con confirmación (no h
 
 ## Proyectos
 
-Un proyecto es un repositorio que se trabaja desde una o varias carpetas, cada una con su terminal. Sin él, una tarea `sin terminal` la tomaba el primer terminal que la viera, fuera o no de su repositorio.
+Un proyecto es un repositorio que se trabaja desde una o varias carpetas, cada una con su terminal. Así una tarea `sin terminal` solo la toma un terminal de su repositorio.
 
 - **Campos** (`proyectos`): `clave` (dos a ocho mayúsculas y cifras, empieza por letra, fija; `clave_invalida`, `clave_repetida`), `nombre`, `descripcion`, `repositorio` (URL del remote, opcional; se compara sin espacios, sin `.git` ni barra final), `rama_principal` (`main`), `verificacion` (comando de la parte de integración, opcional), `color` (de los ocho de usuario; sin elegir, el menos usado). El proyecto 1 es `DEFAULT` «Default» y recoge todo lo anterior.
 - **Un terminal pertenece a un solo proyecto**, elegido en el alta y fijo: una máquina con tres repositorios tiene tres terminales.
@@ -348,7 +348,7 @@ El nombre visible es **TABO Tasks** (el paquete, la imagen y el plugin conservan
 
 ### Aspecto
 
-- Estilo en `src/web/estilos.ts`, componentes en `componentes.ts`, esqueleto en `plantilla.ts`, icono en `icono.ts`. **Ningún estilo en línea en las plantillas.** La referencia visual es **Beautiful UI** (beautifului.dev, MIT, componentes para interfaces de agentes): se adopta su sistema (tokens en tres escalas, densidad, radios, sombras, movimiento y patrones de componente) y se conserva la identidad TABO (negros, naranja de turno, verde de acento, icono). No se copia su CSS ni su marcado: se transcribe a tokens y clases propios. Lo que la referencia no cubre se decide aquí. Decidido el 12 de noviembre de 2026; sustituye al lienzo «Puesto de mando» de Claude Design.
+- Estilo en `src/web/estilos.ts`, componentes en `componentes.ts`, esqueleto en `plantilla.ts`, icono en `icono.ts`. **Ningún estilo en línea en las plantillas.** La referencia visual es **Beautiful UI** (beautifului.dev, MIT, componentes para interfaces de agentes): se adopta su sistema (tokens en tres escalas, densidad, radios, sombras, movimiento y patrones de componente) y se conserva la identidad TABO (negros, naranja de turno, verde de acento, icono). No se copia su CSS ni su marcado: se transcribe a tokens y clases propios. Lo que la referencia no cubre se decide aquí.
 - **Tokens en tres escalas**, definidos en `:root` y en los dos bloques oscuros: superficies (página, lateral, tarjeta, hueco para campos y código, y dos niveles de hover), tinta (principal, suave, terciaria) y líneas (normal, fuerte, suave); cada color de señal con su tinte (`--acento`/`--acento-tinte`, `--turno`/`--turno-fondo`, `--peligro`/`--peligro-tinte`). Radios: chip 6 px, control 8 px, tarjeta 10 px, ventana 14 px, píldora 999. **Sombras en vez de bordes**: `--sombra-filete` (anillo de 1 px del color de línea) en cajas y campos, `--sombra-tarjeta` (anillo más sombra suave en capas) en tarjetas, `--sombra-boton` y `--sombra-flotante` (menús y panel móvil). Los bordes de 1 px quedan para separar filas y secciones.
 - **Tipografía**: pila del sistema con Inter delante si está instalada (no se sirve ninguna fuente), 14 px de base, `letter-spacing: -0.01em`, escala 13 (secundario), 12,5 (meta), 12 (pie) y 11,5 (píldoras); rótulos en 500 o 600, nunca en mayúsculas; cifras con `tabular-nums`, ids y contadores en monoespaciada. Densidad: filas de navegación de 32 px, filas de tarea de 44 px, controles de 32 px, píldoras de 22 px.
 - **Movimiento**: `--suave: cubic-bezier(.23, 1, .32, 1)`, de 100 a 200 ms, en hover, foco y al plegar y desplegar (`grid-template-rows` de `0fr` a `1fr`); nada se anima con JavaScript; `prefers-reduced-motion` lo apaga.
@@ -378,7 +378,7 @@ El nombre visible es **TABO Tasks** (el paquete, la imagen y el plugin conservan
 
 ### Refresco en vivo
 
-`GET /eventos` emite la revisión por SSE consultando la base cada segundo. Lista, tablero, ficha y bandeja llevan `data-revision` y se recargan con GET (nunca `reload()`, que reenviaría un POST) cuando sube. Si hay texto sin enviar en un campo, no recargan: avisan «Hay cambios en esta tarea» y recargan al vaciarse o enviarse. **Solo la pestaña visible mantiene la conexión**: HTTP/1.1 limita a seis conexiones por servidor y cada pestaña ocupaba una.
+`GET /eventos` emite la revisión por SSE consultando la base cada segundo. Lista, tablero, ficha y bandeja llevan `data-revision` y se recargan con GET (nunca `reload()`, que reenviaría un POST) cuando sube. Si hay texto sin enviar en un campo, no recargan: avisan «Hay cambios en esta tarea» y recargan al vaciarse o enviarse. **Solo la pestaña visible mantiene la conexión**: HTTP/1.1 limita a seis conexiones por servidor y cada pestaña abierta ocuparía una.
 
 ### Avisos fuera de la web
 
