@@ -20,7 +20,7 @@ import {
 	type Tarea,
 } from "../../db/tareas.ts";
 import { ErrorDeRegla, esErrorDeRegla } from "../../errores.ts";
-import { formatearId, idONull } from "../../md/ids.ts";
+import { idONull } from "../../md/ids.ts";
 import {
 	accionNuevaTarea,
 	barraProgreso,
@@ -321,12 +321,12 @@ function vecindadDe(db: DatabaseSync, items: ItemIndice[], conFuncionalidad: boo
 	};
 }
 
-/** `depende de T-0043`, con las que la tarea espera. Vacío si no depende de nada. */
+/** `depende de US00043`, con las que la tarea espera. Vacío si no depende de nada. */
 function dependenciasLegibles(dependeDe: string[] | undefined): Html {
 	if (dependeDe === undefined || dependeDe.length === 0) {
 		return html``;
 	}
-	return html`<p class="pequeno silencio">depende de ${dependeDe.map(formatearId).join(", ")}</p>`;
+	return html`<p class="pequeno silencio">depende de ${dependeDe.join(", ")}</p>`;
 }
 
 /**
@@ -346,7 +346,7 @@ export function progresoDe(item: ItemIndice): Html {
  * el id para la ruta y el estado para saber si cambió de columna.
  */
 function tarjeta(item: ItemIndice, vecindad: Vecindad): Html {
-	const id = formatearId(item.codigo);
+	const id = item.codigo;
 	const funcionalidad = item.padreId === null ? undefined : vecindad.funcionalidades.get(item.padreId);
 	const proyecto = vecindad.proyectos?.get(item.proyectoId);
 	const tokens = tokensConPresupuesto(item.tokensConHijas, item.presupuesto);
@@ -512,7 +512,7 @@ export function franjasDe(db: DatabaseSync, items: ItemIndice[]): Franja[] {
  * tarjeta entre hermanas. «Sueltas» no lo lleva.
  */
 export function seccionFranja(cual: ItemIndice | null, proyectos: Map<number, Proyecto> | null, dentro: Html): Html {
-	const id = cual === null ? "" : formatearId(cual.codigo);
+	const id = cual === null ? "" : cual.codigo;
 	const proyecto = cual === null ? undefined : proyectos?.get(cual.proyectoId);
 	const cabecera =
 		cual === null
@@ -646,7 +646,7 @@ function ambitoDe(db: DatabaseSync, tarea: Tarea, datos: Orden): AmbitoDeColumna
 		if (padreId === null || padre?.codigo !== idONull(datos.padre)) {
 			throw new ErrorDeRegla(
 				"padre_no_coincide",
-				`La tarea ${formatearId(tarea.codigo)} no es parte de ${datos.padre}: ese tablero no puede colocarla.`,
+				`La tarea ${tarea.codigo} no es parte de ${datos.padre}: ese tablero no puede colocarla.`,
 			);
 		}
 		return { padreId };
@@ -658,7 +658,7 @@ function ambitoDe(db: DatabaseSync, tarea: Tarea, datos: Orden): AmbitoDeColumna
 	if (proyecto === undefined || proyecto.id !== tarea.proyectoId) {
 		throw new ErrorDeRegla(
 			"otro_proyecto",
-			`La tarea ${formatearId(tarea.codigo)} no es del proyecto ${datos.proyecto}: ese tablero no puede colocarla.`,
+			`La tarea ${tarea.codigo} no es del proyecto ${datos.proyecto}: ese tablero no puede colocarla.`,
 		);
 	}
 	return { proyectoId: proyecto.id };
@@ -710,7 +710,7 @@ export function registrarRutasKanban(app: Hono, deps: DependenciasWeb): void {
 		const tareaId = idDeRuta(deps.db, c);
 		if (tareaId === null) {
 			return c.json(
-				{ codigo: "id_invalido", mensaje: "Eso no es ninguna tarea; el identificador tiene la forma T-K7M3XQ." },
+				{ codigo: "id_invalido", mensaje: "Eso no es ninguna tarea; el identificador tiene la forma US0002A." },
 				404,
 			);
 		}

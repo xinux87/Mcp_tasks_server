@@ -17,7 +17,6 @@ import {
 	tareasParaTerminalDesde,
 	tomarTarea,
 } from "../src/db/tareas.ts";
-import { formatearId } from "../src/md/ids.ts";
 import { lineaIndice } from "../src/md/indice.ts";
 import { codigoDe, montar } from "./comun.ts";
 
@@ -135,10 +134,7 @@ test("una funcionalidad con rama: se descompone, se aprueba, se ejecuta parte a 
 		assert.deepEqual(marcasDe(descompuesta, 0), ["análisis listo"]);
 		assert.match(lineaIndice(itemIndiceDe(banco.db, evolutivo.id)), / · prepared · funcionalidad 0\/3 · /);
 		assert.doesNotMatch(lineaIndice(itemIndiceDe(banco.db, evolutivo.id)), /ejecucion:/);
-		assert.match(
-			lineaIndice(itemIndiceDe(banco.db, datos.id)),
-			new RegExp(` · padre: ${formatearId(evolutivo.codigo)}$`),
-		);
+		assert.match(lineaIndice(itemIndiceDe(banco.db, datos.id)), new RegExp(` · padre: ${evolutivo.codigo}$`));
 
 		// Una funcionalidad no se ejecuta: se ejecutan sus partes.
 		assert.equal(
@@ -197,10 +193,10 @@ test("una funcionalidad con rama: se descompone, se aprueba, se ejecuta parte a 
 		assert.equal(
 			resultado?.texto,
 			[
-				`- ${formatearId(datos.codigo)} · Sacar los datos del listado · Commit: aaaaaaa`,
-				`- ${formatearId(boton.codigo)} · Poner el botón de descarga · Commit: bbbbbbb`,
-				`- ${formatearId(aviso.codigo)} · Avisar cuando la descarga falle · sin commit`,
-				`- ${formatearId(integrar.codigo)} · Integrar la rama \`evolutivo/csv\` en la principal · Commit: eeeeeee`,
+				`- ${datos.codigo} · Sacar los datos del listado · Commit: aaaaaaa`,
+				`- ${boton.codigo} · Poner el botón de descarga · Commit: bbbbbbb`,
+				`- ${aviso.codigo} · Avisar cuando la descarga falle · sin commit`,
+				`- ${integrar.codigo} · Integrar la rama \`evolutivo/csv\` en la principal · Commit: eeeeeee`,
 			].join("\n"),
 		);
 
@@ -259,10 +255,7 @@ test("sin rama no se crea la parte de integrar, y las hijas de trabajo de una pa
 
 		const cerrada = leerTarea(banco.db, evolutivo.id);
 		assert.equal(cerrada?.tarea.estado, "done");
-		assert.equal(
-			cerrada?.comentarios.at(-1)?.texto,
-			`- ${formatearId(unica.codigo)} · Sacar los datos del listado · Commit: aaaaaaa`,
-		);
+		assert.equal(cerrada?.comentarios.at(-1)?.texto, `- ${unica.codigo} · Sacar los datos del listado · Commit: aaaaaaa`);
 	} finally {
 		banco.cerrar();
 	}
@@ -297,10 +290,7 @@ test("borrar la última parte pendiente cierra la funcionalidad", () => {
 		const cerrada = leerTarea(banco.db, evolutivo.id);
 		assert.equal(cerrada?.tarea.estado, "done");
 		assert.deepEqual(partesDe(banco.db, evolutivo.id), { total: 1, cerradas: 1 });
-		assert.equal(
-			cerrada?.comentarios.at(-1)?.texto,
-			`- ${formatearId(hecha.codigo)} · La que sí se hace · Commit: bbbbbbb`,
-		);
+		assert.equal(cerrada?.comentarios.at(-1)?.texto, `- ${hecha.codigo} · La que sí se hace · Commit: bbbbbbb`);
 	} finally {
 		banco.cerrar();
 	}

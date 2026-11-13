@@ -823,3 +823,58 @@ test("la migración de la clase marca partes las hijas de una funcionalidad e hi
 		rmSync(carpeta, { recursive: true, force: true });
 	}
 });
+
+test("la migración de los códigos renumera por orden de alta en FE y US y siembra los contadores", () => {
+	const carpeta = mkdtempSync(join(tmpdir(), "mcp-tareas-migraciones-"));
+	const db = new DatabaseSync(":memory:");
+	try {
+		db.exec("PRAGMA foreign_keys = ON");
+		const migraciones = leerMigraciones();
+		const cual = migraciones.findIndex((migracion) => migracion.nombre.endsWith("-codigos.sql"));
+		assert.ok(cual > 0, "no está la migración de los códigos");
+
+		// Códigos de antes de los dos tipos, numéricos y al azar, con tipos
+		// mezclados, ids no correlativos y una parte colgando de su funcionalidad.
+		hasta(carpeta, migraciones, cual);
+		aplicarMigraciones(db, carpeta);
+		const filas: [number, string, string, number | null][] = [
+			[3, "0003", "tarea", null],
+			[5, "K7M3XQ", "funcionalidad", null],
+			[8, "0008", "pregunta", null],
+			[9, "P2Q4RS", "tarea", 5],
+			[12, "Z9Y8XW", "funcionalidad", null],
+			[40, "0040", "tarea", null],
+		];
+		for (const [id, codigo, tipo, padre] of filas) {
+			db
+				.prepare(
+					`INSERT INTO tareas (id, codigo, titulo, descripcion, tipo, estado, orden, padre_id,
+						creada, actualizada, estado_desde, revision)
+					VALUES (?, ?, 'De antes', 'd', ?, 'backlog', ?, ?, ?, ?, ?, 3)`,
+				)
+				.run(id, codigo, tipo, id, padre, FECHA, FECHA, FECHA);
+		}
+
+		hasta(carpeta, migraciones, cual + 1);
+		assert.equal(aplicarMigraciones(db, carpeta), cual + 1);
+
+		assert.deepEqual(
+			db
+				.prepare("SELECT id, codigo FROM tareas ORDER BY id")
+				.all()
+				.map((fila) => `${String(fila.id)} ${String(fila.codigo)}`),
+			["3 US00001", "5 FE00001", "8 US00002", "9 US00003", "12 FE00002", "40 US00004"],
+		);
+		assert.deepEqual(
+			db
+				.prepare("SELECT prefijo, ultimo FROM contadores ORDER BY prefijo")
+				.all()
+				.map((fila) => `${String(fila.prefijo)} ${String(fila.ultimo)}`),
+			["FE 2", "US 4"],
+		);
+		assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+	} finally {
+		db.close();
+		rmSync(carpeta, { recursive: true, force: true });
+	}
+});

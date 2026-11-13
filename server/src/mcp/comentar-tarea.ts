@@ -78,7 +78,7 @@ export function registrarHerramientaComentarTarea(
 			description:
 				"Añade un comentario al hilo de la tarea: «analisis» cierra el análisis, «comentario» para contar por dónde vas o contestar al humano, y «resultado» dice qué se construyó y con qué commit, y pasa la tarea a done. Devuelve la línea de índice de la tarea tal como queda.",
 			inputSchema: z.object({
-				id: z.string().describe("Identificador de la tarea, con la forma T-K7M3XQ."),
+				id: z.string().describe("Identificador de la tarea, con la forma US0002A (también en minúsculas)."),
 				tipo: z.enum(["analisis", "comentario", "resultado"]).describe("Qué clase de comentario se escribe."),
 				texto: z
 					.string()

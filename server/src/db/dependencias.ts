@@ -1,6 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
-import { formatearId } from "../md/ids.ts";
 import { type Actor, registrarActividad } from "./actividad.ts";
 import { ahora, entero, escribirContenido, sentencia, texto } from "./base.ts";
 
@@ -118,7 +117,7 @@ export function escribirDependencias(conexion: DatabaseSync, tareaId: number, de
 		if (suya.proyectoId !== propia.proyectoId) {
 			throw new ErrorDeRegla(
 				"dependencia_otro_proyecto",
-				`La tarea ${formatearId(suya.codigo)} es de otro proyecto: una dependencia entre repositorios es una integración y merece su propia tarea.`,
+				`La tarea ${suya.codigo} es de otro proyecto: una dependencia entre repositorios es una integración y merece su propia tarea.`,
 			);
 		}
 		codigos.push(suya.codigo);
@@ -171,12 +170,12 @@ function exigirSinCiclos(conexion: DatabaseSync, tareaId: number): void {
 	}
 }
 
-/** `dependencias: T-K7M3XQ, T-0043`, tal como se cuenta en el rastro de actividad. */
+/** `dependencias: US0002A, US00043`, tal como se cuenta en el rastro de actividad. */
 export function detalleDependencias(dependeDe: readonly string[]): string {
 	if (dependeDe.length === 0) {
 		return "dependencias: ninguna";
 	}
-	return `dependencias: ${dependeDe.map(formatearId).join(", ")}`;
+	return `dependencias: ${dependeDe.join(", ")}`;
 }
 
 /** Estado y título de la tarea: lo justo para la comprobación y el rastro. */

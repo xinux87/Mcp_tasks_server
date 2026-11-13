@@ -4,8 +4,10 @@ import { actividadDe } from "../src/db/actividad.ts";
 import { borrarTerminal } from "../src/db/admin.ts";
 import { revisionActual } from "../src/db/consultas.ts";
 import { registrarConsumo } from "../src/db/consumo.ts";
+import { editarTareaBacklog } from "../src/db/edicion.ts";
 import { crearParte } from "../src/db/funcionalidades.ts";
 import { comentarAnalisis, comentarioDeAgente, comentarResultado, preguntar } from "../src/db/hilo.ts";
+import { crearProyecto } from "../src/db/proyectos.ts";
 import {
 	aprobarEjecucion,
 	borrarTarea,
@@ -735,6 +737,70 @@ test("un id de tarea no se reutiliza nunca, ni después de borrar la última", (
 		// citan, y otra tarea con ese número cambiaría de dueño lo ya escrito.
 		const tercera = crearTareaHumana(banco.db, { titulo: "La siguiente", descripcion: "d", usuarioId: banco.ana });
 		assert.ok(tercera.id > segunda.id, `el id ${tercera.id} reutiliza el de la tarea borrada`);
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("el código sale de un contador global por prefijo: FE para funcionalidades, US para lo demás", () => {
+	const banco = montar();
+	try {
+		const web = crearProyecto(banco.db, { clave: "WEB", nombre: "La web" }).id;
+		const nueva = (tipo: "tarea" | "pregunta" | "funcionalidad", proyectoId?: number): Tarea =>
+			crearTareaHumana(banco.db, { titulo: tipo, descripcion: "d", usuarioId: banco.ana, tipo, proyectoId });
+		assert.equal(nueva("funcionalidad").codigo, "FE00001");
+		assert.equal(nueva("tarea").codigo, "US00001");
+		// Los dos contadores son independientes y no van por proyecto.
+		assert.equal(nueva("funcionalidad", web).codigo, "FE00002");
+		const pregunta = nueva("pregunta", web);
+		assert.equal(pregunta.codigo, "US00002");
+
+		// Un número borrado queda quemado.
+		borrarTarea(banco.db, { tareaId: pregunta.id, actor: { usuarioId: banco.ana } });
+		assert.equal(nueva("tarea").codigo, "US00003");
+
+		// Las cifras son hexadecimales.
+		banco.db.prepare("UPDATE contadores SET ultimo = 41 WHERE prefijo = 'US'").run();
+		assert.equal(nueva("tarea").codigo, "US0002A");
+	} finally {
+		banco.cerrar();
+	}
+});
+
+test("en backlog, pasar entre funcionalidad y lo demás cambia de contador; entre tarea y pregunta no", () => {
+	const banco = montar();
+	try {
+		crearTareaHumana(banco.db, { titulo: "f", descripcion: "d", usuarioId: banco.ana, tipo: "funcionalidad" });
+		for (const titulo of ["a", "b"]) {
+			crearTareaHumana(banco.db, { titulo, descripcion: "d", usuarioId: banco.ana, tipo: "tarea" });
+		}
+		const tarea = crearTareaHumana(banco.db, { titulo: "c", descripcion: "d", usuarioId: banco.ana, tipo: "tarea" });
+		assert.equal(tarea.codigo, "US00003");
+		const edicion = {
+			tareaId: tarea.id,
+			usuarioId: banco.ana,
+			titulo: "c",
+			descripcion: "d",
+			autoejecucion: true,
+			analisisModelo: null,
+			analisisTerminalId: null,
+			ejecucionModelo: null,
+			ejecucionTerminalId: null,
+		};
+		const ultimaEdicion = (): string | undefined =>
+			actividadDe(banco.db, "tarea", tarea.id)
+				.filter((fila) => fila.accion === "editar_tarea")
+				.at(-1)?.detalle;
+
+		assert.equal(editarTareaBacklog(banco.db, { ...edicion, tipo: "pregunta" }).codigo, "US00003");
+		assert.equal(ultimaEdicion(), "tipo: tarea → pregunta");
+
+		assert.equal(editarTareaBacklog(banco.db, { ...edicion, tipo: "funcionalidad" }).codigo, "FE00002");
+		assert.equal(ultimaEdicion(), "tipo: pregunta → funcionalidad; codigo: US00003 → FE00002");
+
+		// De vuelta no recupera su número: recibe el siguiente.
+		assert.equal(editarTareaBacklog(banco.db, { ...edicion, tipo: "tarea" }).codigo, "US00004");
+		assert.equal(crearTareaHumana(banco.db, { titulo: "e", descripcion: "d", usuarioId: banco.ana }).codigo, "US00005");
 	} finally {
 		banco.cerrar();
 	}

@@ -19,7 +19,6 @@ import {
 	type Tarea,
 	tomarTarea,
 } from "../src/db/tareas.ts";
-import { formatearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 type Montaje = {
@@ -78,7 +77,7 @@ async function entrar(montaje: Montaje): Promise<string> {
 }
 
 async function ficha(montaje: Montaje, cookie: string, tarea: Tarea): Promise<string> {
-	return await (await pedir(montaje, `/tareas/${formatearId(tarea.codigo)}`, cookie)).text();
+	return await (await pedir(montaje, `/tareas/${tarea.codigo}`, cookie)).text();
 }
 
 /** Una tarea normal, con las dos fases en el terminal de la prueba. */
@@ -96,14 +95,14 @@ function tarea(montaje: Montaje, titulo: string, tipo: "tarea" | "pregunta" | "f
 }
 
 const FORMULARIO_SUBTAREA =
-	/<form class="anadir-subtarea" method="post" action="\/tareas\/T-[0-9A-Z]+\/subtareas">\s*<input type="text" name="titulo" required/;
+	/<form class="anadir-subtarea" method="post" action="\/tareas\/US[0-9A-F]+\/subtareas">\s*<input type="text" name="titulo" required/;
 
 test("«Añadir subtarea» cuelga una parte con solo el título y la ficha pasa a ser el tablero de sus subtareas", async () => {
 	const montaje = montar();
 	try {
 		const cookie = await entrar(montaje);
 		const madre = tarea(montaje, "Rehacer la exportación");
-		const id = formatearId(madre.codigo);
+		const id = madre.codigo;
 
 		const antes = await ficha(montaje, cookie, madre);
 		assert.match(antes, /<h2>Subtareas<\/h2>\s*<p class="silencio">Ninguna\.<\/p>\s*<form class="anadir-subtarea"/);
@@ -163,7 +162,7 @@ test("no se añaden subtareas a una pregunta, a una tarea cerrada ni a una que u
 		const cookie = await entrar(montaje);
 		const pregunta = tarea(montaje, "¿Cuánto cuesta?", "pregunta");
 		assert.doesNotMatch(await ficha(montaje, cookie, pregunta), FORMULARIO_SUBTAREA);
-		const contraPregunta = await pedir(montaje, `/tareas/${formatearId(pregunta.codigo)}/subtareas`, cookie, {
+		const contraPregunta = await pedir(montaje, `/tareas/${pregunta.codigo}/subtareas`, cookie, {
 			titulo: "X",
 		});
 		assert.equal(contraPregunta.status, 422);
@@ -176,14 +175,14 @@ test("no se añaden subtareas a una pregunta, a una tarea cerrada ni a una que u
 		comentarAnalisis(montaje.db, { tareaId: enCurso.id, terminalId, texto: "plan" });
 		tomarTarea(montaje.db, { tareaId: enCurso.id, fase: "ejecucion", terminalId });
 		assert.match(await ficha(montaje, cookie, enCurso), FORMULARIO_SUBTAREA);
-		const ocupada = await pedir(montaje, `/tareas/${formatearId(enCurso.codigo)}/subtareas`, cookie, { titulo: "X" });
+		const ocupada = await pedir(montaje, `/tareas/${enCurso.codigo}/subtareas`, cookie, { titulo: "X" });
 		assert.equal(ocupada.status, 422);
 		assert.match(await ocupada.text(), /Un agente está trabajando esta tarea ahora mismo/);
 
 		comentarResultado(montaje.db, { tareaId: enCurso.id, terminalId, texto: "Hecho." });
 		moverTareaHumano(montaje.db, { tareaId: enCurso.id, usuarioId: 1, estado: "finished" });
 		assert.doesNotMatch(await ficha(montaje, cookie, enCurso), FORMULARIO_SUBTAREA);
-		const cerrada = await pedir(montaje, `/tareas/${formatearId(enCurso.codigo)}/subtareas`, cookie, { titulo: "X" });
+		const cerrada = await pedir(montaje, `/tareas/${enCurso.codigo}/subtareas`, cookie, { titulo: "X" });
 		assert.equal(cerrada.status, 422);
 		assert.equal(leerTarea(montaje.db, enCurso.id)?.hijas.length, 0);
 		assert.equal(leerTarea(montaje.db, pregunta.id)?.hijas.length, 0);
@@ -226,7 +225,7 @@ test("una tarea descompuesta se aprueba como una funcionalidad, en la ficha y en
 		);
 		assert.match(
 			olas,
-			/<li class="parte-ola"><div class="fila-tarea">\s*<span class="estado-fila"><span class="punto estado-backlog[\s\S]*?<a class="id-tarea" href="\/tareas\/T-[0-9A-Z]+">T-[0-9A-Z]+<\/a>\s*<span class="titulo">Sacar los datos<\/span>/,
+			/<li class="parte-ola"><div class="fila-tarea">\s*<span class="estado-fila"><span class="punto estado-backlog[\s\S]*?<a class="id-tarea" href="\/tareas\/US[0-9A-F]+">US[0-9A-F]+<\/a>\s*<span class="titulo">Sacar los datos<\/span>/,
 		);
 
 		// En la bandeja, «Aprueba» enseña sus partes bajo el análisis.
@@ -252,8 +251,8 @@ test("el campo «Subtarea de» lista las tareas abiertas que no son preguntas, y
 
 		const alta = await (await pedir(montaje, "/tareas/nueva", cookie)).text();
 		assert.match(alta, /<span>Subtarea de<\/span>\s*<select name="padre">\s*<option value="" selected>ninguna<\/option>/);
-		assert.match(alta, new RegExp(`<option value="${formatearId(madre.codigo)}">`));
-		assert.match(alta, new RegExp(`<option value="${formatearId(evolutivo.codigo)}">`));
+		assert.match(alta, new RegExp(`<option value="${madre.codigo}">`));
+		assert.match(alta, new RegExp(`<option value="${evolutivo.codigo}">`));
 		assert.doesNotMatch(alta, /¿Una pregunta\?<\/option>/);
 		assert.doesNotMatch(alta, /Parte de la funcionalidad/);
 		// El alta de una funcionalidad también lo lleva: puede colgar de otra.
@@ -264,7 +263,7 @@ test("el campo «Subtarea de» lista las tareas abiertas que no son preguntas, y
 
 		// En la edición no se ofrece la propia tarea.
 		const edicion = await ficha(montaje, cookie, madre);
-		assert.doesNotMatch(edicion, new RegExp(`<option value="${formatearId(madre.codigo)}"`));
+		assert.doesNotMatch(edicion, new RegExp(`<option value="${madre.codigo}"`));
 
 		// Una funcionalidad titula su bloque «Tareas» y también deja añadir.
 		const deLaFuncionalidad = await ficha(montaje, cookie, evolutivo);

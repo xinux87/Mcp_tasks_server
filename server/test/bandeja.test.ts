@@ -10,7 +10,6 @@ import { crearUsuario } from "../src/db/consultas.ts";
 import { crearParte } from "../src/db/funcionalidades.ts";
 import { comentarAnalisis, comentarResultado, preguntar } from "../src/db/hilo.ts";
 import { crearTareaHumana, exigirTarea, moverTareaHumano, type Tarea, tomarTarea } from "../src/db/tareas.ts";
-import { formatearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 /**
@@ -198,7 +197,7 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 
 		const preguntas = bloque(cuerpo, "Contesta");
 		assert.match(preguntas, /¿Qué separador usamos\?/);
-		assert.match(preguntas, new RegExp(`action="/tareas/${formatearId(tareas.bloqueada.codigo)}/responder/P1"`));
+		assert.match(preguntas, new RegExp(`action="/tareas/${tareas.bloqueada.codigo}/responder/P1"`));
 		assert.match(preguntas, /<input type="hidden" name="volver" value="\/">/);
 		// Cada pendiente es una sola tarjeta con su cabecera: chip de proyecto,
 		// identificador, título, quién escribió lo que hay que atender y la edad.
@@ -223,7 +222,7 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 		// finalizar. Se hace desde aquí, sin abrir la ficha.
 		assert.match(
 			revisar,
-			new RegExp(`<form class="iterar" method="post" action="/tareas/${formatearId(tareas.hecha.codigo)}/comentar">`),
+			new RegExp(`<form class="iterar" method="post" action="/tareas/${tareas.hecha.codigo}/comentar">`),
 		);
 		assert.match(revisar, /<input type="hidden" name="volver" value="\/">/);
 		assert.match(revisar, /<input type="text" name="texto" required[^>]*placeholder="Escribe al agente/);
@@ -242,7 +241,7 @@ test("cada cosa pendiente sale en su bloque de la bandeja, y solo en el suyo", a
 			[tareas.vieja, "Define"],
 		];
 		for (const [cual, suyo] of donde) {
-			const id = formatearId(cual.codigo);
+			const id = cual.codigo;
 			for (const titulo of ["Contesta", "Aprueba", "Revisa", "Define"]) {
 				const trozo = bloque(cuerpo, titulo);
 				if (titulo === suyo) {
@@ -279,14 +278,14 @@ test("se contesta y se finaliza desde la bandeja, sin abrir la ficha", async () 
 		const cookie = await entrar(montaje);
 		const tareas = bandejaDePrueba(montaje.db);
 
-		const contestada = await pedir(montaje, `/tareas/${formatearId(tareas.bloqueada.codigo)}/responder/P1`, {
+		const contestada = await pedir(montaje, `/tareas/${tareas.bloqueada.codigo}/responder/P1`, {
 			cookie,
 			formulario: { opcion: "Punto y coma", nota: "", volver: "/" },
 		});
 		assert.equal(contestada.status, 302);
 		assert.equal(contestada.headers.get("location"), "/");
 
-		const finalizada = await pedir(montaje, `/tareas/${formatearId(tareas.hecha.codigo)}/mover`, {
+		const finalizada = await pedir(montaje, `/tareas/${tareas.hecha.codigo}/mover`, {
 			cookie,
 			formulario: { estado: "finished", nota: "", volver: "/" },
 		});
@@ -308,7 +307,7 @@ test("se pide otra iteración desde la bandeja y la tarea vuelve a En curso", as
 		const cookie = await entrar(montaje);
 		const tareas = bandejaDePrueba(montaje.db);
 
-		const otra = await pedir(montaje, `/tareas/${formatearId(tareas.hecha.codigo)}/comentar`, {
+		const otra = await pedir(montaje, `/tareas/${tareas.hecha.codigo}/comentar`, {
 			cookie,
 			formulario: { texto: "Falta el pie del informe.", volver: "/" },
 		});
@@ -330,7 +329,7 @@ test("una acción que rompe una regla vuelve a pintar la bandeja con el mensaje"
 		const suelta = tarea(montaje.db, "Exportar clientes");
 
 		// Aprobar una tarea que está en backlog no vale: no hay análisis que aprobar.
-		const respuesta = await pedir(montaje, `/tareas/${formatearId(suelta.codigo)}/aprobar`, {
+		const respuesta = await pedir(montaje, `/tareas/${suelta.codigo}/aprobar`, {
 			cookie,
 			formulario: { volver: "/" },
 		});

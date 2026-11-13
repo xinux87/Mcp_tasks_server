@@ -2,7 +2,6 @@ import type { Hono } from "hono";
 import { html } from "hono/html";
 import { type Actividad, actividadDeProyecto, actividadReciente } from "../../db/actividad.ts";
 import { listarAgentes } from "../../db/agentes.ts";
-import { formatearId } from "../../md/ids.ts";
 import { buscadorDeColor, type Color, chipUsuario, fraseDeAccion } from "../componentes.ts";
 import { fechaLegible } from "../formatos.ts";
 import { type Html, pagina } from "../plantilla.ts";
@@ -66,7 +65,7 @@ function objetoLegible(fila: Actividad, agentes: Agentes): Html {
 	// Una tarea borrada ya no tiene código: queda el nombre que tenía, como en
 	// un usuario o un terminal de baja.
 	if (fila.objeto === "tarea" && fila.objetoCodigo !== null) {
-		const id = formatearId(fila.objetoCodigo);
+		const id = fila.objetoCodigo;
 		return html`<a class="id-tarea" href="/tareas/${id}">${id}</a> <span class="objeto">${fila.objetoNombre}</span>`;
 	}
 	if (fila.objeto === "agente") {

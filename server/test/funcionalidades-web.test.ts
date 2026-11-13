@@ -10,7 +10,7 @@ import { crearUsuario } from "../src/db/consultas.ts";
 import { dependenciasDe } from "../src/db/dependencias.ts";
 import { comentarAnalisis, comentarResultado } from "../src/db/hilo.ts";
 import { buscarTarea, exigirTarea, idDeCodigo, moverTareaHumano, tomarTarea } from "../src/db/tareas.ts";
-import { formatearId, parsearId } from "../src/md/ids.ts";
+import { parsearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 /**
@@ -92,7 +92,7 @@ async function crear(montaje: Montaje, cookie: string, campos: Record<string, st
 	});
 	assert.equal(respuesta.status, 302);
 	const destino = respuesta.headers.get("location") ?? "";
-	assert.match(destino, /^\/tareas\/T-[0-9A-Z]{4,8}$/);
+	assert.match(destino, /^\/tareas\/(FE|US)[0-9A-F]{5}$/);
 	return destino.slice("/tareas/".length);
 }
 
@@ -112,7 +112,7 @@ function filaDe(montaje: Montaje, id: string): number {
 
 /** El identificador visible de la tarea que ocupa esa fila. */
 function idFila(montaje: Montaje, fila: number): string {
-	return formatearId(exigirTarea(montaje.db, fila).codigo);
+	return exigirTarea(montaje.db, fila).codigo;
 }
 
 test("una funcionalidad se crea con su rama y sale en su propia lista", async () => {

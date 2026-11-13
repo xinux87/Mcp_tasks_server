@@ -94,7 +94,7 @@ test("el análisis de una tarea la descompone y la deja esperando al humano aunq
 		// En el Markdown: subtareas en vez de ejecución, y el progreso en el frontmatter.
 		assert.match(
 			lineaIndice(item),
-			/^- T-[0-9A-Z]+ · prepared · subtareas 0\/2 · análisis listo · Rehacer la exportación · analisis: sonnet@portatil-ana$/,
+			/^- US[0-9A-F]+ · prepared · subtareas 0\/2 · análisis listo · Rehacer la exportación · analisis: sonnet@portatil-ana$/,
 		);
 		const completa = leerTarea(banco.db, madre.id);
 		assert.ok(completa !== undefined);

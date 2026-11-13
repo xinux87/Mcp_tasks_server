@@ -9,7 +9,6 @@ import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { buscarAgentePorNombre, listarAgentes } from "../src/db/agentes.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
 import { exigirTarea } from "../src/db/tareas.ts";
-import { formatearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 /**
@@ -224,7 +223,7 @@ test("borrar un agente avisa de las fases que suelta y la tarea se queda con lo 
 		assert.equal(suelta.analisisAgenteId, null);
 		assert.equal(suelta.analisisModelo, "sonnet");
 		assert.equal(suelta.analisisTerminalId, montaje.terminal);
-		const ficha = await (await pedir(montaje, `/tareas/${formatearId(suelta.codigo)}`, { cookie })).text();
+		const ficha = await (await pedir(montaje, `/tareas/${suelta.codigo}`, { cookie })).text();
 		assert.doesNotMatch(ficha, /href="\/agentes\/1"/);
 		assert.match(ficha, /sonnet@portatil-ana/);
 
@@ -272,7 +271,7 @@ test("el formulario de tarea ofrece el papel de cada fase y el servidor copia lo
 		assert.equal(tarea.ejecucionAgenteId, null);
 		assert.equal(tarea.ejecucionModelo, "opus");
 
-		const ficha = await (await pedir(montaje, `/tareas/${formatearId(tarea.codigo)}`, { cookie })).text();
+		const ficha = await (await pedir(montaje, `/tareas/${tarea.codigo}`, { cookie })).text();
 		assert.match(ficha, /<a href="\/agentes\/1">revisor<\/a> · sonnet@portatil-ana/);
 
 		// Y el formulario de edición vuelve con el papel ya elegido.
@@ -419,7 +418,7 @@ test("la ficha lista una fila por fase, de la más reciente a la más antigua, c
 
 		// Cada fila enlaza a su ficha, y la etiqueta de estado es la de siempre.
 		const primera = exigirTarea(montaje.db, una);
-		assert.match(filas[0] ?? "", new RegExp(`href="/tareas/${formatearId(primera.codigo)}"`));
+		assert.match(filas[0] ?? "", new RegExp(`href="/tareas/${primera.codigo}"`));
 		assert.match(filas[0] ?? "", /class="insignia estado-backlog/);
 
 		// Las dos fases asignadas de una tarea y la de la otra: tres.

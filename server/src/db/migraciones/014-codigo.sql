@@ -1,5 +1,5 @@
 -- El identificador visible de una tarea deja de ser su número de fila y pasa a
--- ser un código aleatorio: `T-K7M3XQ`. Un número que sube cuenta las tareas y
+-- ser un código aleatorio de seis caracteres. Un número que sube cuenta las tareas y
 -- ordena lo que no debe ordenarse.
 --
 -- Las tareas que ya existían conservan su número como código, con los mismos

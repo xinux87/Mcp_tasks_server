@@ -14,7 +14,6 @@ import {
 	tareasParaTerminalDesde,
 	tomarTarea,
 } from "../src/db/tareas.ts";
-import { formatearId } from "../src/md/ids.ts";
 import { lineaIndice } from "../src/md/indice.ts";
 import { codigoDe, montar } from "./comun.ts";
 
@@ -111,7 +110,7 @@ test("las dependencias se fijan en backlog, dejan rastro y ahí se congelan", ()
 		assert.deepEqual(dependenciasDe(banco.db, segunda.id), [primera.codigo, otra.codigo]);
 		const rastro = actividadDe(banco.db, "tarea", segunda.id);
 		assert.equal(rastro.at(-1)?.accion, "editar_tarea");
-		assert.equal(rastro.at(-1)?.detalle, `dependencias: ${formatearId(primera.codigo)}, ${formatearId(otra.codigo)}`);
+		assert.equal(rastro.at(-1)?.detalle, `dependencias: ${primera.codigo}, ${otra.codigo}`);
 
 		moverTareaHumano(banco.db, { tareaId: segunda.id, usuarioId: banco.ana, estado: "prepared" });
 		assert.equal(

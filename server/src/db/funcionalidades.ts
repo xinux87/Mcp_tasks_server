@@ -1,6 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
-import { formatearId } from "../md/ids.ts";
 import { entero, escribirContenido, SOLTAR_FASE, sentencia, texto } from "./base.ts";
 import { escribirDependencias } from "./dependencias.ts";
 import { exigirTitulo } from "./edicion.ts";
@@ -109,7 +108,7 @@ function exigirDescomposicionEnMarcha(padre: Tarea, terminalId: number): void {
 	if (padre.tipo === "pregunta") {
 		throw new ErrorDeRegla(
 			"solo_desde_descomposicion",
-			`La tarea ${formatearId(padre.codigo)} es una pregunta: se contesta, no se descompone en partes.`,
+			`La tarea ${padre.codigo} es una pregunta: se contesta, no se descompone en partes.`,
 		);
 	}
 	if (padre.estado !== "prepared") {
@@ -130,7 +129,7 @@ function exigirPartesDelMismoPadre(conexion: DatabaseSync, padreId: number, depe
 		if (candidata.padreId !== padreId) {
 			throw new ErrorDeRegla(
 				"dependencia_fuera_de_la_funcionalidad",
-				`La tarea ${formatearId(candidata.codigo)} no es una parte de esta misma tarea: una parte solo depende de sus hermanas.`,
+				`La tarea ${candidata.codigo} no es una parte de esta misma tarea: una parte solo depende de sus hermanas.`,
 			);
 		}
 	}
@@ -289,7 +288,7 @@ export function cerrarPadreSiProcede(conexion: DatabaseSync, revision: number, p
 		tipo: "resultado",
 		autor: AUTOR_SERVIDOR,
 		texto: partes
-			.map((hermana) => `- ${formatearId(hermana.codigo)} · ${hermana.titulo} · ${commitDe(conexion, hermana.id)}`)
+			.map((hermana) => `- ${hermana.codigo} · ${hermana.titulo} · ${commitDe(conexion, hermana.id)}`)
 			.join("\n"),
 		preguntaId: null,
 	});
@@ -316,7 +315,7 @@ export function crearSubtarea(db: DatabaseSync, datos: NuevaSubtarea): Tarea {
 	if (madre.estado === "done" || madre.estado === "finished") {
 		throw new ErrorDeRegla(
 			"padre_invalido",
-			`La tarea ${formatearId(madre.codigo)} ya está hecha: las subtareas se añaden mientras se define, se prepara o se trabaja.`,
+			`La tarea ${madre.codigo} ya está hecha: las subtareas se añaden mientras se define, se prepara o se trabaja.`,
 		);
 	}
 	if (madre.estado === "doing" && madre.enMarchaTerminalId !== null) {

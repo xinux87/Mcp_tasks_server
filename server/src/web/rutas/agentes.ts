@@ -16,7 +16,6 @@ import {
 	terminalDeAgente,
 } from "../../db/agentes.ts";
 import { tokensAbreviados } from "../../db/consumo.ts";
-import { formatearId } from "../../md/ids.ts";
 import { buscadorDeColor, type Color, chipDeAlta, type Miga, type Propiedad, propiedades } from "../componentes.ts";
 import { campo, campoOpcional, ESTADO_AVISO, type Formulario, leerFormulario, mensajeDeRegla } from "../formulario.ts";
 import { renderMarkdown } from "../markdown.ts";
@@ -99,7 +98,7 @@ function terminalLegible(terminal: string | null): Html {
 }
 
 function filaTrabajada(trabajada: TareaDeAgente): Html {
-	const id = formatearId(trabajada.codigo);
+	const id = trabajada.codigo;
 	return html`<tr>
 			<td><a class="id-tarea" href="/tareas/${id}">${id}</a></td>
 			<td>${trabajada.titulo}</td>

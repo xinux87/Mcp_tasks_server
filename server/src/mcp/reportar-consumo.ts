@@ -25,7 +25,7 @@ export function registrarHerramientaReportarConsumo(server: McpServer, db: Datab
 			description:
 				"Suma al consumo de la tarea lo que gastó un subagente de fase. Se llama al terminar cada subagente, copiando tal cual las cifras del aviso de Claude Code: nunca las estimes ni las redondees. Devuelve el consumo acumulado de la tarea.",
 			inputSchema: z.object({
-				id: z.string().describe("Identificador de la tarea, con la forma T-K7M3XQ."),
+				id: z.string().describe("Identificador de la tarea, con la forma US0002A (también en minúsculas)."),
 				fase: z.enum(["analisis", "ejecucion"]).describe("Fase a la que se imputa el gasto."),
 				modelo: z
 					.string()

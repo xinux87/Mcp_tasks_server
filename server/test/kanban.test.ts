@@ -19,7 +19,6 @@ import {
 	moverTareaHumano,
 	tomarTarea,
 } from "../src/db/tareas.ts";
-import { formatearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 type Montaje = {
@@ -102,7 +101,7 @@ async function crearTarea(montaje: Montaje, cookie: string, titulo: string): Pro
 
 /** El identificador visible de la tarea que ocupa esa fila. */
 function idFila(montaje: Montaje, fila: number): string {
-	return formatearId(exigirTarea(montaje.db, fila).codigo);
+	return exigirTarea(montaje.db, fila).codigo;
 }
 
 /** El cuerpo de un 422 o un 404 del kanban: `{ codigo, mensaje }`. */
@@ -257,7 +256,7 @@ test("la columna de cerradas enseña las diez últimas y enlaza a la lista", asy
 
 		const cuerpo = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
 		const columna = cuerpo.slice(cuerpo.indexOf('data-estado="finished"'));
-		const tarjetas = columna.match(/data-id="T-[0-9A-Z]{4,8}"/g) ?? [];
+		const tarjetas = columna.match(/data-id="(FE|US)[0-9A-F]{5}"/g) ?? [];
 		assert.equal(tarjetas.length, 10, "la columna de cerradas enseña solo diez");
 		assert.ok(columna.includes(`data-id="${idFila(montaje, 11)}"`), "falta la más reciente");
 		assert.ok(!columna.includes(`data-id="${idFila(montaje, 1)}"`), "la más antigua no debería salir");
@@ -308,7 +307,7 @@ test("arrastrar dentro del tablero de una funcionalidad coloca la parte entre su
 		});
 		const nueva = (titulo: string, padreId?: number): number =>
 			crearTareaHumana(montaje.db, { titulo, descripcion: "d", usuarioId: 1, padreId }).id;
-		// La columna queda: suelta (T-0002), parte 1 (T-0003), parte 2 (T-0004).
+		// La columna queda: suelta (US00001), parte 1 (US00002), parte 2 (US00003).
 		for (const tareaId of [nueva("Suelta"), nueva("Parte 1", evolutivo.id), nueva("Parte 2", evolutivo.id)]) {
 			moverTareaHumano(montaje.db, { tareaId, usuarioId: 1, estado: "prepared" });
 		}
@@ -422,7 +421,7 @@ test("una transición que no es del humano se rechaza y no mueve nada", async ()
 
 		// Un identificador bien formado que no es de ninguna tarea: una tarjeta
 		// que el navegador tenía de antes.
-		const inventada = await pedir(montaje, "/tareas/T-ZZZZZZ/orden", {
+		const inventada = await pedir(montaje, "/tareas/US99999/orden", {
 			cookie,
 			formulario: { estado: "backlog", orden: "1" },
 		});
@@ -564,7 +563,7 @@ test("la tarjeta enseña el progreso de sus hijas y los tokens de todo su árbol
 
 /** Los `data-padre` de las franjas, en el orden en que se pintan. */
 function franjas(cuerpo: string): string[] {
-	const encajes = cuerpo.matchAll(/<section class="franja"(?: data-padre="(T-[0-9A-Z]{4,8})")?>/g);
+	const encajes = cuerpo.matchAll(/<section class="franja"(?: data-padre="((?:FE|US)[0-9A-F]{5})")?>/g);
 	return [...encajes].map((encaje) => encaje[1] ?? "sueltas");
 }
 
@@ -911,7 +910,7 @@ test("una tarjeta lleva una etiqueta como máximo, y sus agentes como chips", as
 		});
 
 		const cuerpo = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
-		const id = formatearId(tarea.codigo);
+		const id = tarea.codigo;
 		const tarjeta = cuerpo.slice(cuerpo.indexOf(`data-id="${id}"`), cuerpo.indexOf("</article>", cuerpo.indexOf(id)));
 
 		// Una sola etiqueta de marca o turno, y la que manda es la del turno: lo que

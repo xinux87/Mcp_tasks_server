@@ -1,6 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ErrorDeRegla } from "../errores.ts";
-import { formatearId } from "../md/ids.ts";
 import { registrarActividad } from "./actividad.ts";
 import { faseConAgente } from "./agentes.ts";
 import { ahora, entero, escribirContenido, sentencia, texto } from "./base.ts";
@@ -8,7 +7,15 @@ import { tokensAbreviados } from "./consumo.ts";
 import { dependenciasDe, detalleDependencias, escribirDependencias } from "./dependencias.ts";
 import { autorHumano } from "./hilo.ts";
 import { exigirProyectoPorId } from "./proyectos.ts";
-import { buscarTarea, exigirPadre, exigirPresupuesto, exigirTarea, type Tarea, type TipoTarea } from "./tareas.ts";
+import {
+	buscarTarea,
+	exigirPadre,
+	exigirPresupuesto,
+	exigirTarea,
+	siguienteCodigo,
+	type Tarea,
+	type TipoTarea,
+} from "./tareas.ts";
 
 /**
  * Un título vacío deja la tarea sin nada que leer en el índice. Se comprueba
@@ -96,10 +103,10 @@ function presupuestoComoTexto(presupuesto: number | null): string {
 	return presupuesto === null ? "—" : tokensAbreviados(presupuesto);
 }
 
-/** `T-K7M3XQ`, o «ninguno» cuando la tarea no cuelga de nadie. */
+/** `FE00007`, o «ninguno» cuando la tarea no cuelga de nadie. */
 function nombreDePadre(conexion: DatabaseSync, padreId: number | null): string {
 	const padre = padreId === null ? undefined : buscarTarea(conexion, padreId);
-	return padre === undefined ? "ninguno" : formatearId(padre.codigo);
+	return padre === undefined ? "ninguno" : padre.codigo;
 }
 
 /** `análisis: sonnet@portatil → opus`, o nada si la fase se quedó igual. */
@@ -115,7 +122,13 @@ function cambioDeFase(conexion: DatabaseSync, nombre: string, antes: Fase, despu
  * Vacío si la edición no tocó nada, que es cuando no se escribe rastro: el
  * humano abrió el formulario y lo guardó tal cual.
  */
-function cambiosDeLaEdicion(conexion: DatabaseSync, antes: Tarea, despues: EdicionTarea, titulo: string): string {
+function cambiosDeLaEdicion(
+	conexion: DatabaseSync,
+	antes: Tarea,
+	despues: EdicionTarea,
+	titulo: string,
+	codigo: string,
+): string {
 	const cambios: (string | null)[] = [];
 	if (antes.titulo !== titulo) {
 		cambios.push(`título: «${antes.titulo}» → «${titulo}»`);
@@ -130,6 +143,9 @@ function cambiosDeLaEdicion(conexion: DatabaseSync, antes: Tarea, despues: Edici
 	}
 	if (antes.tipo !== despues.tipo) {
 		cambios.push(`tipo: ${antes.tipo} → ${despues.tipo}`);
+	}
+	if (antes.codigo !== codigo) {
+		cambios.push(`codigo: ${antes.codigo} → ${codigo}`);
 	}
 	if (despues.presupuesto !== undefined && antes.presupuesto !== despues.presupuesto) {
 		cambios.push(
@@ -249,18 +265,25 @@ export function editarTareaBacklog(db: DatabaseSync, datos: EdicionTarea): Tarea
 			ejecucionModelo: ejecucion.modelo,
 			ejecucionTerminalId: mudanza === null ? ejecucion.terminalId : null,
 		};
+		// Entre funcionalidad y lo demás cambia el prefijo: la tarea recibe el
+		// siguiente número del otro contador. Entre tarea y pregunta, el mismo.
+		const codigo =
+			(tarea.tipo === "funcionalidad") === (datos.tipo === "funcionalidad")
+				? tarea.codigo
+				: siguienteCodigo(conexion, datos.tipo);
 		// Se calcula antes del UPDATE: después ya no se sabe qué había.
-		const cambios = [cambiosDeLaEdicion(conexion, tarea, asignado, titulo), mudanza ?? ""];
+		const cambios = [cambiosDeLaEdicion(conexion, tarea, asignado, titulo, codigo), mudanza ?? ""];
 		sentencia(
 			conexion,
 			`UPDATE tareas
-				SET titulo = ?, descripcion = ?, tipo = ?, rama = ?, padre_id = ?, clase = ?, proyecto_id = ?, autoejecucion = ?,
+				SET codigo = ?, titulo = ?, descripcion = ?, tipo = ?, rama = ?, padre_id = ?, clase = ?, proyecto_id = ?, autoejecucion = ?,
 					presupuesto = ?,
 					analisis_agente_id = ?, analisis_modelo = ?, analisis_terminal_id = ?,
 					ejecucion_agente_id = ?, ejecucion_modelo = ?, ejecucion_terminal_id = ?,
 					actualizada = ?, revision = ?
 				WHERE id = ?`,
 		).run(
+			codigo,
 			titulo,
 			datos.descripcion,
 			datos.tipo,

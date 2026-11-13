@@ -19,13 +19,13 @@ import {
 	tomarTarea,
 } from "../src/db/tareas.ts";
 import { documentoTarea } from "../src/md/documento.ts";
-import { formatearId, generarCodigo, parsearId } from "../src/md/ids.ts";
+import { idONull, parsearId } from "../src/md/ids.ts";
 import { lineaIndice } from "../src/md/indice.ts";
 import { salidaNovedades } from "../src/md/novedades.ts";
 import { codigoDe, montar } from "./comun.ts";
 
 /** El identificador visible de una tarea: lo único que ya no se puede escribir a mano. */
-const id = (tarea: { codigo: string }): string => formatearId(tarea.codigo);
+const id = (tarea: { codigo: string }): string => tarea.codigo;
 
 /** Las fechas son las únicas que no se pueden fijar en la cadena esperada. */
 function sinFechas(markdown: string): string {
@@ -223,27 +223,20 @@ respeta los filtros activos y separa por punto y coma.
 
 Commit: a1b2c3d`;
 
-test("el identificador lleva de cuatro a ocho caracteres y se lee de vuelta", () => {
-	assert.equal(formatearId("K7M3XQ"), "T-K7M3XQ");
-	assert.equal(formatearId("0042"), "T-0042");
-	assert.equal(parsearId("T-0042"), "0042");
-	assert.equal(parsearId("T-K7M3XQ"), "K7M3XQ");
-	for (const malo of ["T-42", "42", "t-0042", "T-0042 ", "T-abcd", "T-123456789", ""]) {
+test("el código es FE o US con cinco cifras hexadecimales o más, y se normaliza a mayúsculas", () => {
+	assert.equal(parsearId("US0002A"), "US0002A");
+	assert.equal(parsearId("us0002a"), "US0002A");
+	assert.equal(parsearId("FE00007"), "FE00007");
+	assert.equal(parsearId("FE100000"), "FE100000");
+	assert.equal(idONull("fe00001"), "FE00001");
+	assert.equal(idONull("T-0042"), null);
+	for (const malo of ["T-0042", "T-K7M3XQ", "US0001", "XX00001", "US0000G", "US00001 ", ""]) {
 		assert.equal(
 			codigoDe(() => parsearId(malo)),
 			"id_invalido",
 		);
 	}
-});
-
-test("un código nuevo son seis caracteres del alfabeto, y no se repiten", () => {
-	const codigos = new Set<string>();
-	for (let vuelta = 0; vuelta < 100; vuelta += 1) {
-		const codigo = generarCodigo();
-		assert.match(codigo, /^[23456789A-HJKMNP-Z]{6}$/);
-		codigos.add(codigo);
-	}
-	assert.equal(codigos.size, 100);
+	assert.throws(() => parsearId("T-0042"), /tiene la forma US0002A/);
 });
 
 test("el documento de la tarea del ejemplo sale carácter a carácter", () => {
@@ -446,6 +439,8 @@ test("novedades lista lo cambiado y las preguntas contestadas, y sin nada solo l
 	const banco = montar();
 	try {
 		const { padre, hija } = ejemplo(banco);
+		// Los códigos son los del contador: la madre es la primera US y la hija, la segunda.
+		assert.deepEqual([id(padre), id(hija)], ["US00001", "US00002"]);
 		const salida = salidaNovedades({
 			revision: 190,
 			tareas: tareasParaTerminalDesde(banco.db, { terminalId: banco.portatil, revision: 0 }),
@@ -509,6 +504,9 @@ test("una funcionalidad enseña su rama, su progreso y sus partes; una parte, su
 		const integrar =
 			listarTareas(banco.db, {}).find((item) => item.titulo.startsWith("Integrar la rama")) ??
 			assert.fail("sin parte de integración");
+
+		// La funcionalidad es la primera FE; sus partes, las primeras US.
+		assert.deepEqual([evolutivo, datos, boton, integrar].map(id), ["FE00001", "US00001", "US00002", "US00003"]);
 
 		// La funcionalidad: rama, progreso, sin bloque de ejecución y con sus
 		// partes en el bloque de hijas, cada una con lo que la precede.

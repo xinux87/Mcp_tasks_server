@@ -10,8 +10,11 @@ import { bloqueCodigo } from "./componentes.ts";
  */
 const renderizador = new MarkdownIt({ html: false, linkify: false });
 
-/** Un identificador de tarea tal como se cita en el hilo: `T-K7M3XQ` o `T-0042`. */
-const ID_TAREA = /T-[0-9A-Z]{4,8}/g;
+/**
+ * Un código de tarea tal como se cita en el hilo: `FE00007` o `US0002A`. Solo en
+ * mayúsculas, para no confundir un código con un hash de commit (`fe00001a`).
+ */
+const ID_TAREA = /\b(?:FE|US)[0-9A-F]{5,}\b/g;
 
 /** Un token de texto suelto, con el nivel de anidamiento que le toca. */
 function tokenTexto(state: StateCore, contenido: string, nivel: number): Token {

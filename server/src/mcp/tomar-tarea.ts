@@ -27,7 +27,7 @@ export function registrarHerramientaTomarTarea(
 			description:
 				"Hace a este terminal responsable de una fase de la tarea y la marca «en marcha»; con fase «ejecucion» la tarea pasa además a doing. Llámala antes de ponerte a trabajar. Devuelve la línea de índice de la tarea tal como queda.",
 			inputSchema: z.object({
-				id: z.string().describe("Identificador de la tarea, con la forma T-K7M3XQ."),
+				id: z.string().describe("Identificador de la tarea, con la forma US0002A (también en minúsculas)."),
 				fase: z.enum(["analisis", "ejecucion"]).describe("Fase que se toma."),
 				modelo: z
 					.string()

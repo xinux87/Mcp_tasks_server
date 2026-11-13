@@ -5,7 +5,6 @@ import { revisionActual } from "../../db/consultas.ts";
 import { consumoDeTarea } from "../../db/consumo.ts";
 import { buscarProyectoPorClave, listarProyectos, type Proyecto } from "../../db/proyectos.ts";
 import { buscarTarea, type ItemIndice, listarTareas, type Tarea } from "../../db/tareas.ts";
-import { formatearId } from "../../md/ids.ts";
 import {
 	barraProgreso,
 	buscadorDeCreador,
@@ -98,7 +97,7 @@ function frenos(fila: Fila): Html {
 }
 
 function filaFuncionalidad(fila: Fila, creadorDe: Creador, claves: Claves): Html {
-	const id = formatearId(fila.item.codigo);
+	const id = fila.item.codigo;
 	const creador = creadorDe({
 		usuarioId: fila.tarea.creadaPorUsuarioId,
 		terminalId: fila.tarea.creadaPorTerminalId,

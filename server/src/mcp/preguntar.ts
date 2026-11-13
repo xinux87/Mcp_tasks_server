@@ -29,7 +29,7 @@ export function registrarHerramientaPreguntar(
 			description:
 				"Deja una pregunta con opciones cerradas en el hilo de la tarea y la marca bloqueada hasta que el humano conteste. Se usa para toda decisión que no sea tuya; la pregunta tiene que entenderse sin abrir el repositorio. Devuelve el número de pregunta y la línea de índice de la tarea.",
 			inputSchema: z.object({
-				id: z.string().describe("Identificador de la tarea, con la forma T-K7M3XQ."),
+				id: z.string().describe("Identificador de la tarea, con la forma US0002A (también en minúsculas)."),
 				pregunta: z.string().min(1, { error: "la pregunta no puede ir vacía" }).describe("Qué se decide, en una frase."),
 				porQueImporta: z
 					.string()

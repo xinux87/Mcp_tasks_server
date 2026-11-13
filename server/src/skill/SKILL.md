@@ -37,7 +37,7 @@ vez, di en una línea qué pasó y termina el turno. La repetición la pone Clau
 Code: el usuario arranca con `/loop 2m /tareas` y cada disparo vuelve a invocar
 esta skill.
 
-Si `$ARGUMENTS` trae un id de tarea (`T-0042`), salta la sincronización y trabaja
+Si `$ARGUMENTS` trae un id de tarea (`US00042`), salta la sincronización y trabaja
 solo esa tarea, empezando por el paso 3.
 
 ## Nombres de las herramientas

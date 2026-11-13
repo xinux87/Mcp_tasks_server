@@ -22,7 +22,7 @@ export function registrarHerramientaLeerTarea(server: McpServer, db: DatabaseSyn
 			description:
 				"Devuelve el documento Markdown completo de una tarea: campos, descripción, hijas y el hilo entero de comentarios. Es lo más caro en contexto de todo el servidor: llámala solo cuando vayas a trabajar esa tarea, no para curiosear el tablero.",
 			inputSchema: z.object({
-				id: z.string().describe("Identificador de la tarea, con la forma T-K7M3XQ."),
+				id: z.string().describe("Identificador de la tarea, con la forma US0002A (también en minúsculas)."),
 			}),
 		},
 		async ({ id }) =>

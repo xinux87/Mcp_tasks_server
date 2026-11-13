@@ -22,7 +22,6 @@ import {
 	moverTareaHumano,
 	tomarTarea,
 } from "../src/db/tareas.ts";
-import { formatearId } from "../src/md/ids.ts";
 import { type ConEdad, edadEnColumna, esperaPorTi } from "../src/web/componentes.ts";
 import { edad, tokensAbreviados } from "../src/web/formatos.ts";
 import { tarjetaPreguntaAbierta } from "../src/web/hilo.ts";
@@ -131,13 +130,13 @@ async function crearTarea(montaje: Montaje, cookie: string, titulo: string, desc
 	});
 	assert.equal(respuesta.status, 302);
 	const destino = respuesta.headers.get("location") ?? "";
-	assert.match(destino, /^\/tareas\/T-[0-9A-Z]{4,8}$/);
+	assert.match(destino, /^\/tareas\/(FE|US)[0-9A-F]{5}$/);
 	return destino.slice("/tareas/".length);
 }
 
-/** El identificador visible de una tarea por su número de fila: `T-K7M3XQ`. */
+/** El identificador visible de una tarea por su número de fila: `US0002A`. */
 function idDe(montaje: Montaje, tareaId: number): string {
-	return formatearId(exigirTarea(montaje.db, tareaId).codigo);
+	return exigirTarea(montaje.db, tareaId).codigo;
 }
 
 test("sin sesión la web redirige al login, y el login exige la contraseña buena", async () => {
@@ -188,8 +187,8 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 	try {
 		const cookie = await entrar(montaje);
 		const id = await crearTarea(montaje, cookie, "Exportar clientes a CSV", "Primera línea con **negrita**.");
-		// El identificador es un código al azar, no el número de la fila.
-		assert.match(id, /^T-[23456789A-HJKMNP-Z]{6}$/);
+		// El identificador es el siguiente del contador de su prefijo: una pregunta es US.
+		assert.equal(id, "US00001");
 
 		const lista = await pedir(montaje, "/tareas", { cookie });
 		assert.equal(lista.status, 200);
@@ -226,10 +225,14 @@ test("crear una tarea la deja en backlog, en la lista y en su ficha", async () =
 		// La descripción llega renderizada por markdown-it, no en crudo.
 		assert.match(cuerpoFicha, /<strong>negrita<\/strong>/);
 		assert.match(cuerpoFicha, /sin asignar/);
-		// Migas «DEFAULT › Tareas › T-K7M3XQ», con la última sin enlace.
+		// Migas «DEFAULT › Tareas › US0002A», con la última sin enlace.
 		assert.match(cuerpoFicha, /<nav class="migas"[^>]*>\s*<a href="\/p\/DEFAULT">DEFAULT<\/a>/);
 		assert.match(cuerpoFicha, /<a href="\/p\/DEFAULT\/tareas">Tareas<\/a>/);
 		assert.match(cuerpoFicha, new RegExp(`<span>${id}</span>`));
+		// En minúsculas la dirección resuelve la misma ficha, con el código en mayúsculas.
+		const enMinusculas = await pedir(montaje, `/tareas/${id.toLowerCase()}`, { cookie });
+		assert.equal(enMinusculas.status, 200);
+		assert.match(await enMinusculas.text(), new RegExp(`<span>${id}</span>`));
 		// Las propiedades, y solo la transición hacia delante que toca. El estado
 		// no es una de ellas: va en la cabecera, con la edad y la iteración.
 		assert.doesNotMatch(cuerpoFicha, /<dt>Estado<\/dt>/);
@@ -1420,25 +1423,28 @@ test("la lista y el kanban enseñan la edad en columna, y la ficha desde cuándo
 
 test("un identificador de tarea del hilo enlaza a su ficha, salvo en código o en otro enlace", () => {
 	assert.equal(
-		renderMarkdown("Depende de T-0042 para empezar."),
-		'<p>Depende de <a href="/tareas/T-0042">T-0042</a> para empezar.</p>\n',
+		renderMarkdown("Depende de US00042 para empezar."),
+		'<p>Depende de <a href="/tareas/US00042">US00042</a> para empezar.</p>\n',
 	);
 	// Dentro de código no se toca: ahí el identificador es texto literal.
-	assert.equal(renderMarkdown("El literal `T-0042` no enlaza."), "<p>El literal <code>T-0042</code> no enlaza.</p>\n");
+	assert.equal(renderMarkdown("El literal `US00042` no enlaza."), "<p>El literal <code>US00042</code> no enlaza.</p>\n");
 	assert.equal(
-		renderMarkdown("```\nT-0042\n```"),
+		renderMarkdown("```\nUS00042\n```"),
 		'<div class="bloque-codigo"><button type="button" class="boton pequeno copiar">Copiar</button>' +
-			'<pre><span class="linea"><code>T-0042</code></span></pre></div>\n',
+			'<pre><span class="linea"><code>US00042</code></span></pre></div>\n',
 	);
 	// Ni dentro de un enlace que ya existe: no se anidan dos <a>.
 	assert.equal(
-		renderMarkdown("Mira [T-0042](https://ejemplo/otro)."),
-		'<p>Mira <a href="https://ejemplo/otro">T-0042</a>.</p>\n',
+		renderMarkdown("Mira [US00042](https://ejemplo/otro)."),
+		'<p>Mira <a href="https://ejemplo/otro">US00042</a>.</p>\n',
 	);
-	// Un código nuevo enlaza igual que el número de una tarea de antes.
-	assert.equal(renderMarkdown("Depende de T-K7M3XQ."), '<p>Depende de <a href="/tareas/T-K7M3XQ">T-K7M3XQ</a>.</p>\n');
-	assert.match(renderMarkdown("T-10042"), /href="\/tareas\/T-10042"/);
-	assert.equal(renderMarkdown("T-42 no lo es."), "<p>T-42 no lo es.</p>\n");
+	// Una funcionalidad y un código de seis cifras enlazan igual.
+	assert.equal(renderMarkdown("Parte de FE00007."), '<p>Parte de <a href="/tareas/FE00007">FE00007</a>.</p>\n');
+	assert.match(renderMarkdown("US100000"), /href="\/tareas\/US100000"/);
+	// En minúsculas o pegado a más letras no es un código: puede ser un hash de commit.
+	for (const otro of ["us00001", "fe00001a", "FE00001a", "US0001", "XUS00001"]) {
+		assert.equal(renderMarkdown(`${otro} no lo es.`), `<p>${otro} no lo es.</p>\n`);
+	}
 });
 
 test("un bloque de código del hilo se copia entero y línea a línea, sin abrir HTML crudo", () => {
@@ -1543,11 +1549,11 @@ test("la tarjeta de una pregunta abierta se contesta fuera de la ficha y vuelve 
 		});
 
 		const tarjeta = String(
-			await tarjetaPreguntaAbierta({ codigo: "K7M3XQ", titulo: "Exportar clientes" }, pregunta, { volver: "/" }),
+			await tarjetaPreguntaAbierta({ codigo: "US0002A", titulo: "Exportar clientes" }, pregunta, { volver: "/" }),
 		);
 		assert.match(tarjeta, /<strong>¿Qué separador usamos\?<\/strong>/);
 		assert.match(tarjeta, /La hoja de cálculo está en español\./);
-		assert.match(tarjeta, /action="\/tareas\/T-K7M3XQ\/responder\/P1"/);
+		assert.match(tarjeta, /action="\/tareas\/US0002A\/responder\/P1"/);
 		assert.match(tarjeta, /<input type="hidden" name="volver" value="\/">/);
 		assert.match(tarjeta, /<span class="recomendada">recomendada<\/span>/);
 		// Sin destino de vuelta no se manda el campo: es lo que hace la ficha.
@@ -1902,7 +1908,7 @@ test("la ficha enseña el ciclo con el paso actual, su dueño y qué pasa ahora"
 		// Preparada y sin análisis: el turno es del agente, no del humano.
 		const estudiando = crearTareaHumana(montaje.db, { titulo: "Exportar clientes", descripcion: ".", usuarioId: 1 });
 		moverTareaHumano(montaje.db, { tareaId: estudiando.id, usuarioId: 1, estado: "prepared" });
-		const enAnalisis = await (await pedir(montaje, `/tareas/${formatearId(estudiando.codigo)}`, { cookie })).text();
+		const enAnalisis = await (await pedir(montaje, `/tareas/${estudiando.codigo}`, { cookie })).text();
 		const preparada = paso(enAnalisis, "Preparada");
 		assert.match(preparada, / class="agente" title="el agente" aria-current="step"/);
 		// Cada paso lleva su punto; el dueño va en el título, no en pantalla.
@@ -1925,7 +1931,7 @@ test("la ficha enseña el ciclo con el paso actual, su dueño y qué pasa ahora"
 			],
 			recomendacion: "Punto y coma",
 		});
-		const bloqueada = await (await pedir(montaje, `/tareas/${formatearId(estudiando.codigo)}`, { cookie })).text();
+		const bloqueada = await (await pedir(montaje, `/tareas/${estudiando.codigo}`, { cookie })).text();
 		assert.match(paso(bloqueada, "Preparada"), / class="turno" title="tú" aria-current="step"/);
 		assert.match(paso(bloqueada, "Preparada"), /Espera tu respuesta a P1/);
 		// El paso actual dice de quién es el turno de verdad, no de quién es la
@@ -1941,7 +1947,7 @@ test("la ficha enseña el ciclo con el paso actual, su dueño y qué pasa ahora"
 		comentarAnalisis(montaje.db, { tareaId: hecha.id, terminalId: 1, texto: "Plan." });
 		tomarTarea(montaje.db, { tareaId: hecha.id, fase: "ejecucion", terminalId: 1, modelo: "opus" });
 		comentarResultado(montaje.db, { tareaId: hecha.id, terminalId: 1, texto: "Hecho. Commit: a1b2c3d" });
-		const revisar = await (await pedir(montaje, `/tareas/${formatearId(hecha.codigo)}`, { cookie })).text();
+		const revisar = await (await pedir(montaje, `/tareas/${hecha.codigo}`, { cookie })).text();
 		assert.match(paso(revisar, "Hecha"), / class="turno" title="tú" aria-current="step"/);
 		assert.match(paso(revisar, "Hecha"), /Revisa el resultado/);
 
@@ -1952,7 +1958,7 @@ test("la ficha enseña el ciclo con el paso actual, su dueño y qué pasa ahora"
 			usuarioId: 1,
 			tipo: "pregunta",
 		});
-		const suya = await (await pedir(montaje, `/tareas/${formatearId(duda.codigo)}`, { cookie })).text();
+		const suya = await (await pedir(montaje, `/tareas/${duda.codigo}`, { cookie })).text();
 		const saltado = paso(suya, "En curso");
 		assert.match(saltado, / class="omitido"/);
 		assert.doesNotMatch(saltado, /title=/);
@@ -2005,21 +2011,18 @@ test("la etiqueta de turno sale en la lista, el tablero y la ficha, y solo donde
 		for (const ruta of ["/tareas", "/tareas/kanban"]) {
 			const cuerpo = await (await pedir(montaje, ruta, { cookie })).text();
 			assert.equal(cuerpo.split(señal).length - 1, 1, `${ruta}: solo la hecha espera por el humano`);
-			const suyo = cuerpo.slice(
-				cuerpo.indexOf(formatearId(hecha.codigo)) - 400,
-				cuerpo.indexOf(formatearId(hecha.codigo)) + 400,
-			);
+			const suyo = cuerpo.slice(cuerpo.indexOf(hecha.codigo) - 400, cuerpo.indexOf(hecha.codigo) + 400);
 			assert.ok(suyo.includes(señal), `${ruta}: la etiqueta va con la tarea hecha`);
 		}
 
 		// En el tablero la tarjeta lleva además el filete de la izquierda.
 		const tablero = await (await pedir(montaje, "/tareas/kanban", { cookie })).text();
-		assert.match(tablero, new RegExp(`<article class="tarjeta espera" data-id="${formatearId(hecha.codigo)}"`));
-		assert.match(tablero, new RegExp(`<article class="tarjeta" data-id="${formatearId(enCurso.codigo)}"`));
+		assert.match(tablero, new RegExp(`<article class="tarjeta espera" data-id="${hecha.codigo}"`));
+		assert.match(tablero, new RegExp(`<article class="tarjeta" data-id="${enCurso.codigo}"`));
 
-		const ficha = await (await pedir(montaje, `/tareas/${formatearId(hecha.codigo)}`, { cookie })).text();
+		const ficha = await (await pedir(montaje, `/tareas/${hecha.codigo}`, { cookie })).text();
 		assert.ok(ficha.includes(señal));
-		const otra = await (await pedir(montaje, `/tareas/${formatearId(enCurso.codigo)}`, { cookie })).text();
+		const otra = await (await pedir(montaje, `/tareas/${enCurso.codigo}`, { cookie })).text();
 		assert.ok(!otra.includes(señal));
 	} finally {
 		await montaje.cerrar();
@@ -2121,8 +2124,8 @@ test("la ficha enseña quién bloquea a quién, y la rama solo cuando la tarea l
 			usuarioId: 1,
 			dependeDe: [base.id],
 		});
-		const idBase = formatearId(base.codigo);
-		const idEncima = formatearId(encima.codigo);
+		const idBase = base.codigo;
+		const idEncima = encima.codigo;
 
 		// La que espera: de qué depende, que no bloquea a nadie y que no tiene rama.
 		const arriba = await (await pedir(montaje, `/tareas/${idEncima}`, { cookie })).text();
@@ -2157,7 +2160,7 @@ test("el bloque de hijas de la ficha lleva la cuenta, la barra y en qué punto e
 			analisisTerminalId: terminalId,
 			ejecucionTerminalId: terminalId,
 		});
-		const id = formatearId(padre.codigo);
+		const id = padre.codigo;
 
 		// Sin hijas, el bloque dice lo de siempre.
 		const sinHijas = await (await pedir(montaje, `/tareas/${id}`, { cookie })).text();
@@ -2214,7 +2217,7 @@ test("la ficha enseña la edad de la fase en marcha, la marca «parada» y el bo
 			analisisModelo: "sonnet",
 			analisisTerminalId: terminal.valor.terminal.id,
 		});
-		const id = formatearId(tarea.codigo);
+		const id = tarea.codigo;
 		moverTareaHumano(montaje.db, {
 			tareaId: tarea.id,
 			usuarioId: listarUsuarios(montaje.db)[0]?.id ?? 0,
@@ -2286,7 +2289,7 @@ test("la franja «Ahora mismo» enseña la fase en marcha de cada terminal y el 
 		const lista = await (await pedir(montaje, "/terminales", { cookie })).text();
 		assert.match(lista, /<h2>Ahora mismo<\/h2>/);
 		const trabajando = tarjetaAhora(lista, "portatil-ana");
-		const id = formatearId(tarea.codigo);
+		const id = tarea.codigo;
 		assert.ok(trabajando.includes(`<a class="id-tarea" href="/tareas/${id}">${id}</a>`), "la fase no enlaza a la ficha");
 		assert.ok(trabajando.includes('<span class="punto latido'), "la fase en marcha no lleva el punto que late");
 		assert.ok(trabajando.includes("Exportar el listado de clientes"), "falta el título de la tarea");
@@ -2406,7 +2409,7 @@ test("el consumo del panel son chips por fase, con el total con hijas contra el 
 			duracionMs: 87_000,
 		});
 
-		const ficha = await (await pedir(montaje, `/tareas/${formatearId(tarea.codigo)}`, { cookie })).text();
+		const ficha = await (await pedir(montaje, `/tareas/${tarea.codigo}`, { cookie })).text();
 		const consumo = ficha.slice(ficha.indexOf('<div class="consumo">'), ficha.lastIndexOf("</aside>"));
 		assert.ok(consumo.startsWith('<div class="consumo">'), "falta el bloque de consumo");
 		assert.ok(!consumo.includes("<table"), "el consumo ya no es una tabla");

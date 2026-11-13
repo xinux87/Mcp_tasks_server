@@ -11,7 +11,6 @@ import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { preguntasDeTarea, responder } from "../src/db/hilo.ts";
 import { crearProyecto } from "../src/db/proyectos.ts";
 import { aprobarEjecucion, crearTareaHumana, exigirTarea, moverTareaHumano } from "../src/db/tareas.ts";
-import { formatearId } from "../src/md/ids.ts";
 import { CONFIG_PRUEBA } from "./comun.ts";
 
 const BASE_URL = "http://localhost:3000";
@@ -29,7 +28,7 @@ type Montaje = {
 };
 
 /**
- * Base en memoria con un humano, dos terminales y la tarea T-0001 ya en
+ * Base en memoria con un humano, dos terminales y la tarea US00001 ya en
  * `prepared` con las dos fases asignadas al terminal A. A partir de aquí todo
  * se hace por MCP, que es lo que este archivo prueba.
  */
@@ -100,7 +99,7 @@ async function llamar(cliente: Client, nombre: string, argumentos: Record<string
 
 /** El identificador visible de la tarea que ocupa esa fila. */
 function idFila(montaje: Montaje, fila: number): string {
-	return formatearId(exigirTarea(montaje.db, fila).codigo);
+	return exigirTarea(montaje.db, fila).codigo;
 }
 
 /** El código de un error de regla, tal como se le enseña al agente. */
@@ -271,10 +270,15 @@ test("una tarea entera de principio a fin solo con las herramientas del MCP", as
 		);
 		assert.equal((await llamar(a, "listar_tareas", { estado: "backlog" })).texto, "Ninguna.");
 
-		// 9. Un identificador mal escrito es un error de regla, no un fallo.
-		assert.equal(codigoDe(await llamar(a, "leer_tarea", { id: "T-42" })), "id_invalido");
+		// 9. El código se acepta en minúsculas y se resuelve en mayúsculas.
+		assert.equal(idFila(montaje, 1), "US00001");
+		assert.match((await llamar(a, "leer_tarea", { id: "us00001" })).texto, /^id: US00001$/m);
+		// Un identificador mal escrito es un error de regla, no un fallo, y enseña la forma buena.
+		const viejo = await llamar(a, "leer_tarea", { id: "T-0042" });
+		assert.equal(codigoDe(viejo), "id_invalido");
+		assert.match(viejo.texto, /US0002A/);
 		// Y uno bien escrito que no es de ninguna tarea tampoco existe.
-		assert.equal(codigoDe(await llamar(a, "leer_tarea", { id: "T-ZZZZZZ" })), "tarea_inexistente");
+		assert.equal(codigoDe(await llamar(a, "leer_tarea", { id: "US99999" })), "tarea_inexistente");
 
 		// 10. Una tarea con la ejecución sin asignar: el modelo con el que el
 		// bucle la toma queda fijado en la fase y es el que firma el resultado.
@@ -508,7 +512,7 @@ test("una funcionalidad se descompone en partes por el MCP y solo la primera lle
 		const despues = await llamar(a, "novedades", { revision: 0 });
 		const ids = despues.texto
 			.split("\n")
-			.filter((linea) => linea.startsWith("- T-"))
+			.filter((linea) => /^- (FE|US)/.test(linea))
 			.map((linea) => linea.slice(2).split(" ")[0]);
 		assert.deepEqual(ids, [idFila(montaje, 1), idFila(montaje, 3)]);
 		assert.equal(
@@ -582,7 +586,7 @@ test("una tarea se descompone en subtareas por el MCP y deja de tener ejecución
 			analisisTerminalId: 1,
 		});
 		moverTareaHumano(montaje.db, { tareaId: pregunta.id, usuarioId: montaje.usuarioId, estado: "prepared" });
-		const deLaPregunta = formatearId(pregunta.codigo);
+		const deLaPregunta = pregunta.codigo;
 		await llamar(a, "tomar_tarea", { id: deLaPregunta, fase: "analisis" });
 		assert.equal(
 			codigoDe(await llamar(a, "crear_tarea", { titulo: "P", descripcion: "d", clase: "parte", padre: deLaPregunta })),

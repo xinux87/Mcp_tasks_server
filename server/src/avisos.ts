@@ -1,5 +1,4 @@
 import { sinBarraFinal } from "./direcciones.ts";
-import { formatearId } from "./md/ids.ts";
 
 /**
  * Avisos fuera de la web: un POST de texto llano a `AVISOS_URL` por cada cosa
@@ -46,7 +45,7 @@ export type OpcionesAvisador = {
 
 /** El texto del aviso: la frase y, debajo, el enlace a la ficha. */
 export function textoDeAviso(evento: Evento, baseUrl: string): string {
-	const id = formatearId(evento.codigo);
+	const id = evento.codigo;
 	const asunto = evento.tipo === "pregunta" ? (evento.pregunta ?? evento.titulo) : evento.titulo;
 	return `${id} ${FRASES[evento.tipo]}: «${asunto}»\n${sinBarraFinal(baseUrl)}/tareas/${id}`;
 }

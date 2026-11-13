@@ -6,7 +6,6 @@ import { revisionActual } from "../../db/consultas.ts";
 import { type Comentario, comentariosDeTarea, preguntasDeTarea, type TipoComentario } from "../../db/hilo.ts";
 import { listarProyectos, type Proyecto } from "../../db/proyectos.ts";
 import { type ItemIndice, listarTareas } from "../../db/tareas.ts";
-import { formatearId } from "../../md/ids.ts";
 import { buscadorDeColor, chipAutor, chipProyecto, edadEnColumna, filaDeTarea } from "../componentes.ts";
 import { edad } from "../formatos.ts";
 import { ESTADO_AVISO } from "../formulario.ts";
@@ -126,7 +125,7 @@ function porAprobar(item: ItemIndice, entorno: Entorno): Html {
 					: tarjetaComentario(analisis, entorno.colorDe)
 			}
 			${descompuesta ? partesDeLaMadre(item, entorno) : html``}
-			<form method="post" action="/tareas/${formatearId(item.codigo)}/aprobar">
+			<form method="post" action="/tareas/${item.codigo}/aprobar">
 				<input type="hidden" name="volver" value="/">
 				<button type="submit" class="principal">${descompuesta ? "Aprobar descomposición" : "Aprobar ejecución"}</button>
 			</form>
@@ -141,7 +140,7 @@ function porAprobar(item: ItemIndice, entorno: Entorno): Html {
  */
 function porRevisar(item: ItemIndice, entorno: Entorno): Html {
 	const resultado = ultimo(entorno.db, item.id, "resultado");
-	const id = formatearId(item.codigo);
+	const id = item.codigo;
 	return html`${cabeceraItem(item, entorno.claves, autorDe(entorno, item.id, "resultado"))}
 		<div class="cuerpo-item">
 			${

@@ -1,5 +1,4 @@
 import type { ItemIndice } from "../db/tareas.ts";
-import { formatearId } from "./ids.ts";
 
 /**
  * Cómo se escribe una fase en la línea de índice: `modelo@terminal` cuando
@@ -47,7 +46,7 @@ function progreso(item: ItemIndice): string[] {
 export function lineaIndice(item: ItemIndice): string {
 	const esTarea = item.tipo === "tarea" && item.partes === null;
 	const partes = [
-		formatearId(item.codigo),
+		item.codigo,
 		item.estado,
 		...(item.tipo === "pregunta" ? ["pregunta"] : []),
 		...progreso(item),
@@ -55,7 +54,7 @@ export function lineaIndice(item: ItemIndice): string {
 		item.titulo,
 		`analisis: ${fase(item.analisisModelo, item.analisisTerminal, item.analisisAgente)}`,
 		...(esTarea ? [`ejecucion: ${fase(item.ejecucionModelo, item.ejecucionTerminal, item.ejecucionAgente)}`] : []),
-		...(item.padreCodigo === null ? [] : [`padre: ${formatearId(item.padreCodigo)}`]),
+		...(item.padreCodigo === null ? [] : [`padre: ${item.padreCodigo}`]),
 	];
 	return `- ${partes.join(" · ")}`;
 }

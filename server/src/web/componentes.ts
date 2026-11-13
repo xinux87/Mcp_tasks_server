@@ -11,7 +11,6 @@ import { COLORES_USUARIO } from "../db/colores.ts";
 import type { TipoComentario } from "../db/hilo.ts";
 import { listarProyectos, type Proyecto } from "../db/proyectos.ts";
 import type { Estado, Marca, TipoTarea } from "../db/tareas.ts";
-import { formatearId } from "../md/ids.ts";
 import { abreviar, edad, faseLegible, horasDesde, SIN_DATO } from "./formatos.ts";
 import type { Html } from "./plantilla.ts";
 import {
@@ -423,7 +422,7 @@ export type Miga = {
 };
 
 export type OpcionesCabecera = {
-	/** El camino hasta aquí: `Tareas › T-0042`. Vacío en las páginas de primer nivel. */
+	/** El camino hasta aquí: `Tareas › US00042`. Vacío en las páginas de primer nivel. */
 	migas?: readonly Miga[];
 	titulo: string;
 	/**
@@ -693,7 +692,7 @@ const TITULO_ABREVIADO = 40;
  * abreviado. Lo enseñan igual la fila de la lista y la tarjeta del kanban.
  */
 export function enlaceFuncionalidad(padre: string, titulo: string): Html {
-	return html`<a class="parte-de" href="/tareas/${formatearId(padre)}">${abreviar(titulo, TITULO_ABREVIADO)}</a>`;
+	return html`<a class="parte-de" href="/tareas/${padre}">${abreviar(titulo, TITULO_ABREVIADO)}</a>`;
 }
 
 /** Una opción de un desplegable de filtro: el valor que viaja y lo que se lee. */
@@ -785,7 +784,7 @@ export type FilaTarea = {
  * color de la tabla de nueve; sin el nombre al lado, lo dice a los lectores.
  */
 export function filaDeTarea(fila: FilaTarea): Html {
-	const id = formatearId(fila.codigo);
+	const id = fila.codigo;
 	const nombre = NOMBRE_ESTADO[fila.estado];
 	const punto =
 		fila.latiendo === true

@@ -20,7 +20,7 @@ import {
 } from "./db/tareas.ts";
 import { esErrorDeRegla } from "./errores.ts";
 import { documentoTarea } from "./md/documento.ts";
-import { formatearId, parsearId } from "./md/ids.ts";
+import { parsearId } from "./md/ids.ts";
 import { lineaIndice } from "./md/indice.ts";
 
 const AYUDA = `Uso: node src/cli.ts <comando>
@@ -40,7 +40,7 @@ const AYUDA = `Uso: node src/cli.ts <comando>
   crear-tarea <usuario> <titulo> <descripcion>
               [--analisis <modelo>[@<terminal>]] [--ejecucion <modelo>[@<terminal>]]
               [--sin-autoejecucion] [--pregunta] [--funcionalidad]
-              [--rama <rama>] [--padre <T-K7M3XQ>] [--depende-de <T-K7M3XQ,T-0043>]
+              [--rama <rama>] [--padre <FE00007>] [--depende-de <US0002A,US0002B>]
       Crea una tarea en backlog a nombre del usuario, con sus asignaciones.
       Con --pregunta la tarea solo tiene fase de análisis: ese comentario es la
       respuesta y cierra la tarea. La asignación de ejecución se ignora.
@@ -183,7 +183,7 @@ function tipoElegido(partido: Argumentos): TipoTarea {
 	return partido.funcionalidad ? "funcionalidad" : "tarea";
 }
 
-/** Lee `T-0041,T-K7M3XQ` y devuelve los números de fila. Vacío si no se pasó nada. */
+/** Lee `US00041,US0002A` y devuelve los números de fila. Vacío si no se pasó nada. */
 function listaDeIds(db: DatabaseSync, valor: string | undefined): number[] {
 	if (valor === undefined) {
 		return [];
@@ -299,7 +299,7 @@ function comandoCrearTarea(argumentos: string[]): void {
 			ejecucionModelo: ejecucion.modelo,
 			ejecucionTerminalId: ejecucion.terminalId,
 		});
-		console.log(`creada: ${formatearId(tarea.codigo)}`);
+		console.log(`creada: ${tarea.codigo}`);
 	});
 }
 
@@ -315,7 +315,7 @@ function comandoMoverTarea(argumentos: string[]): void {
 	conBaseDeDatos((db) => {
 		const dueno = exigirUsuario(db, usuario);
 		const tarea = moverTareaHumano(db, { tareaId: idDeCodigo(db, parsearId(id)), usuarioId: dueno.id, estado, nota });
-		console.log(`movida: ${formatearId(tarea.codigo)} · ${tarea.estado}`);
+		console.log(`movida: ${tarea.codigo} · ${tarea.estado}`);
 	});
 }
 
@@ -328,7 +328,7 @@ function comandoBorrarTarea(argumentos: string[]): void {
 	conBaseDeDatos((db) => {
 		const dueno = exigirUsuario(db, usuario);
 		const tarea = borrarTarea(db, { tareaId: idDeCodigo(db, parsearId(id)), actor: { usuarioId: dueno.id } });
-		console.log(`borrada: ${formatearId(tarea.codigo)} · ${tarea.titulo}`);
+		console.log(`borrada: ${tarea.codigo} · ${tarea.titulo}`);
 	});
 }
 
@@ -341,7 +341,7 @@ function comandoAprobar(argumentos: string[]): void {
 	conBaseDeDatos((db) => {
 		const dueno = exigirUsuario(db, usuario);
 		const tarea = aprobarEjecucion(db, { tareaId: idDeCodigo(db, parsearId(id)), usuarioId: dueno.id });
-		console.log(`aprobada: ${formatearId(tarea.codigo)}`);
+		console.log(`aprobada: ${tarea.codigo}`);
 	});
 }
 
@@ -371,7 +371,7 @@ function comandoResponder(argumentos: string[]): void {
 			fallar(`la tarea ${id} no tiene ninguna pregunta ${etiqueta}`);
 		}
 		responder(db, { preguntaId: pregunta.id, usuarioId: dueno.id, opcion, nota });
-		console.log(`contestada: ${formatearId(codigo)} · ${etiqueta} · ${opcion}`);
+		console.log(`contestada: ${codigo} · ${etiqueta} · ${opcion}`);
 	});
 }
 

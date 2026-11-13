@@ -10,7 +10,7 @@ import { crearAvisador, type Enviar, type Evento } from "../src/avisos.ts";
 import { abrirBaseDeDatos } from "../src/db/abrir.ts";
 import { crearUsuario } from "../src/db/consultas.ts";
 import { aprobarEjecucion, crearTareaHumana, idDeCodigo, moverTareaHumano, type Tarea } from "../src/db/tareas.ts";
-import { formatearId, parsearId } from "../src/md/ids.ts";
+import { parsearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 const URL_AVISOS = "http://avisos.local/mcp-tareas";
@@ -25,20 +25,20 @@ function vaciar(): Promise<void> {
 
 const EVENTOS: [Evento, string][] = [
 	[
-		{ tipo: "pregunta", codigo: "K7M3XQ", titulo: "Exportar el listado", pregunta: "¿Qué separador usamos en el CSV?" },
-		"T-K7M3XQ pregunta: «¿Qué separador usamos en el CSV?»",
+		{ tipo: "pregunta", codigo: "US0002A", titulo: "Exportar el listado", pregunta: "¿Qué separador usamos en el CSV?" },
+		"US0002A pregunta: «¿Qué separador usamos en el CSV?»",
 	],
 	[
-		{ tipo: "hecha", codigo: "K7M3XQ", titulo: "Exportar el listado de clientes a CSV" },
-		"T-K7M3XQ hecha: «Exportar el listado de clientes a CSV»",
+		{ tipo: "hecha", codigo: "US0002A", titulo: "Exportar el listado de clientes a CSV" },
+		"US0002A hecha: «Exportar el listado de clientes a CSV»",
 	],
 	[
-		{ tipo: "analisis_listo", codigo: "0042", titulo: "Exportar el listado de clientes a CSV" },
-		"T-0042 análisis listo: «Exportar el listado de clientes a CSV»",
+		{ tipo: "analisis_listo", codigo: "US00042", titulo: "Exportar el listado de clientes a CSV" },
+		"US00042 análisis listo: «Exportar el listado de clientes a CSV»",
 	],
 	[
-		{ tipo: "descomposicion_lista", codigo: "0050", titulo: "Que los comerciales se bajen sus listados" },
-		"T-0050 descomposición lista: «Que los comerciales se bajen sus listados»",
+		{ tipo: "descomposicion_lista", codigo: "FE00050", titulo: "Que los comerciales se bajen sus listados" },
+		"FE00050 descomposición lista: «Que los comerciales se bajen sus listados»",
 	],
 ];
 
@@ -59,7 +59,7 @@ test("cada aviso son dos líneas: la frase y el enlace a la ficha", async () => 
 		enviados,
 		EVENTOS.map(([evento, primeraLinea]) => ({
 			url: URL_AVISOS,
-			texto: `${primeraLinea}\n${BASE_URL_PRUEBA}/tareas/${formatearId(evento.codigo)}`,
+			texto: `${primeraLinea}\n${BASE_URL_PRUEBA}/tareas/${evento.codigo}`,
 		})),
 	);
 });
@@ -213,14 +213,14 @@ function tareaEnPrepared(montaje: Montaje, titulo: string, autoejecucion = true,
 
 /** El enlace a la ficha, que es la segunda línea de cualquier aviso. */
 function ficha(tarea: Tarea): string {
-	return `${BASE_URL_PRUEBA}/tareas/${formatearId(tarea.codigo)}`;
+	return `${BASE_URL_PRUEBA}/tareas/${tarea.codigo}`;
 }
 
 test("preguntar avisa con la pregunta y el enlace de la ficha", async () => {
 	const montaje = await montar();
 	try {
 		const tarea = tareaEnPrepared(montaje, "Exportar el listado de clientes a CSV");
-		const id = formatearId(tarea.codigo);
+		const id = tarea.codigo;
 		await llamar(montaje, "tomar_tarea", { id, fase: "analisis" });
 		assert.deepEqual(await montaje.recoger(), []);
 
@@ -246,7 +246,7 @@ test("un resultado avisa de la tarea hecha; un comentario no avisa de nada", asy
 	const montaje = await montar();
 	try {
 		const tarea = tareaEnPrepared(montaje, "Exportar el listado de clientes a CSV");
-		const id = formatearId(tarea.codigo);
+		const id = tarea.codigo;
 		await llamar(montaje, "tomar_tarea", { id, fase: "analisis" });
 		// Con autoejecución, el análisis no espera a nadie: no hay aviso.
 		await llamar(montaje, "comentar_tarea", { id, tipo: "analisis", texto: "Plan: un botón y un fichero." });
@@ -265,7 +265,7 @@ test("un análisis sin autoejecución avisa de que espera aprobación", async ()
 	const montaje = await montar();
 	try {
 		const tarea = tareaEnPrepared(montaje, "Migrar el envío de correos a la cola", false);
-		const id = formatearId(tarea.codigo);
+		const id = tarea.codigo;
 		await llamar(montaje, "tomar_tarea", { id, fase: "analisis" });
 		await llamar(montaje, "comentar_tarea", { id, tipo: "analisis", texto: "Plan: una cola y un reintento." });
 
@@ -293,7 +293,7 @@ test("una pregunta del humano avisa como hecha en cuanto se responde", async () 
 			usuarioId: montaje.usuarioId,
 			estado: "prepared",
 		});
-		const id = formatearId(tarea.codigo);
+		const id = tarea.codigo;
 		await llamar(montaje, "tomar_tarea", { id, fase: "analisis" });
 		// En una pregunta el comentario `analisis` es la respuesta y la deja en done.
 		await llamar(montaje, "comentar_tarea", { id, tipo: "analisis", texto: "Unos 200.000 tokens de media." });
@@ -308,7 +308,7 @@ test("la descomposición de una funcionalidad avisa, y cerrar su última parte a
 	const montaje = await montar();
 	try {
 		const evolutivo = tareaEnPrepared(montaje, "Que los comerciales se bajen sus listados", true, "funcionalidad");
-		const evolutivoId = formatearId(evolutivo.codigo);
+		const evolutivoId = evolutivo.codigo;
 		await llamar(montaje, "tomar_tarea", { id: evolutivoId, fase: "analisis" });
 		const creada = await llamar(montaje, "crear_tarea", {
 			titulo: "Poner el botón de descarga",
@@ -317,7 +317,7 @@ test("la descomposición de una funcionalidad avisa, y cerrar su última parte a
 			padre: evolutivoId,
 		});
 		const parteId = creada.split("\n")[0]?.replace("creada: ", "") ?? "";
-		assert.match(parteId, /^T-[0-9A-Z]{6}$/);
+		assert.match(parteId, /^US0000[0-9A-F]$/);
 		// Crear la parte no avisa: lo que espera al humano es la descomposición.
 		assert.deepEqual(await montaje.recoger(), []);
 
@@ -357,7 +357,7 @@ test("una tarea con autoejecución que se descompone avisa de la descomposición
 	const montaje = await montar();
 	try {
 		const tarea = tareaEnPrepared(montaje, "Rehacer la exportación", true);
-		const id = formatearId(tarea.codigo);
+		const id = tarea.codigo;
 		await llamar(montaje, "tomar_tarea", { id, fase: "analisis" });
 		await llamar(montaje, "crear_tarea", { titulo: "Sacar los datos", descripcion: "d", clase: "parte", padre: id });
 		await llamar(montaje, "comentar_tarea", { id, tipo: "analisis", texto: "Plan de conjunto." });

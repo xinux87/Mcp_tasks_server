@@ -4,7 +4,7 @@ import * as z from "zod";
 import { crearParte } from "../db/funcionalidades.ts";
 import { crearHija, crearPropuesta, idDeCodigo, itemIndiceDe, type Tarea } from "../db/tareas.ts";
 import { ErrorDeRegla } from "../errores.ts";
-import { formatearId, parsearId } from "../md/ids.ts";
+import { parsearId } from "../md/ids.ts";
 import { lineaIndice } from "../md/indice.ts";
 import { conErroresDeRegla } from "./errores.ts";
 
@@ -88,7 +88,7 @@ export function registrarHerramientaCrearTarea(
 				} else {
 					creada = crearPropuesta(db, { titulo, descripcion, terminalId, tipo });
 				}
-				return [`creada: ${formatearId(creada.codigo)}`, lineaIndice(itemIndiceDe(db, creada.id, horasParada))].join("\n");
+				return [`creada: ${creada.codigo}`, lineaIndice(itemIndiceDe(db, creada.id, horasParada))].join("\n");
 			}),
 	);
 }

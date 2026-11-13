@@ -1,7 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { HORAS_PARADA_DEFECTO } from "../config.ts";
 import { ErrorDeRegla } from "../errores.ts";
-import { formatearId, generarCodigo } from "../md/ids.ts";
 import { type Actor, registrarActividad } from "./actividad.ts";
 import { faseConAgente } from "./agentes.ts";
 import {
@@ -408,7 +407,7 @@ export function buscarTareaPorCodigo(db: DatabaseSync, codigo: string): Tarea | 
 
 /**
  * El número de fila de un código, o `null` si no existe. Es el paso que traduce
- * lo que se ve (`T-K7M3XQ`) a lo que enlazan las tablas.
+ * lo que se ve (`US0002A`) a lo que enlazan las tablas.
  */
 export function idDeCodigoONull(db: DatabaseSync, codigo: string): number | null {
 	const fila = sentencia(db, "SELECT id FROM tareas WHERE codigo = ?").get(codigo);
@@ -419,7 +418,7 @@ export function idDeCodigoONull(db: DatabaseSync, codigo: string): number | null
 export function idDeCodigo(db: DatabaseSync, codigo: string): number {
 	const id = idDeCodigoONull(db, codigo);
 	if (id === null) {
-		throw new ErrorDeRegla("tarea_inexistente", `No existe la tarea ${formatearId(codigo)}.`);
+		throw new ErrorDeRegla("tarea_inexistente", `No existe la tarea ${codigo}.`);
 	}
 	return id;
 }
@@ -857,21 +856,19 @@ const INSERTAR_TAREA = `
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /**
- * Cuántas veces se vuelve a sortear si el código ya está cogido. Con 31^6
- * combinaciones el segundo intento ya es rarísimo; el tope está para que un
- * fallo raro sea un error y no un bucle infinito.
+ * El siguiente código del contador de su prefijo: `FE` para una funcionalidad,
+ * `US` para lo demás. Sube dentro de la transacción de quien lo pide, así que
+ * un número nunca se reparte dos veces ni se reutiliza al borrar.
  */
-const INTENTOS_CODIGO = 10;
-
-/** Un código que todavía no tiene ninguna tarea. Lo único que reintenta. */
-function codigoLibre(conexion: DatabaseSync): string {
-	for (let intento = 0; intento < INTENTOS_CODIGO; intento += 1) {
-		const codigo = generarCodigo();
-		if (sentencia(conexion, "SELECT 1 FROM tareas WHERE codigo = ?").get(codigo) === undefined) {
-			return codigo;
-		}
+export function siguienteCodigo(conexion: DatabaseSync, tipo: TipoTarea): string {
+	const prefijo = tipo === "funcionalidad" ? "FE" : "US";
+	const fila = sentencia(conexion, "UPDATE contadores SET ultimo = ultimo + 1 WHERE prefijo = ? RETURNING ultimo").get(
+		prefijo,
+	);
+	if (fila === undefined) {
+		throw new Error(`no hay contador para el prefijo ${prefijo}`);
 	}
-	throw new Error(`no se encontró un código de tarea libre en ${INTENTOS_CODIGO} intentos`);
+	return `${prefijo}${entero(fila, "ultimo").toString(16).toUpperCase().padStart(5, "0")}`;
 }
 
 /** Los campos con los que nace una tarea. Lo comparte `funcionalidades.ts`. */
@@ -904,7 +901,7 @@ export type FilaNueva = {
 export function insertarTarea(conexion: DatabaseSync, revision: number, nueva: FilaNueva): Tarea {
 	const marca = ahora();
 	const cambios = sentencia(conexion, INSERTAR_TAREA).run(
-		codigoLibre(conexion),
+		siguienteCodigo(conexion, nueva.tipo),
 		nueva.proyectoId,
 		nueva.titulo,
 		nueva.descripcion,
@@ -1040,7 +1037,7 @@ export type ParaColgar = {
  */
 export function exigirPadre(conexion: DatabaseSync, padreId: number, para: ParaColgar = {}): Tarea {
 	const padre = exigirTarea(conexion, padreId);
-	const nombre = formatearId(padre.codigo);
+	const nombre = padre.codigo;
 	if (padre.tipo === "pregunta") {
 		throw new ErrorDeRegla("padre_invalido", `La tarea ${nombre} es una pregunta: una pregunta no tiene subtareas.`);
 	}
@@ -1538,7 +1535,7 @@ export function tomarTarea(db: DatabaseSync, datos: Toma): Tarea {
 		if (tarea.proyectoId !== proyectoDeTerminal(conexion, datos.terminalId)) {
 			throw new ErrorDeRegla(
 				"otro_proyecto",
-				`La tarea ${formatearId(tarea.codigo)} es de otro proyecto: este terminal no trabaja en él.`,
+				`La tarea ${tarea.codigo} es de otro proyecto: este terminal no trabaja en él.`,
 			);
 		}
 		// Una tarea descompuesta no se ejecuta: lo que se ejecuta son sus partes.

@@ -9,7 +9,6 @@ import { abrirBaseDeDatos, rutaBaseDeDatos } from "../src/db/abrir.ts";
 import { crearParte } from "../src/db/funcionalidades.ts";
 import { comentarAnalisis, preguntar } from "../src/db/hilo.ts";
 import { exigirTarea, tomarTarea } from "../src/db/tareas.ts";
-import { formatearId } from "../src/md/ids.ts";
 
 const CLI = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 
@@ -52,7 +51,7 @@ function cli(dataDir: string, ...argumentos: string[]): Salida {
 function idFila(dataDir: string, fila: number): string {
 	const db = abrirBaseDeDatos(rutaBaseDeDatos(dataDir));
 	try {
-		return formatearId(exigirTarea(db, fila).codigo);
+		return exigirTarea(db, fila).codigo;
 	} finally {
 		db.close();
 	}

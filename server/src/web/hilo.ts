@@ -1,7 +1,6 @@
 import { html, raw } from "hono/html";
 import type { Comentario, Pregunta } from "../db/hilo.ts";
 import type { Estado } from "../db/tareas.ts";
-import { formatearId } from "../md/ids.ts";
 import { type Color, chipAutor } from "./componentes.ts";
 import { fechaLegible } from "./formatos.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -72,7 +71,7 @@ export function cuadroDeComentar(codigo: string, estado: Estado): Html {
 	if (estado === "finished") {
 		return html``;
 	}
-	return html`<form class="comentar" method="post" action="/tareas/${formatearId(codigo)}/comentar">
+	return html`<form class="comentar" method="post" action="/tareas/${codigo}/comentar">
 			<textarea name="texto" rows="3" required aria-label="Mensaje para el agente" placeholder="Escribe al agente…"></textarea>
 			<div class="acciones">
 				<button type="submit" class="principal">Comentar</button>
@@ -102,7 +101,7 @@ function opcionDePregunta(texto: string, consecuencia: string, recomendada: bool
  * propia ficha.
  */
 export function formularioRespuesta(codigo: string, pregunta: Pregunta, volver?: string): Html {
-	return html`<form class="responder" method="post" action="/tareas/${formatearId(codigo)}/responder/P${pregunta.numero}">
+	return html`<form class="responder" method="post" action="/tareas/${codigo}/responder/P${pregunta.numero}">
 			<fieldset>
 				<legend>Responder a P${pregunta.numero}</legend>
 				${volver === undefined ? html`` : html`<input type="hidden" name="volver" value="${volver}">`}
@@ -147,9 +146,9 @@ export function tarjetaPreguntaAbierta(
 ): Html {
 	// El ancla es a donde lleva el «Responder arriba» del hilo de la ficha. Lleva
 	// el id de la tarea porque la bandeja pinta preguntas de varias tareas.
-	return html`<article class="comentario pregunta-abierta" id="pregunta-${formatearId(tarea.codigo)}-P${pregunta.numero}">
+	return html`<article class="comentario pregunta-abierta" id="pregunta-${tarea.codigo}-P${pregunta.numero}">
 			<header>
-				<a class="id-tarea" href="/tareas/${formatearId(tarea.codigo)}">${formatearId(tarea.codigo)}</a>
+				<a class="id-tarea" href="/tareas/${tarea.codigo}">${tarea.codigo}</a>
 				<span class="titulo">${tarea.titulo}</span>
 				<span>P${pregunta.numero}</span>
 				<span class="fecha">${fechaLegible(pregunta.creada)}</span>

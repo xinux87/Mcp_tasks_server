@@ -29,7 +29,6 @@ import {
 	reordenar,
 	tomarTarea,
 } from "../src/db/tareas.ts";
-import { formatearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA, codigoDe, montar } from "./comun.ts";
 
 /** Las acciones del rastro de un objeto, en el orden en que se escribieron. */
@@ -432,7 +431,7 @@ test("la actividad de una tarea se enlaza a su ficha desde la lista global", asy
 
 		const cuerpo = await (await pedir(montaje, "/actividad", { cookie })).text();
 		assert.match(cuerpo, /creó la tarea/);
-		const id = formatearId(exigirTarea(montaje.db, 1).codigo);
+		const id = exigirTarea(montaje.db, 1).codigo;
 		assert.match(cuerpo, new RegExp(`<a class="id-tarea" href="/tareas/${id}">${id}</a>`));
 		assert.match(cuerpo, /<span class="objeto">Exportar clientes<\/span>/);
 	} finally {

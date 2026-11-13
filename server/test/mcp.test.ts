@@ -11,7 +11,6 @@ import { crearAgente, editarAgente } from "../src/db/agentes.ts";
 import { crearUsuario, revisionActual } from "../src/db/consultas.ts";
 import { crearProyecto } from "../src/db/proyectos.ts";
 import { crearTareaHumana, exigirTarea, moverTareaHumano } from "../src/db/tareas.ts";
-import { formatearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 const BASE_URL = BASE_URL_PRUEBA;
@@ -83,7 +82,7 @@ async function conectar(montaje: Montaje, token: string): Promise<Client> {
 
 /** El identificador visible de la tarea que ocupa esa fila. */
 function idFila(montaje: Montaje, fila: number): string {
-	return formatearId(exigirTarea(montaje.db, fila).codigo);
+	return exigirTarea(montaje.db, fila).codigo;
 }
 
 test("GET /salud responde 200 y { ok: true }", async () => {

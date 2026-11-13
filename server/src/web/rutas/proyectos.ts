@@ -16,7 +16,6 @@ import {
 	type Proyecto,
 } from "../../db/proyectos.ts";
 import { listarTareas } from "../../db/tareas.ts";
-import { formatearId } from "../../md/ids.ts";
 import {
 	accionNuevaTarea,
 	barraProgreso,
@@ -495,7 +494,7 @@ function resumenProyecto(deps: DependenciasWeb, proyecto: Proyecto): Html {
 					? html`<p class="silencio">Ninguna en curso.</p>`
 					: html`<ul class="hijas">
 						${enCurso.map((item) => {
-							const id = formatearId(item.codigo);
+							const id = item.codigo;
 							return html`<li>
 								<a class="id-tarea" href="/tareas/${id}">${id}</a> ${item.titulo}
 								${barraProgreso(item.partesCerradas ?? 0, item.partes ?? 0, "")}

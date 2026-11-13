@@ -34,7 +34,7 @@ Dos modelos, dos papeles: el mismo reparto que implementa la herramienta.
 
 ### Campos
 
-- **`id`**: `T-` y seis caracteres al azar de `23456789ABCDEFGHJKMNPQRSTUVWXYZ` (sin `0 1 I L O`). No es correlativo: un número que sube cuenta y ordena lo que no debe. Es global, no por proyecto, para que un commit nunca quede ambiguo. Las tareas antiguas conservan su número (`T-0042`), así que se acepta `T-` más de cuatro a ocho caracteres de `[0-9A-Z]`. Por dentro la fila tiene `tareas.id` (`AUTOINCREMENT`, nunca se reutiliza, lo que enlazan las demás tablas); el código va en `tareas.codigo` y es lo único que ven la web, el Markdown y los agentes.
+- **`id`**: el código visible: `FE` y cinco cifras hexadecimales en mayúsculas para una funcionalidad, `US` para una tarea o una pregunta (`FE00001`, `US0002A`). Es **incremental por prefijo y global**, no por proyecto, para que un commit nunca quede ambiguo: dos contadores en la tabla `contadores` que suben dentro de la transacción de alta; un número nunca se reutiliza, ni al borrar la tarea ni al cambiar de tipo. Si en `backlog` una tarea pasa entre funcionalidad y lo demás, recibe el siguiente número del otro contador (entre tarea y pregunta el código no cambia). Agotadas las cinco cifras siguen seis: se acepta `(FE|US)[0-9A-F]{5,}`, también en minúsculas (se normalizan); en Markdown solo se enlaza en mayúsculas, para no confundir un código con un hash de commit. Por dentro la fila tiene `tareas.id` (`AUTOINCREMENT`, nunca se reutiliza, lo que enlazan las demás tablas) y `tareas.codigo` guarda el código completo, lo único que ven la web, el Markdown y los agentes. Decidido el 13 de noviembre de 2026: sustituye a los `T-` al azar; la migración renumera las existentes por orden de alta sin conservar los códigos antiguos (eran de pruebas).
 - `proyecto` (obligatorio), `titulo`, `descripcion`, `estado`, `orden` (posición en su columna: es la prioridad), `padre`, `clase` (`parte`, `hija` o nulo; ver «Tareas hijas»).
 - `tipo`: `tarea` (por defecto en el modelo), `pregunta` o `funcionalidad`.
 - `dependeDe[]`, `rama` (una funcionalidad la fija y sus partes la heredan).
@@ -161,6 +161,7 @@ Del humano, desde la web o el CLI, en cualquier estado y con confirmación (no h
 
 Un proyecto es un repositorio que se trabaja desde una o varias carpetas, cada una con su terminal. Así una tarea `sin terminal` solo la toma un terminal de su repositorio.
 
+- **El organigrama es piramidal**: proyecto → funcionalidades (`FE…`) → tareas (`US…`). Una funcionalidad cuelga siempre del proyecto, nunca de otra tarea ni de otra funcionalidad (`funcionalidad_con_padre` en el alta, la edición y `crear_tarea`). Una tarea cuelga de una funcionalidad o directamente del proyecto («Sueltas»): puede no tener funcionalidad, pero siempre tiene proyecto, que es su contexto. Las subtareas (partes e hijas) cuelgan de tareas y no son un nivel del organigrama. Decidido el 13 de noviembre de 2026.
 - **Campos** (`proyectos`): `clave` (dos a ocho mayúsculas y cifras, empieza por letra, fija; `clave_invalida`, `clave_repetida`), `nombre`, `descripcion`, `repositorio` (URL del remote, opcional; se compara sin espacios, sin `.git` ni barra final), `rama_principal` (`main`), `verificacion` (comando de la parte de integración, opcional), `color` (de los ocho de usuario; sin elegir, el menos usado). El proyecto 1 es `DEFAULT` «Default» y recoge todo lo anterior.
 - **Un terminal pertenece a un solo proyecto**, elegido en el alta y fijo: una máquina con tres repositorios tiene tres terminales.
 - `registrar_terminal` recibe `ruta` y `repositorio` opcionales. Si el proyecto y el terminal tienen repositorio y no coinciden, falla con `proyecto_no_coincide` y el bucle para esa vuelta. Devuelve `proyecto`, `rama principal` y `verificacion`.
@@ -169,8 +170,12 @@ Un proyecto es un repositorio que se trabaja desde una o varias carpetas, cada u
 - `orden` es global por columna; el tablero de un proyecto reordena «entre las del proyecto» con `reordenar(..., entre: { proyectoId })`.
 - Se borra solo vacío (`proyecto_con_tareas`, `proyecto_con_terminales`); el 1 nunca (`proyecto_principal`).
 - Crear, editar y borrar dejan rastro y no suben la revisión.
-- **En la web**: las vistas acotadas van bajo `/p/:clave/…` (clave inexistente: 404); las rutas sin prefijo son la vista cruzada de todos los proyectos, con chip de proyecto en cada línea. Cada página acotada escribe la cookie `proyecto` (preferencia, sin firmar); la navegación apunta al recordado, o a `DEFAULT` sin cookie, o a la vista cruzada si se eligió «Todos los proyectos» (`todos`). La ficha sigue en `/tareas/T-…` porque el id es global.
-- **La página del proyecto**, `/p/:clave`, con tres pestañas: **Resumen** (propiedades, «Ahora mismo» con sus terminales, «Funcionalidades en curso» y «Espera por ti» con los recuentos de la bandeja acotada), **Informes** (`/p/:clave/informes`) y **Actividad** (`/p/:clave/actividad`, `actividadDeProyecto`). Las vistas cruzadas `/informes` y `/actividad` se enlazan desde la lista de proyectos.
+- **En la web**: las vistas acotadas van bajo `/p/:clave/…` (clave inexistente: 404); las rutas sin prefijo son la vista cruzada de todos los proyectos, con chip de proyecto en cada línea. Cada página acotada escribe la cookie `proyecto` (preferencia, sin firmar); la navegación apunta al recordado, o a `DEFAULT` sin cookie, o a la vista cruzada si se eligió «Todos los proyectos» (`todos`). La ficha sigue en `/tareas/US0002A` porque el código es global.
+- **La página del proyecto**, `/p/:clave`, con tres pestañas: **Panel** (`/p/:clave`, adonde lleva «Proyecto» en la barra), **Informes** (`/p/:clave/informes`) y **Actividad** (`/p/:clave/actividad`, `actividadDeProyecto`). Las vistas cruzadas `/informes` y `/actividad` se enlazan desde la lista de proyectos.
+- **El panel** es el estado del proyecto de un vistazo: el organigrama con su estado, de una sola consulta (la CTE recursiva del índice; nunca una consulta por funcionalidad). Decidido el 13 de noviembre de 2026; sustituye a la pestaña «Resumen».
+  - Arriba, cuatro cifras: funcionalidades abiertas, tareas abiertas con la barra apilada del proyecto (todas sus tareas y preguntas, sin las funcionalidades ni las hijas de trabajo), «Espera por ti» (contesta, aprueba y revisa, en `--turno` si hay algo) y agentes trabajando (con el punto que late). Luego «Ahora mismo» con los terminales, como hasta ahora. Las propiedades del proyecto (repositorio, rama, verificación, color, creado por) van en un `<details>` plegado al final: son configuración, no estado.
+  - **Funcionalidades**: una fila por funcionalidad no cerrada (primero `doing`, luego `prepared`, `backlog`, `done`) con código, título, estado, la barra apilada de sus partes (las hijas de clase `parte`, las mismas que cuenta «Funcionalidad 3/7») con «tareas 3/7», preguntas abiertas en `--turno`, agentes trabajando y tokens con hijas; cada fila es un `<details>` que despliega sus partes como filas de tarea. Las cerradas, en un `<details>` «Cerradas (n)» plegado. Debajo, **Tareas sueltas** (sin funcionalidad antepasada, sin hijas de trabajo, no cerradas) como filas de tarea. Sin nada: «Nada todavía» con el enlace de alta.
+  - **La barra apilada**: los cinco estados en su orden y su color, un hueco de 2 px entre tramos y siempre con las cifras al lado o en un `<title>` (amarillo y verde se confunden con protanopia: la barra nunca se lee sola). Es un `<svg>` en línea con un `<rect>` por tramo, anchos en el `viewBox` y colores por clase: la geometría de un SVG no es estilo en línea.
 
 ## Agentes
 
@@ -193,13 +198,13 @@ Frontmatter YAML y tres bloques fijos: `## Descripción`, `## Hijas` y `## Hilo`
 
 ```markdown
 ---
-id: T-K7M3XQ
+id: US0002A
 proyecto: DEFAULT
 titulo: "Exportar el listado de clientes a CSV"
 tipo: tarea
 estado: done
 orden: 3
-padre: T-0040
+padre: FE00007
 autoejecucion: true
 presupuesto: 200000
 marcas: []
@@ -228,7 +233,7 @@ Los comerciales necesitan bajarse el listado filtrado.
 
 ## Hijas
 
-- T-0043 · doing · Generar el fichero CSV · depende de: T-0044
+- US0002B · doing · Generar el fichero CSV · depende de: US0002C
 
 ## Hilo
 
@@ -260,19 +265,19 @@ Commit: a1b2c3d
 
 - Cabecera de comentario `### tipo · autor · fecha`, con `P<n>` al final solo en preguntas y respuestas.
 - Fechas en ISO 8601 UTC. `titulo` entre comillas dobles escapado como JSON; el resto sin comillas.
-- Campos opcionales solo cuando existen: `padre`, `presupuesto`, `rama`, `dependeDe: [T-0041]`, `agente:` de cada fase, `consumo`, y `partes`/`partesCerradas` en una tarea descompuesta. Un modelo o terminal que falta es `~`. Una fase retomada con otro modelo une los modelos con `+`.
+- Campos opcionales solo cuando existen: `padre`, `presupuesto`, `rama`, `dependeDe: [US00029]`, `agente:` de cada fase, `consumo`, y `partes`/`partesCerradas` en una tarea descompuesta. Un modelo o terminal que falta es `~`. Una fase retomada con otro modelo une los modelos con `+`.
 - `marcas` como lista en línea, `[]` sin ninguna. Sin hijas, `Ninguna.`; sin comentarios, `Ninguno.`
 - La descripción va tal como la escribió el humano. `revision` es la global en el momento de leer.
 
 ### Línea de índice (`listar_tareas`, `novedades`)
 
 ```markdown
-- T-0042 · doing · bloqueada · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-ana (revisor) · ejecucion: opus@portatil-ana
+- US00042 · doing · bloqueada · Exportar el listado de clientes a CSV · analisis: sonnet@portatil-ana (revisor) · ejecucion: opus@portatil-ana
 ```
 
 - Tras el estado y antes de las marcas: `pregunta`, `funcionalidad 3/7` o `subtareas 2/7`. Ninguna de las tres lleva segmento `ejecucion:`.
 - Agente entre paréntesis tras la fase. Fase vacía: `analisis: sin asignar`; con un solo dato: `analisis: sonnet` o `analisis: @portatil-ana`.
-- Una parte acaba en `padre: T-0050`. Sin proyecto: el agente solo ve el suyo.
+- Una parte acaba en `padre: FE00050`. Sin proyecto: el agente solo ve el suyo.
 
 ### `novedades`
 
@@ -281,11 +286,11 @@ revision: 190
 
 ## Tareas nuevas o cambiadas
 
-- T-0045 · prepared · sin terminal · Migrar el envío de correos · analisis: sin asignar · ejecucion: sin asignar
+- US00045 · prepared · sin terminal · Migrar el envío de correos · analisis: sin asignar · ejecucion: sin asignar
 
 ## Preguntas contestadas
 
-- T-0042 · P1 · Punto y coma
+- US00042 · P1 · Punto y coma
 ```
 
 Sin novedades, solo la línea `revision`.
@@ -367,7 +372,7 @@ El nombre visible es **TABO Tasks** (el paquete, la imagen y el plugin conservan
 - **Filtros**: tres conmutadores rápidos `?rapido=espera|en-marcha|sin-terminal` y búsqueda `?q=` (`LIKE` sobre `lower()`, que solo pliega ASCII; `ponytail: FTS5 unicode61 cuando la búsqueda se quede corta`). Viven en `listarTareas`. Los demás filtros solo por URL, sin desplegables.
 - **Tarjeta**: id, una sola etiqueta (la de turno, o la primera de `parada`, `en marcha`, `sin terminal`, `esperando`, `sobre presupuesto`; el tipo aparte), edad en columna, título, progreso de hijas (`<progress class="progreso">`), chips de los agentes de cada fase y tokens (`tokensAbreviados`: `980`, `184 k`, `1,2 M`; con presupuesto, `184 k / 200 k`). Filete `--turno` si espera por el humano. Hijas, cerradas y tokens con hijas vienen en el índice en una sola consulta (CTE recursiva), nunca una por tarjeta. La columna Cerradas enseña las diez más recientes. La fila de la lista es la fila de tarea con los mismos datos que la tarjeta y su misma etiqueta única; no enseña quién la creó.
 - **Arrastre** (`POST /tareas/:id/orden`): misma columna es `reordenar`; otra columna es `moverTareaHumano` y luego `reordenar`, pidiendo nota si la transición la exige. Responde 204 o `{ codigo, mensaje }` con 422/404, y el tablero se recarga. SortableJS se carga solo donde hay tablero.
-- **Ficha** (`/tareas/:id`): cabecera con estado, etiqueta de turno, tipo, iteración y edad; el ciclo de cinco pasos (`pasosDelCiclo`) con la frase de qué pasa ahora; las preguntas abiertas arriba con su formulario; propiedades, consumo y acciones excepcionales (devolver, editar, borrar como `<details>`) en un panel a la derecha desde 64 rem; descripción, subtareas, hilo y actividad. El hilo se filtra con `?hilo=preguntas|comentarios` y acaba en el cuadro de comentar, fijo al fondo. Cualquier `T-…` en Markdown enlaza a su ficha.
+- **Ficha** (`/tareas/:id`): cabecera con estado, etiqueta de turno, tipo, iteración y edad; el ciclo de cinco pasos (`pasosDelCiclo`) con la frase de qué pasa ahora; las preguntas abiertas arriba con su formulario; propiedades, consumo y acciones excepcionales (devolver, editar, borrar como `<details>`) en un panel a la derecha desde 64 rem; descripción, subtareas, hilo y actividad. El hilo se filtra con `?hilo=preguntas|comentarios` y acaba en el cuadro de comentar, fijo al fondo. Cualquier código `FE…` o `US…` en mayúsculas en Markdown enlaza a su ficha.
 - **Edad en columna** (`estado_desde`, la escribe `cambiarEstado`): `12 min`, `5 h`, `3 d` en tarjeta, lista y ficha. En `--peligro` una pregunta abierta de más de un día o un `done` de más de tres. No en `backlog` ni `finished`.
 - **Fases paradas**: con fase en marcha, la ficha ofrece «Liberar la fase» (`POST /tareas/:id/liberar`): pone a nulo el terminal y la hora, escribe un comentario de `servidor` con quién la libera y quién la tenía, deja rastro `liberar_fase` y sube la revisión. No cambia el estado. Sin fase en marcha, `sin_fase_en_marcha`. El bucle no cambia: una fase liberada se toma como una sin tomar.
 - **Formulario de tarea**: título, tipo (`pregunta` por defecto), descripción, rama, «Subtarea de», dependencias, presupuesto, autoejecución y las dos fases (agente, modelo, terminal). El proyecto no se elige: el de la URL o el recordado.

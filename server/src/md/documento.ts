@@ -2,7 +2,6 @@ import type { Agente } from "../db/agentes.ts";
 import type { ConsumoDeTarea, ConsumoFase } from "../db/consumo.ts";
 import type { Comentario } from "../db/hilo.ts";
 import type { HijaDeTarea, TareaCompleta } from "../db/tareas.ts";
-import { formatearId } from "./ids.ts";
 
 /**
  * El texto libre (descripción y cuerpo de los comentarios) se muestra tal como
@@ -70,7 +69,7 @@ function frontmatter(completa: TareaCompleta): string {
 	const { tarea } = completa;
 	// El proyecto va justo debajo del id: es lo primero que sitúa la tarea, y
 	// el agente solo ve tareas del suyo salvo cuando lee una dependencia ajena.
-	const lineas = ["---", `id: ${formatearId(tarea.codigo)}`, `proyecto: ${completa.proyecto}`];
+	const lineas = ["---", `id: ${tarea.codigo}`, `proyecto: ${completa.proyecto}`];
 	// El título va siempre entre comillas dobles: es texto del humano y puede
 	// llevar dos puntos, comillas o almohadillas, que en YAML significan algo.
 	lineas.push(`titulo: ${JSON.stringify(tarea.titulo)}`);
@@ -78,7 +77,7 @@ function frontmatter(completa: TareaCompleta): string {
 	lineas.push(`estado: ${tarea.estado}`);
 	lineas.push(`orden: ${tarea.orden}`);
 	if (completa.padre !== null) {
-		lineas.push(`padre: ${formatearId(completa.padre)}`);
+		lineas.push(`padre: ${completa.padre}`);
 	}
 	lineas.push(`autoejecucion: ${tarea.autoejecucion}`);
 	// El tope de tokens, solo cuando lo hay: sin él la línea no diría nada.
@@ -91,7 +90,7 @@ function frontmatter(completa: TareaCompleta): string {
 		lineas.push(`rama: ${tarea.rama}`);
 	}
 	if (completa.dependeDe.length > 0) {
-		lineas.push(`dependeDe: [${completa.dependeDe.map(formatearId).join(", ")}]`);
+		lineas.push(`dependeDe: [${completa.dependeDe.join(", ")}]`);
 	}
 	lineas.push(`marcas: [${completa.marcas.join(", ")}]`);
 	// El progreso de una tarea descompuesta: partes cerradas sobre partes totales.
@@ -136,9 +135,9 @@ function cabecera(comentario: Comentario, numeroDePregunta: Map<number, number>)
  * detrás de qué hermanas dependen, que es el orden de la descomposición.
  */
 function lineaHija(hija: HijaDeTarea): string {
-	const partes = [formatearId(hija.codigo), hija.estado, hija.titulo];
+	const partes = [hija.codigo, hija.estado, hija.titulo];
 	if (hija.dependeDe.length > 0) {
-		partes.push(`depende de: ${hija.dependeDe.map(formatearId).join(", ")}`);
+		partes.push(`depende de: ${hija.dependeDe.join(", ")}`);
 	}
 	return `- ${partes.join(" · ")}`;
 }

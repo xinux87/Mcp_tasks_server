@@ -1,5 +1,4 @@
 import type { ItemIndice, PreguntaContestada } from "../db/tareas.ts";
-import { formatearId } from "./ids.ts";
 import { lineaIndice } from "./indice.ts";
 
 export type Novedades = {
@@ -21,9 +20,7 @@ export function salidaNovedades({ revision, tareas, preguntas }: Novedades): str
 	if (preguntas.length > 0) {
 		bloques.push(
 			"## Preguntas contestadas",
-			preguntas
-				.map((contestada) => `- ${formatearId(contestada.codigo)} · P${contestada.numero} · ${contestada.opcion}`)
-				.join("\n"),
+			preguntas.map((contestada) => `- ${contestada.codigo} · P${contestada.numero} · ${contestada.opcion}`).join("\n"),
 		);
 	}
 	return bloques.join("\n\n");

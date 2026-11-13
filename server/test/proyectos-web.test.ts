@@ -9,7 +9,6 @@ import { altaTerminal, cambiarColor, listarTerminales } from "../src/db/admin.ts
 import { crearUsuario } from "../src/db/consultas.ts";
 import { crearProyecto, listarProyectos } from "../src/db/proyectos.ts";
 import { borrarTarea, buscarTarea, crearTareaHumana, exigirTarea } from "../src/db/tareas.ts";
-import { formatearId } from "../src/md/ids.ts";
 import { BASE_URL_PRUEBA, CONFIG_PRUEBA } from "./comun.ts";
 
 /**
@@ -101,7 +100,7 @@ function conDosProyectos(montaje: Montaje): { web: number } {
 
 /** El identificador visible de la tarea que ocupa esa fila. */
 function idFila(montaje: Montaje, fila: number): string {
-	return formatearId(exigirTarea(montaje.db, fila).codigo);
+	return exigirTarea(montaje.db, fila).codigo;
 }
 
 test("la vista acotada solo trae las tareas de su proyecto y la cruzada las enseña con su chip", async () => {
@@ -510,7 +509,7 @@ test("arrastrar en el tablero de un proyecto coloca entre las suyas y no mueve l
 	try {
 		const cookie = await entrar(montaje);
 		const web = crearProyecto(montaje.db, { clave: "WEB", nombre: "La web nueva" }).id;
-		// La columna backlog queda: T-0001 (DEFAULT), T-0002 (WEB), T-0003 (WEB).
+		// La columna backlog queda: US00001 (DEFAULT), US00002 (WEB), US00003 (WEB).
 		crearTareaHumana(montaje.db, { titulo: "Del principal", descripcion: "d", usuarioId: 1 });
 		crearTareaHumana(montaje.db, { titulo: "Web una", descripcion: "d", usuarioId: 1, proyectoId: web });
 		crearTareaHumana(montaje.db, { titulo: "Web dos", descripcion: "d", usuarioId: 1, proyectoId: web });
@@ -647,10 +646,7 @@ test("la página del proyecto resume su configuración, sus terminales, lo que e
 		assert.match(cuerpo, /<dt>Color<\/dt>/);
 		assert.match(cuerpo, /<dt>Creado por<\/dt>/);
 		assert.match(cuerpo, /<strong>portatil-web<\/strong>/);
-		assert.match(
-			cuerpo,
-			new RegExp(`href="/tareas/${formatearId(portal.codigo)}">${formatearId(portal.codigo)}</a> Portal de clientes`),
-		);
+		assert.match(cuerpo, new RegExp(`href="/tareas/${portal.codigo}">${portal.codigo}</a> Portal de clientes`));
 		assert.match(
 			cuerpo,
 			/<progress class="progreso" value="1" max="2"><\/progress><span class="progreso-texto"> 1\/2<\/span>/,
